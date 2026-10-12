@@ -29,7 +29,7 @@
 | P14 | Production (TLS/HSTS, TRUSTED_PROXIES, secrets, rotation, logs) | `NOT_VERIFIED` | Checklist rédigée (`production-checklist.md`) ; aucun accès prod dans cette mission | Throttles collectifs derrière proxy ; secrets non vérifiés | Exploitant (DH-20) |
 | P15 | Modules actifs dev vs défauts | `VERIFIED` (constat) | `.env` dev : attendance/dossiers/demandes/schedule/evaluation/sentinel ON ; `.env.example` : tous OFF sauf referentiel/enseignement | Écart de comportement dev/CI/par défaut (contradiction C5) | Documenter (fait) ; CI à configurer en connaissance |
 | P16 | Revue sécurité auth/session/headers | `VERIFIED` (audit) | Audit 12/10 avec preuves fichier:ligne : socle conforme ; 1 constat P2 (AUTH-01) + résidus P3 | Sessions non révoquées au reset | DH-10 |
-| P17 | Revue sécurité API v1 / fichiers / modules récents | `NOT_RUN` (en cours) | 3 revues lancées le 12/10, résultats à intégrer | Périmètres récents les moins audités | SEC-09 |
+| P17 | Revue sécurité 4 périmètres (auth, API v1, modules récents, fichiers) | `PARTIALLY_VERIFIED` (3/4) | 12/10 : auth ✅ 1 P2 + 5 P3 · API v1 ✅ 1 P2 + 7 P3 · modules récents ✅ 2 P2 + 8 P3 · fichiers/uploads en attente | Aucun P0/P1 ; 4 P2 documentés (AUTH-01, SEC-10 V-1, SEC-11 V1/V2) | SEC-09/10/11 |
 | P18 | Sécurité effective de la production | `NOT_VERIFIED` | Aucune mesure d'environnement possible | Ne jamais déduire la sécurité prod des tests dev | DH-20 |
 | P19 | Workflow maquettes actives (anti double-active) | `VERIFIED` | Garde SQL (colonne générée + unique) + preuve MySQL scratch 12/10 (1062 refusée, remplacement atomique OK) | — | — |
 | P20 | Définitions du backlog B/C/D/E | `NOT_VERIFIED` | Document source introuvable dans le dépôt (contradiction C7) ; AGENTS liste les résorbés (B4/B5/B8, A1-A4) | Impossibilité de prioriser finement le reste | DH-14 |
@@ -42,6 +42,8 @@
 | **P1** | L'étape tests de la CI est prouvée cassée (APP_KEY absent) | INFRA-03 | P11 |
 | **P1** | 7 fichiers en échec Pint (gate style) | INFRA-04 | P10 |
 | **P2** | Sessions non révoquées au reset mot de passe (cookie volé survit) | AUTH-01 | P16 |
+| **P2** | Réinscription API : écriture cross-faculté (programme cible non re-scopé) | SEC-10 | P17 |
+| **P2** | Présence : pointage QR écrase relevé enseignant + suppression en cascade de justifications approuvées | SEC-11 | P17 |
 | **P2** | Concurrence MySQL jamais prouvée par CI | INFRA-05 | P07 |
 | **P2** | Demandes/réclamations enseignant non revues (2e main, arbitrage architecture) | PORT-07 | — |
 | **P2** | TRUSTED_PROXIES prod non vérifié (throttles collectifs) | AUTH-07 | P14 |
