@@ -1,0 +1,4 @@
+﻿code,nom,mention_code,departement_code
+SPEC-GEST,Gestion,MEN-GEST,DEP-GEST
+SPEC-ECO,Economie,MEN-ECO,DEP-ECO
+SPEC-INFO,Informatique de gestion,MEN-INFO,DEP-INFO

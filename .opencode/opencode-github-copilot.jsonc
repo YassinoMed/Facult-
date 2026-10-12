@@ -1,0 +1,68 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "default_agent": "pm",
+  
+  // ============================================================================
+  // PROJECT-LEVEL MODEL CONFIGURATION
+  // ============================================================================
+  // This file assigns models to agents for GitHub Copilot subscription.
+  // It is merged with opencode.jsonc (base) and takes precedence.
+  //
+  // OpenCode configs are merged (not replaced), so you can:
+  //   - Override only the agents you want with different models
+  //   - Create provider-specific configs (opencode-<provider>.jsonc)
+  //
+  // Agent model precedence: opencode.jsonc (base) → opencode-<provider>.jsonc
+  // See: https://opencode.ai/docs/config/ for config locations and precedence
+  // ============================================================================
+
+  // GitHub Copilot subscription model assignment.
+  //
+  // Cost multipliers (from Copilot pricing):
+  //   3.0x  — Opus 4.5/4.6           (reserve for highest-value reasoning)
+  //   1.0x  — Sonnet 4.6, GPT-5.2, GPT-5.2-Codex, Gemini 2.5 Pro
+  //   0.33x — Haiku 4.5, Gemini 3 Flash, GPT-5.1-Codex-Mini
+  //   0.25x — Grok Code Fast 1
+  //   free  — GPT-4.1, GPT-4o, GPT-5 mini
+  //
+  // Strategy: match model capability to agent complexity, minimize cost.
+  //   Tier 1 (3.0x)  — only agents where deep reasoning is irreplaceable
+  //   Tier 2 (1.0x)  — core work: code, plans, specs, orchestration, fixing
+  //   Tier 3 (0.33x) — well-scoped tasks: commits, docs, descriptions, images
+  //   Tier 4 (0.25x) — fast/cheap: research, simple edits
+  //   Tier 5 (free)  — trivial: command execution, log capture
+
+  "agent": {
+    // --- Tier 1 (3.0x) — deep reasoning, decisions, thorough review ---
+    "decision-advisor":        { "model": "github-copilot/claude-opus-4.6" },
+    "decision-critic":         { "model": "github-copilot/claude-opus-4.6" },
+    "bootstrapper":            { "model": "github-copilot/claude-opus-4.6" },
+    "reviewer":                { "model": "github-copilot/claude-opus-4.6" },
+    "plan-writer":             { "model": "github-copilot/claude-opus-4.6" },
+    "pm":                      { "model": "github-copilot/claude-opus-4.6" },
+    "review-feedback-applier": { "model": "github-copilot/claude-opus-4.6" },
+    "doc-syncer":              { "model": "github-copilot/claude-opus-4.6" },
+    "toolsmith":               { "model": "github-copilot/claude-opus-4.6" },
+
+    // --- Tier 2 (1.0x) — core work: orchestration, code, plans, specs, fixing ---
+    "coder":                   { "model": "github-copilot/gpt-5.3-codex" },
+    "fixer":                   { "model": "github-copilot/gpt-5.3-codex" },
+    "spec-writer":             { "model": "github-copilot/gpt-5.3-codex" },
+    "test-plan-writer":        { "model": "github-copilot/gpt-5.3-codex" },
+    "designer":                { "model": "github-copilot/gemini-2.5-pro" },
+    "pr-manager":              { "model": "github-copilot/gpt-5.3-codex" },
+    "editor":                  { "model": "github-copilot/gemini-2.5-pro" },
+
+    // --- Tier 3 (0.33x) — well-scoped: commits, docs, descriptions, images ---
+    "image-reviewer":          { "model": "github-copilot/gemini-3-flash-preview" },
+    "image-generator":         { "model": "github-copilot/gemini-3-flash-preview" },
+
+    // --- Tier 4 (0.25x) — fast/cheap: research, simple tasks ---
+    // example models: "github-copilot/grok-code-fast-1"
+
+    // --- Tier 5 (free) — trivial: command execution, log capture ---
+    "committer":               { "model": "github-copilot/gpt-5-mini" },
+    "external-researcher":     { "model": "github-copilot/gpt-5-mini" },
+    "runner":                  { "model": "github-copilot/gpt-5-mini" }
+  }
+}

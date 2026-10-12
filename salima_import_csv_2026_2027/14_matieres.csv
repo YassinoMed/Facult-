@@ -1,0 +1,13 @@
+﻿code,libelle,ecue_code,departement_code
+MAT-GEST-01,Introduction a la gestion,ECUE-GEST-01,DEP-GEST
+MAT-GEST-02,Comptabilite generale,ECUE-GEST-02,DEP-GEST
+MAT-MATH-01,Mathematiques generales,ECUE-MATH-01,DEP-GEST
+MAT-MATH-02,Statistiques descriptives,ECUE-MATH-02,DEP-GEST
+MAT-INFO-01,Algorithmique,ECUE-INFO-01,DEP-INFO
+MAT-INFO-02,Programmation,ECUE-INFO-02,DEP-INFO
+MAT-ECO-01,Microeconomie,ECUE-ECO-01,DEP-ECO
+MAT-ECO-02,Macroeconomie,ECUE-ECO-02,DEP-ECO
+MAT-GEST-03,Gestion financiere,ECUE-GEST-03,DEP-GEST
+MAT-GEST-04,Analyse financiere,ECUE-GEST-04,DEP-GEST
+MAT-INFO-03,Bases de donnees,ECUE-INFO-03,DEP-INFO
+MAT-INFO-04,Systemes d'information,ECUE-INFO-04,DEP-INFO

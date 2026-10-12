@@ -1,0 +1,47 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  qualite:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          extensions: mbstring, intl, sqlite3, pdo_sqlite, gd, zip
+          coverage: none
+
+      - name: Dépendances PHP
+        run: composer install --no-interaction --prefer-dist --no-progress
+
+      # DevSecOps (audit 04/10/2026 §11) : échec du CI si un avis de
+      # sécurité apparaît dans les dépendances (actuellement 0 avis).
+      - name: Audit dépendances Composer
+        run: composer audit --no-dev
+
+      - name: Style (Pint, test seul)
+        run: vendor/bin/pint --test
+
+      - name: Tests PHPUnit
+        run: php artisan test --compact
+
+      - name: Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Audit dépendances npm
+        run: npm audit --audit-level=high
+
+      - name: Build Vite
+        run: |
+          npm ci
+          npm run build

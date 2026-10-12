@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rows>
+    <row>
+        <cin>12345678</cin>
+        <matricule>20260045</matricule>
+        <code_ecue>INFO101</code_ecue>
+        <note>14.5</note>
+        <session>normale</session>
+    </row>
+    <row>
+        <cin>12345679</cin>
+        <matricule>20260046</matricule>
+        <code_ecue>INFO101</code_ecue>
+        <note>11</note>
+        <session>normale</session>
+    </row>
+</rows>

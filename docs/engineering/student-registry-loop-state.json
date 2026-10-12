@@ -1,0 +1,88 @@
+{
+ "blocages": [],
+ "critereSortiePhase1": "Pagination cohérente, filtres persistants et bornés, pas de défaut a11y majeur, tests vues/contrôleurs verts, autorisations préservées.",
+ "defauts": [
+  {
+   "id": "D1",
+   "niveau": "Élevé",
+   "titre": "Doublons fiche sans scope (CIN/email cross-facultés)",
+   "etat": "CORRIGÉ"
+  }
+ ],
+ "derniereMaj": "2026-10-11T09:25:00Z",
+ "fichiersModifies": [
+  "app/Services/Identity/CinOcrService.php",
+  "app/Support/JournalisationPrivee.php",
+  "bootstrap/app.php",
+  "tests/Feature/JournalisationPriveeTest.php"
+ ],
+ "mesures": {
+  "ficheShowRequetes": 39,
+  "indexRequetes": 11,
+  "volumeMysql": "300 dossiers: 84 ms, 13 requêtes",
+  "logs_sensibles_avant": "4 bcrypt + 4 fusion CIN + 1 snapshot",
+  "logs_sensibles_apres": "0 / 0 / 0",
+  "log_taille_octets": "187862335"
+ },
+ "phaseCourante": "9",
+ "phasePrecedente": "8",
+ "phases": {
+  "0": {
+   "etat": "PASSED",
+   "note": "Baseline 18+10 verts, pas de Git, conventions relevées."
+  },
+  "1": {
+   "etat": "PASSED",
+   "note": "21/21 (filtres persistants, vues défaut, bulk masqué, borne index 11 req). Zéro changement applicatif ; colonnes perso évaluées-écartées (tableau fixe couvre le besoin, critères ne l exigent pas)."
+  },
+  "2": {
+   "etat": "PASSED",
+   "note": "Fuite doublons inter-facultés corrigée (scope périmètre, test RED→GREEN). Déterminisme et non-mutation vérifiés."
+  },
+  "3": {
+   "etat": "PASSED_WITH_WARNINGS",
+   "note": "Transitions serveur + traçabilité vérifiées (test statut invalide). Attribution agent / priorités configurables / rappels ABSENTS (aucune colonne/table) → décision métier requise, documentée comme réserve."
+  },
+  "4": {
+   "etat": "PASSED",
+   "note": "Queue database opérationnelle (table jobs, jobs existants). Bulk sync ≤200 justifié, notifs dédupliquées prouvées (rejeu=0). Aucun job requis."
+  },
+  "5": {
+   "etat": "PASSED",
+   "note": "Export scopé + preview sans écriture + rapport prouvés (2 tests). Framework et définition déjà conformes, zéro changement."
+  },
+  "6": {
+   "etat": "PASSED",
+   "note": "Zéro appel IA externe (grep). Diagnostic déterministe, justifié, sans mutation du statut. Verdict déterministe conservé."
+  },
+  "7": {
+   "etat": "PASSED",
+   "note": "159 tests ciblés+voisins verts. Pint vert. Routes intactes. Navigateur NOT_EXECUTED, suite complète NOT_EXECUTED."
+  },
+  "8": {
+   "etat": "PASSED_WITH_WARNINGS",
+   "note": "Suite 2780: 2766 verts, 5 échecs hors périmètre documentés. Sécu contenu 6/6. MySQL 155 tables + 27/27 + volume 84ms/13req. Navigateur NOT_EXECUTED. Verdict: VALIDÉ AVEC RÉSERVES."
+  },
+  "9": {
+   "etat": "PASSED",
+   "note": "Remédiation logs: compteurs sensibles à 0, sources corrigées testées, registre sans régression."
+  }
+ },
+ "regressions": [],
+ "tests": {
+  "EtudiantsRegistreTest": "28/28",
+  "ProductiviteTest": "10/10",
+  "RegistreInterfacultesTest": "6/6",
+  "SuiteComplete": "2766/2780 (5 échecs externes, 9 skips)",
+  "JournalisationPriveeTest": "5/5"
+ },
+ "risquesResiduels": [
+  "5 échecs hors périmètre (autres chantiers)",
+  "LOG_LEVEL=debug local à vérifier false en prod",
+  "PII préexistantes dans laravel.log (hash bcrypt + CIN, 08/10)",
+  "attribution en attente",
+  "log 187 Mo sans rotation (recommandé, non appliqué)",
+  "navigateur non exécuté",
+  "rotation mdp origine du hash à arbitrer (compte non identifié)"
+ ]
+}

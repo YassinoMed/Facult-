@@ -1,0 +1,13 @@
+# Runner OCR PP-OCRv5 mobile (scan CIN / passeport)
+# Installation : python3 -m venv scripts/ocr/.venv
+#                scripts/ocr/.venv/bin/pip install -r scripts/ocr/requirements.txt
+rapidocr==3.9.2
+onnxruntime==1.30.0
+# Requis par le modèle de reconnaissance arabe (texte RTL)
+python-bidi==0.6.11
+
+# Runner VLM (driver `hfvlm`) : Qwen3-VL-4B-Instruct-4bit via MLX
+# (Apple Silicon arm64 uniquement — installer sous `arch -arm64` si le
+# PHP hôte est x86_64 sous Rosetta) ; torchvision = image processor.
+mlx-vlm==0.7.3
+torchvision==0.29.0

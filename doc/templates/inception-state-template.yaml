@@ -1,0 +1,17 @@
+project_flow: ""
+profile: ""          # new | legacy | ambiguous
+classification: ""   # project classification from Phase 0 scan
+characteristics:     # detected project characteristics
+  ui_bearing: false
+  multi_user: false
+  complex_domain: false
+  code_project: true
+material_inventory: []  # list of input materials found
+tribal_knowledge: null  # path if present
+repo_analysis: null     # path if legacy
+phase_status: []        # completed phases
+open_questions: []      # monotonic OPEN-Q<N> IDs
+confidence: 0           # overall confidence 0-100
+risks: []               # four-risk framework entries
+last_updated: ""
+resume_phase: 0         # which phase to resume from (0-7)

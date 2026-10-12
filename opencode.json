@@ -1,0 +1,57 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "project_root": ".",
+  "skills": {
+    "auto-fix": {
+      "path": ".opencode/skills/auto-fix/SKILL.md",
+      "auto_load": true
+    },
+    "code-review": {
+      "path": ".opencode/skills/code-review/SKILL.md",
+      "auto_load": true
+    },
+    "swe-bench-style": {
+      "path": ".opencode/skills/swe-bench-style/SKILL.md",
+      "auto_load": true
+    }
+  },
+  "agents": {
+    "fixer": {
+      "path": ".opencode/agents/fixer.md",
+      "mode": "subagent",
+      "model": "anthropic/claude-sonnet-4-5"
+    },
+    "reviewer": {
+      "path": ".opencode/agents/reviewer.md",
+      "mode": "subagent",
+      "model": "anthropic/claude-sonnet-4-5"
+    },
+    "swe_agent": {
+      "path": ".opencode/agents/swe_agent.md",
+      "mode": "subagent",
+      "model": "anthropic/claude-sonnet-4-5"
+    }
+  },
+  "mcp": {
+    "github": {
+      "type": "remote",
+      "url": "https://api.githubcopilot.com/mcp/",
+      "enabled": false,
+      "headers": {
+        "Authorization": "Bearer PLACEHOLDER_GITHUB_PAT"
+      }
+    },
+    "filesystem": {
+      "type": "local",
+      "command": ["npx", "-y", "@modelcontextprotocol/server-filesystem", "/chemin/autorise"],
+      "enabled": true
+    }
+  },
+  "plugins": [],
+  "permissions": {
+    "edit": "allow",
+    "bash": "allow",
+    "write": "allow",
+    "read": "allow"
+  }
+}

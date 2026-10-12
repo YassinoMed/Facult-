@@ -1,0 +1,554 @@
+openapi: 3.1.0
+info:
+  title: UniRegistre — API d'interopérabilité
+  version: 1.0.0
+  description: |
+    API REST versionnée du système d'archives académiques.
+    Authentification par Bearer tokens Sanctum à scopes restreints (moindre privilège).
+    Les imports suivent un workflow en deux phases (prévisualisation puis confirmation).
+servers:
+  - url: http://127.0.0.1:8000/api/v1
+    description: Développement local
+
+security:
+  - bearerAuth: []
+
+paths:
+  /health:
+    get:
+      summary: Sonde d'intégration (sans token)
+      security: []
+      responses:
+        '200':
+          description: Statut du service
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, example: ok }
+                  version: { type: string, example: v1 }
+
+  /referentiel/programmes:
+    get:
+      summary: Programmes (parcours) — lecture seule
+      description: 'Scope referentiel:read. Périmètre faculté du token.'
+      parameters:
+        - { name: search, in: query, schema: { type: string }, description: 'code, nom' }
+        - { name: per_page, in: query, schema: { type: integer, maximum: 100, default: 25 } }
+      responses:
+        '200': { description: 'Collection paginée (ProgrammeResource)' }
+        '401': { description: 'Token absent/invalide' }
+        '403': { description: 'Scope referentiel:read requis' }
+        '429': { description: 'Rate limit dépassé (60/min)' }
+
+  /referentiel/niveaux:
+    get:
+      summary: Niveaux LMD — lecture seule
+      parameters:
+        - { name: programme, in: query, schema: { type: string }, description: code programme }
+        - { name: per_page, in: query, schema: { type: integer, maximum: 100, default: 25 } }
+      responses:
+        '200': { description: 'Collection paginée (NiveauResource)' }
+        '403': { description: 'Scope referentiel:read requis' }
+
+  /referentiel/semestres:
+    get:
+      summary: Semestres LMD — lecture seule
+      parameters:
+        - { name: per_page, in: query, schema: { type: integer, maximum: 100, default: 25 } }
+      responses:
+        '200': { description: 'Collection paginée (SemestreLmdResource)' }
+        '403': { description: 'Scope referentiel:read requis' }
+
+  /referentiel/ues:
+    get:
+      summary: Unités d'enseignement — lecture seule
+      parameters:
+        - { name: search, in: query, schema: { type: string }, description: 'code, nom' }
+        - { name: per_page, in: query, schema: { type: integer, maximum: 100, default: 25 } }
+      responses:
+        '200': { description: 'Collection paginée (UeResource)' }
+        '403': { description: 'Scope referentiel:read requis' }
+
+  /referentiel/matieres:
+    get:
+      summary: ECUE / matières — lecture seule
+      parameters:
+        - { name: search, in: query, schema: { type: string }, description: 'code, nom' }
+        - { name: per_page, in: query, schema: { type: integer, maximum: 100, default: 25 } }
+      responses:
+        '200': { description: 'Collection paginée (EcueResource)' }
+        '403': { description: 'Scope referentiel:read requis' }
+
+  /referentiel/maquettes:
+    get:
+      summary: Maquettes pédagogiques — lecture seule
+      parameters:
+        - { name: statut, in: query, schema: { type: string }, description: 'draft, active, ...' }
+        - { name: per_page, in: query, schema: { type: integer, maximum: 100, default: 25 } }
+      responses:
+        '200': { description: 'Collection paginée (MaquetteResource)' }
+        '403': { description: 'Scope referentiel:read requis' }
+
+  /registrations:
+    get:
+      summary: Inscriptions académiques — lecture seule
+      description: 'Scope archives:read. Filtres whitelistés, périmètre faculté.'
+      parameters:
+        - { name: annee, in: query, schema: { type: string }, description: 'libellé année (2026-2027)' }
+        - { name: programme, in: query, schema: { type: string }, description: code programme }
+        - { name: niveau, in: query, schema: { type: string } }
+        - { name: statut, in: query, schema: { type: string } }
+        - { name: etudiant, in: query, schema: { type: integer } }
+        - { name: per_page, in: query, schema: { type: integer, maximum: 100, default: 25 } }
+      responses:
+        '200': { description: 'Collection paginée (InscriptionAcademiqueResource)' }
+        '401': { description: 'Token absent/invalide' }
+        '403': { description: 'Scope archives:read requis' }
+        '429': { description: 'Rate limit dépassé (60/min)' }
+
+  /registrations/{id}:
+    get:
+      summary: Détail d'une inscription
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      responses:
+        '200': { description: 'InscriptionAcademiqueResource' }
+        '404': { description: 'Inscription inconnue ou hors périmètre' }
+
+  /students/{student}/reenrollment-context:
+    get:
+      summary: 'Contexte de réinscription (scope archives:read, proposed_level non officiel)'
+      parameters:
+        - { name: student, in: path, required: true, schema: { type: integer } }
+        - { name: annee_universitaire_id, in: query, schema: { type: integer } }
+      responses:
+        '200': { description: 'Existence, dernière inscription, niveau proposé + source, pièces' }
+        '404': { description: 'Étudiant inconnu ou hors périmètre' }
+
+  /students/{student}/academic-progression:
+    get:
+      summary: 'Progression académique dry-run (scope archives:read)'
+      parameters:
+        - { name: student, in: path, required: true, schema: { type: integer } }
+      responses:
+        '200': { description: 'Situation, niveau proposé, décision source, blocages' }
+
+  /students/{student}/registration-period:
+    get:
+      summary: 'État période inscription (scope archives:read, même source page/POST)'
+      parameters:
+        - { name: student, in: path, required: true, schema: { type: integer } }
+        - { name: annee_universitaire_id, in: query, schema: { type: integer } }
+        - { name: type_inscription, in: query, schema: { type: string } }
+      responses:
+        '200': { description: 'status, is_open, starts_at, ends_at, exception' }
+        '404': { description: 'Étudiant inconnu ou hors périmètre' }
+
+  /registrations/reenroll/{student}:
+    post:
+      summary: 'Réinscription (scope registrations:write, Idempotency-Key, throttle)'
+      parameters:
+        - { name: student, in: path, required: true, schema: { type: integer } }
+      responses:
+        '201': { description: 'Inscription créée (ou existante en cas de retry)' }
+        '422': { description: 'Règle métier (niveau sans décision, doublon)' }
+        '404': { description: 'Étudiant inconnu ou hors périmètre' }
+
+  /students:
+    get:
+      summary: Liste des étudiants (paginée)
+      description: 'Filtres en liste blanche. per_page borné à 100.'
+      parameters:
+        - { name: search, in: query, schema: { type: string }, description: 'nom, prénom, CIN, n° inscription' }
+        - { name: faculty, in: query, schema: { type: string }, description: code faculté }
+        - { name: status, in: query, schema: { type: string, enum: [en_attente, valide, rejete] } }
+        - { name: niveau, in: query, schema: { type: string, enum: [L1, L2, L3, M1, M2, D1, D2, D3] } }
+        - { name: per_page, in: query, schema: { type: integer, maximum: 100, default: 25 } }
+      responses:
+        '200': { description: 'Collection paginée d''''étudiants (StudentResource)' }
+        '401': { description: 'Token absent/invalide' }
+        '403': { description: 'Scope students:read requis' }
+        '429': { description: 'Rate limit dépassé (60/min)' }
+
+  /students/{id}:
+    get:
+      summary: Détail d'un étudiant
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      responses:
+        '200': { description: 'StudentResource' }
+        '404': { description: 'Étudiant inconnu' }
+
+  /students/{id}/academic-record:
+    get:
+      summary: Dossier académique complet
+      description: Inscriptions → semestres → notes (moyennes, crédits, décisions).
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      responses:
+        '200': { description: 'AcademicRecordResource' }
+        '404': { description: 'Étudiant inconnu ou sans dossier' }
+
+  /students/{id}/grades:
+    get:
+      summary: Notes de l'étudiant (paginées)
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      responses:
+        '200': { description: 'Collection GradeResource' }
+
+  /students/{id}/documents:
+    get:
+      summary: Métadonnées des documents (jamais le chemin interne, paginées)
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+        - { name: per_page, in: query, schema: { type: integer, maximum: 100, default: 50 } }
+      responses:
+        '200': { description: 'Collection DocumentResource paginée' }
+
+  /students/{id}/results:
+    get:
+      summary: Résultats académiques par inscription (moyenne, crédits, dettes, décision publiée)
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      responses:
+        '200': { description: 'Synthèse moteur + décision publiée' }
+
+  /students/{id}/timeline:
+    get:
+      summary: Timeline académique (8 sources, paginée par offset)
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+        - { name: categorie, in: query, schema: { type: string } }
+        - { name: limite, in: query, schema: { type: integer, maximum: 100, default: 20 } }
+        - { name: offset, in: query, schema: { type: integer, default: 0 } }
+      responses:
+        '200': { description: 'Événements + meta total/limite/offset' }
+
+  /students/{id}/verification:
+    get:
+      summary: Rapport de vérification intelligente du dossier
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      responses:
+        '200': { description: "Rapport complet avec verdict, score et anomalies" }
+    post:
+      summary: Déclencher une vérification unitaire avec audit
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      responses:
+        '200': { description: "Vérification exécutée et auditée" }
+
+  /students/{id}/verification/anomalies:
+    get:
+      summary: Liste des anomalies de conformité détectées
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      responses:
+        '200': { description: "Anomalies groupées avec recommandations" }
+
+  /students/{id}/parcours:
+    get:
+      summary: Analyse du parcours LMD (niveau, crédits, dettes, propositions, règles)
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      responses:
+        '200': { description: 'Analyse sans PII sensible, scope faculté (BOLA 404)' }
+
+  /students/{id}/parcours-credits:
+    get:
+      summary: Crédits ECTS centralisés (obtenus, requis, restants, par semestre/année/UE)
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      responses:
+        '200': { description: 'Source unique : notes officielles recalculées' }
+
+  /students/{id}/parcours-risques:
+    get:
+      summary: Risque académique (niveau, score, motifs — informatif)
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      responses:
+        '200': { description: 'Évaluation informative, jamais de décision automatique' }
+
+  /students/{id}/parcours-simulations:
+    get:
+      summary: Simulations de parcours (scénario, résultat, règle — sans effet officiel)
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      responses:
+        '200': { description: '50 dernières simulations, hypothèses non exposées en détail' }
+
+  /imports:
+    post:
+      summary: "Import — phase 1 : analyse et prévisualisation"
+      description: Aucune écriture métier. Retourne un rapport pending + compteur d'erreurs/doublons.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                type: { type: string, enum: [students, grades] }
+                file: { type: string, format: binary, description: csv/json/xml/xlsx ≤ 10 Mo }
+      responses:
+        '202': { description: 'Rapport de prévisualisation' }
+        '422': { description: 'Fichier invalide, malformé, XXE ou format refusé' }
+
+  /imports/{report}/confirm:
+    post:
+      summary: "Import — phase 2 : confirmation"
+      parameters:
+        - { name: report, in: path, required: true, schema: { type: integer } }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                mode: { type: string, enum: [atomique, partiel] }
+      responses:
+        '200': { description: 'Import terminé (rapport final)' }
+        '202': { description: 'Volumineux — job en file d''attente' }
+        '404': { description: 'Rapport d''un autre client (anti-IDOR)' }
+
+  /imports/{report}:
+    get:
+      summary: Rapport d'import
+      parameters:
+        - { name: report, in: path, required: true, schema: { type: integer } }
+      responses:
+        '200': { description: 'Rapport détaillé (§40)' }
+        '404': { description: 'Rapport inaccessible' }
+
+  /exports:
+    post:
+      summary: Création d'un export (profil restreint)
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                type: { type: string, enum: [students, grades] }
+                format: { type: string, enum: [csv, xlsx, json, xml] }
+                profil: { type: string, enum: [administratif, academique, statistique] }
+                filters:
+                  type: object
+                  description: Liste blanche stricte — toute clé inconnue est rejetée (422)
+                  properties:
+                    faculte: { type: string }
+                    statut: { type: string }
+                    niveau: { type: string }
+                    annee: { type: string, example: 2025-2026 }
+                    matricule: { type: string }
+                    search: { type: string }
+      responses:
+        '201': { description: 'Rapport + download_url' }
+
+  /exports/{report}:
+    get:
+      summary: Statut d'un export
+      parameters:
+        - { name: report, in: path, required: true, schema: { type: integer } }
+      responses:
+        '200': { description: 'Rapport d''export' }
+        '404': { description: 'Rapport d''un autre client' }
+
+  /exports/{report}/download:
+    get:
+      summary: Téléchargement du fichier d'export (propriétaire uniquement)
+      parameters:
+        - { name: report, in: path, required: true, schema: { type: integer } }
+      responses:
+        '200': { description: 'Fichier CSV/XLSX/JSON/XML' }
+        '404': { description: 'Non trouvé ou non autorisé' }
+
+  /webhooks/external-system:
+    post:
+      summary: Réception d'un webhook signé HMAC-SHA256
+      security: []
+      description: |
+        En-têtes obligatoires : X-Signature (base64 HMAC-SHA256 du corps brut),
+        X-Timestamp (fenêtre ±300 s), X-Request-ID (anti-replay 24 h).
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                event: { type: string, enum: [student.registered, student.updated, grade.submitted, ping] }
+                external_reference: { type: string }
+      responses:
+        '202': { description: 'Webhook accepté et journalisé' }
+        '401': { description: 'Signature invalide, timestamp expiré ou rejeu' }
+        '422': { description: 'Event inconnu' }
+
+  /import-templates:
+    get:
+      summary: Liste des modèles d'import (scope imports:create)
+      responses:
+        '200': { description: 'Modèles disponibles' }
+
+  /import-templates/{type}:
+    get:
+      summary: Détail d'un modèle d'import
+      parameters:
+        - { name: type, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: 'Modèle + colonnes' }
+        '404': { description: 'Type inconnu' }
+
+  /import-templates/{type}/download:
+    get:
+      summary: Téléchargement d'un modèle vierge
+      parameters:
+        - { name: type, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: 'Fichier modèle' }
+
+  /schedules/import/preview:
+    post:
+      summary: "Import EDT — prévisualisation stateless (scope schedules:import)"
+      description: Fichier re-transmis à la confirmation (anti-TOCTOU).
+      responses:
+        '200': { description: 'Prévisualisation' }
+        '422': { description: 'Fichier invalide' }
+
+  /schedules/import/confirm:
+    post:
+      summary: "Import EDT — confirmation (scope schedules:import)"
+      responses:
+        '200': { description: 'Import appliqué' }
+
+  /data/{entite}/import/preview:
+    post:
+      summary: "DataExchange — prévisualisation (scope data:exchange)"
+      parameters:
+        - { name: entite, in: path, required: true, schema: { type: string, enum: [annees-universitaires, facultes, etablissements, departements, domaines, mentions, specialites, type-diplomes, diplomes, programmes, parcours, niveaux, semestres, ues, ecues, matieres, enseignants, batiments, salles, groupes, etudiants, inscriptions, inscriptions-academiques, inscriptions-pedagogiques, enseignements, affectations-enseignants, affectations-groupes, affectations-salles, emplois-du-temps, evaluations, sessions-examen, examens, epreuves, notes, notes-epreuve-anonymes, deliberations, decisions-jury, progressions, documents-academiques, annonces, referentiel-mens] } }
+      responses:
+        '200': { description: 'Prévisualisation (modes creer|upsert)' }
+
+  /data/{entite}/import/confirm:
+    post:
+      summary: "DataExchange — confirmation transactionnelle (scope data:exchange)"
+      parameters:
+        - { name: entite, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: 'Import appliqué + rapport' }
+
+  /data/{entite}/export/{format}:
+    get:
+      summary: "DataExchange — export (scope data:exchange)"
+      parameters:
+        - { name: entite, in: path, required: true, schema: { type: string } }
+        - { name: format, in: path, required: true, schema: { type: string, enum: [csv, xlsx, json, pdf] } }
+      responses:
+        '200': { description: 'Fichier d''export' }
+
+  /assignments/simulations:
+    get:
+      summary: "Affectations — simulations dans le périmètre (scope assignments:read)"
+      responses:
+        '200': { description: 'Liste (compteurs, sans PII)' }
+
+  /assignments/simulate:
+    post:
+      summary: "Affectations — simulation sans écriture (scope assignments:write)"
+      responses:
+        '201': { description: 'Simulation créée (seed stocké)' }
+
+  /assignments/simulations/{simulation}:
+    get:
+      summary: "Affectations — détail simulation (scope assignments:read)"
+      parameters:
+        - { name: simulation, in: path, required: true, schema: { type: integer } }
+      responses:
+        '200': { description: 'Compteurs + items (ids, sans PII)' }
+        '404': { description: 'Introuvable ou hors périmètre' }
+
+  /assignments/simulations/{simulation}/students/{student}:
+    get:
+      summary: "Affectations — matrice d'un étudiant (scope assignments:read)"
+      parameters:
+        - { name: simulation, in: path, required: true, schema: { type: integer } }
+        - { name: student, in: path, required: true, schema: { type: integer } }
+      responses:
+        '200': { description: 'Proposition + matrice candidats' }
+
+  /assignments/simulations/{simulation}/groups/{groupe}/confirm:
+    post:
+      summary: "Affectations — confirmation par tranche (scope assignments:write)"
+      parameters:
+        - { name: simulation, in: path, required: true, schema: { type: integer } }
+        - { name: groupe, in: path, required: true, schema: { type: integer } }
+      responses:
+        '200': { description: 'Tranche confirmée (répéter si terminee=false)' }
+        '422': { description: 'Simulation obsolète ou clôturée' }
+
+  /ready:
+    get:
+      summary: Sonde de readiness (sans token)
+      security: []
+      responses:
+        '200': { description: 'Base, cache, file et stockage OK' }
+        '503': { description: 'Dépendance indisponible (détail par sonde, sans PII)' }
+
+  /version:
+    get:
+      summary: Sonde publique de versionnage système (sans token)
+      security: []
+      responses:
+        '200': { description: 'Version applicative, base, build et environnement' }
+
+  /version/status:
+    get:
+      summary: État complet du versionnage système
+      security:
+        - bearerAuth: [versioning:read]
+      responses:
+        '200': { description: 'Détail de la release active et des composants' }
+
+  /version/manifest:
+    get:
+      summary: Manifest actif du système
+      security:
+        - bearerAuth: [versioning:read]
+      responses:
+        '200': { description: 'Contenu du manifest de release' }
+
+  /version/compatibility:
+    get:
+      summary: Rapport de compatibilité des modules et composants
+      security:
+        - bearerAuth: [versioning:read]
+      responses:
+        '200': { description: 'Matrice de compatibilité inter-modules' }
+
+  /version/drift:
+    get:
+      summary: Détection de dérive de configuration et de schéma
+      security:
+        - bearerAuth: [versioning:read]
+      responses:
+        '200': { description: 'Rapport de dérive temps réel' }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: Token Sanctum d'intégration (scopes restreints)
+
+  schemas:
+    ApiError:
+      type: object
+      required: [message, code]
+      properties:
+        message: { type: string, description: Message stable côté client }
+        code: { type: string, enum: [VALIDATION_ERROR, UNAUTHENTICATED, FORBIDDEN, NOT_FOUND, RATE_LIMITED, API_ERROR, INTERNAL_ERROR], description: Code stable }
+        request_id: { type: string, description: X-Request-ID pour corrélation support }
+        errors: { type: object, description: Détails de validation (422 uniquement) }

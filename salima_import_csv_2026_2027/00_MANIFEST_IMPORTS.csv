@@ -1,0 +1,33 @@
+﻿ordre,fichier,entite,dependances
+01,01_annees_universitaires.csv,Annees universitaires,
+02,02_etablissements.csv,Etablissements,01
+03,03_facultes.csv,Facultes,02
+04,04_departements.csv,Departements,03
+05,05_domaines.csv,Domaines,
+06,06_mentions.csv,Mentions,05
+07,07_specialites.csv,Specialites,"06,04"
+08,08_parcours.csv,Parcours,"07,09"
+09,09_diplomes.csv,Diplomes,
+10,10_niveaux.csv,Niveaux,09
+11,11_semestres.csv,Semestres,10
+12,12_ues.csv,UE,"08,10,11"
+13,13_ecues.csv,ECUE,12
+14,14_matieres.csv,Matieres,"13,04"
+15,15_enseignants.csv,Enseignants,"03,04"
+16,16_batiments.csv,Batiments,03
+17,17_salles.csv,Salles,"16,03"
+18,18_groupes.csv,Groupes,"01,08,10,11"
+19,19_etudiants.csv,Etudiants,
+20,20_inscriptions.csv,Inscriptions,"01,08,10,11,18,19"
+21,21_enseignements.csv,Enseignements,"01,08,10,11,12,13"
+22,22_affectations_enseignants.csv,Affectations enseignants,"15,21"
+23,23_affectations_groupes.csv,Affectations groupes,"18,21"
+24,24_affectations_salles.csv,Affectations salles,"17,21"
+25,25_emplois_du_temps.csv,Emplois du temps,"21,22,23,24"
+26,26_evaluations.csv,Evaluations,21
+27,27_examens.csv,Examens,"26,17,18"
+28,28_notes.csv,Notes,"19,20,26"
+29,29_deliberations.csv,Deliberations,"01,08,10,11"
+30,30_decisions_jury.csv,Decisions jury,"29,19"
+31,31_progressions.csv,Progressions,"19,29,30"
+32,32_documents_academiques.csv,Documents academiques,"19,20,30"

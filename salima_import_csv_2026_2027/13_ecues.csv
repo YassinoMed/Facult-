@@ -1,0 +1,13 @@
+﻿code,libelle,ue_code,credits,coefficient,volume_horaire,type
+ECUE-GEST-01,Introduction a la gestion,UE-GEST-S1-01,3,1.5,30,CM
+ECUE-GEST-02,Comptabilite generale,UE-GEST-S1-01,3,1.5,30,CM_TD
+ECUE-MATH-01,Mathematiques generales,UE-GEST-S1-02,3,1,30,CM_TD
+ECUE-MATH-02,Statistiques descriptives,UE-GEST-S1-02,2,1,24,TD
+ECUE-INFO-01,Algorithmique,UE-INFO-S1-01,3,1.5,30,CM_TD
+ECUE-INFO-02,Programmation,UE-INFO-S1-01,3,1.5,30,TP
+ECUE-ECO-01,Microeconomie,UE-ECO-S1-01,3,1.5,30,CM
+ECUE-ECO-02,Macroeconomie,UE-ECO-S1-01,3,1.5,30,CM
+ECUE-GEST-03,Gestion financiere,UE-GEST-S3-01,3,1.5,30,CM
+ECUE-GEST-04,Analyse financiere,UE-GEST-S3-01,3,1.5,30,TD
+ECUE-INFO-03,Bases de donnees,UE-INFO-S3-01,3,1.5,30,CM_TP
+ECUE-INFO-04,Systemes d'information,UE-INFO-S3-01,3,1.5,30,CM_TD

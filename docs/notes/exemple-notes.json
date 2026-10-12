@@ -1,0 +1,16 @@
+[
+    {
+        "cin": "12345678",
+        "matricule": "20260045",
+        "code_ecue": "INFO101",
+        "note": 14.5,
+        "session": "normale"
+    },
+    {
+        "cin": "12345679",
+        "matricule": "20260046",
+        "code_ecue": "INFO101",
+        "note": 11,
+        "session": "normale"
+    }
+]

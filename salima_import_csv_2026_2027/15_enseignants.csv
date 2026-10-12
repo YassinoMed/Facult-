@@ -1,0 +1,6 @@
+﻿matricule,nom,prenom,email,grade,departement_code,faculte_code,statut
+ENS-0001,Ben Ali,Ahmed,ahmed.benali@univ.tn,MAITRE_ASSISTANT,DEP-GEST,FSEGS,ACTIF
+ENS-0002,Trabelsi,Sami,sami.trabelsi@univ.tn,MAITRE_ASSISTANT,DEP-GEST,FSEGS,ACTIF
+ENS-0003,Mansour,Amira,amira.mansour@univ.tn,PROFESSEUR,DEP-INFO,FSEGS,ACTIF
+ENS-0004,Gharbi,Nabil,nabil.gharbi@univ.tn,ASSISTANT,DEP-INFO,FSEGS,ACTIF
+ENS-0005,Jlassi,Hatem,hatem.jlassi@univ.tn,MAITRE_ASSISTANT,DEP-ECO,FSEGS,ACTIF

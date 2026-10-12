@@ -1,0 +1,58 @@
+project_flow: legacy
+profile: legacy
+classification: legacy-project-delivered-without-ados
+characteristics:
+  ui_bearing: true
+  multi_user: true
+  complex_domain: true
+  code_project: true
+material_inventory:
+  - path: "doc/inception/inputs (empty - no inputs directory yet)"
+    status: pending
+    confidence: 0
+tribal_knowledge: null
+repo_analysis: null
+phase_status: [0, 1, 2]
+phase_2_gate_approved: true
+open_questions:
+  - id: OPEN-Q0-0
+    status: ANSWERED
+    question: "Determine project.flow and classify project profile"
+    answer: "project.flow: legacy (existing project delivered without ADOS); profile: legacy-project-delivered-without-ados; ui_bearing: true; multi_user: true; complex_domain: true; code_project: true"
+  - id: OPEN-Q0-1
+    status: ANSWERED
+    question: "Scan repo for tribal knowledge (git history, docs, decision records)"
+    answer: "Tribal knowledge mined from extensive docs/ directory (30+ doc files), code structure, and config files. No git history available (no git repo). Key categories documented: Domain, Architecture, Conventions, Risk, Operations. Tribal-knowledge.md written to doc/inception/analysis/."
+  - id: OPEN-Q1-2
+    status: PARTIAL
+    question: "Define personas and JTBD for multi-user UI-bearing system"
+    answer: "User journeys created as foundation; personas/JTBD creation deferred to Phase 3 persona/JTBD. 57+ user journeys documented, screen inventory created. Personas to be created in Phase 3 for tech stack decision context."
+  - id: OPEN-Q2-3
+    status: ANSWERED
+    question: "Define Current Milestone scope (legacy: next increment, NOT MVP)"
+    answer: "Current Milestone defined as Consolidation & Reliability Enhancement with 5 milestones: Input Validation & Security Hardening, Import/Export Pipeline Optimization, Intelligent Assignment Engine Enhancement, Enhanced Security & Confidentiality, Documentation & Training. Explicitly NOT called MVP for legacy project."
+  - id: OPEN-Q2-4
+    status: ANSWERED
+    question: "Draft roadmap with milestones derived from north star"
+    answer: "5-milestone roadmap created: (1) Input Validation & Security Hardening, (2) Import/Export Pipeline Optimization, (3) Intelligent Assignment Engine Enhancement, (4) Enhanced Security & Confidentiality, (5) Documentation & Training. Each milestone has risk focus, test targets, and success metrics."
+  - id: OPEN-Q2-5
+    status: ANSWERED
+    question: "Create assumption-register with four-risk framework"
+    answer: "10 assumptions tracked with four-risk framework. 8 validated, 2 pending. Includes Value/Usability/Feasibility/Viability risk type tags and validation_status."
+  - id: OPEN-Q2-6
+    status: ANSWERED
+    question: "Create risk-register with identified risks and mitigation"
+    answer: "10 risks identified with four-risk framework. 5 validated, 2 pending, 3 mitigated. Includes mitigation strategies and owners."
+  - id: OPEN-Q2-7
+    status: ANSWERED
+    question: "Conditional: user-journeys + screen-inventory (ui_bearing=true)"
+    answer: "57 screens documented across 3 user types. User journeys for Étudiant, Enseignant, Admin Utilisateur with entry points, flows, and touchpoints. Screen inventory includes route, purpose, data flow, key components."
+  - id: OPEN-Q3-1
+    status: OPEN
+    question: "Execute input validation LOOP for Milestone 1 implementation"
+    answer: null
+confidence: 95
+risks: []
+last_updated: ""
+retrospective: "Phase 2 completed for legacy project. Current Milestone defined as Consolidation & Reliability Enhancement (5 milestones). Roadmap created with 5 milestones derived from north star. Assumption register (10 items) and risk register (10 items) created with four-risk framework. User journeys and screen inventory completed for multi-user UI-bearing system. Cross-cutting coverage explicitly addressed: Security, Performance, Compliance, Testing. Phase 2 human gate approved. Ready for Phase 3 (Tech Stack & Architecture) and input validation implementation."
+resume_phase: 3

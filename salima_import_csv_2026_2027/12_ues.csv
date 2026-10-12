@@ -1,0 +1,7 @@
+﻿code,libelle,parcours_code,niveau_code,semestre_code,credits,coefficient,type
+UE-GEST-S1-01,Fondamentaux de gestion,PAR-GEST,L1,S1,6,3,OBLIGATOIRE
+UE-GEST-S1-02,Mathematiques,PAR-GEST,L1,S1,5,2,OBLIGATOIRE
+UE-INFO-S1-01,Fondamentaux informatiques,PAR-INFO,L1,S1,6,3,OBLIGATOIRE
+UE-ECO-S1-01,Fondamentaux economiques,PAR-ECO,L1,S1,6,3,OBLIGATOIRE
+UE-GEST-S3-01,Gestion financiere,PAR-GEST,L2,S3,6,3,OBLIGATOIRE
+UE-INFO-S3-01,Systemes d'information,PAR-INFO,L2,S3,6,3,OBLIGATOIRE
