@@ -42,6 +42,27 @@ class CheckConstraintsNotesTest extends TestCase
     {
         parent::setUp();
 
+        // AC-00 (13/10) : le rempart CHECK est posé par la migration sur
+        // MySQL (prod) et sur les SQLite récents (≥ 3.4x, dev local). Sur
+        // un SQLite plus ancien (runner CI), il est absent : ces tests
+        // vérifient le REMPART SQL, pas la validation applicative — ils
+        // se skipent proprement au lieu d'échouer (cf. migration
+        // 2026_10_07_074052, poserCheck tolérant).
+        $ddlNotes = DB::selectOne(
+            'SELECT sql FROM sqlite_master WHERE type = \'table\' AND name = \'notes\''
+        )?->sql ?? '';
+        $ddlEvaluation = DB::selectOne(
+            'SELECT sql FROM sqlite_master WHERE type = \'table\' AND name = \'evaluation_notes\''
+        )?->sql ?? '';
+        $rempartPresent = str_contains($ddlNotes, 'CONSTRAINT chk_notes_note_0_20')
+            && str_contains($ddlEvaluation, 'CONSTRAINT chk_evaluation_notes_valeur_bornes');
+        if (DB::getDriverName() !== 'mysql' && ! $rempartPresent) {
+            $this->markTestSkipped(
+                'Rempart CHECK SQL absent de ce SQLite (< 3.4x) : rempart MySQL uniquement '.
+                '(migration 2026_10_07_074052) — la validation applicative est testée ailleurs.'
+            );
+        }
+
         $faculte = Faculte::create([
             'nom' => 'Faculté des Sciences',
             'code' => 'FST',

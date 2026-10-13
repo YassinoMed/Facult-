@@ -1,6 +1,7 @@
 <?php
 
 use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -29,9 +30,27 @@ return new class extends Migration
         foreach (self::CHECKS as $table => $checks) {
             foreach ($checks as $nom => $expression) {
                 if (! $this->checkExiste($table, $nom)) {
-                    DB::statement("ALTER TABLE {$table} ADD CONSTRAINT {$nom} CHECK ({$expression})");
+                    $this->poserCheck($table, $nom, $expression);
                 }
             }
+        }
+    }
+
+    /**
+     * Le CHECK est le rempart MySQL (prod — preuves LOOP 37 : SHOW CREATE
+     * + INSERT/UPDATE refusés). SQLite ne connaît `ALTER TABLE … ADD
+     * CONSTRAINT` que dans ses versions récentes (≥ 3.4x, dev local) :
+     * sur un SQLite plus ancien (runner CI), l'instruction est ignorée
+     * silencieusement — la validation applicative (FormRequests +
+     * SaisieNoteService) reste la garantie contractuelle sur tout driver
+     * (les tests dédiés se skipent alors, cf. CheckConstraintsNotesTest).
+     */
+    private function poserCheck(string $table, string $nom, string $expression): void
+    {
+        try {
+            DB::statement("ALTER TABLE {$table} ADD CONSTRAINT {$nom} CHECK ({$expression})");
+        } catch (QueryException) {
+            // SQLite < 3.4x : non supporté, rempart MySQL uniquement.
         }
     }
 
