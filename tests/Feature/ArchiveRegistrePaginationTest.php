@@ -4,7 +4,6 @@ namespace Tests\Feature;
 
 use App\Models\AnneeUniversitaire;
 use App\Models\DossierAcademique;
-use App\Models\Etudiant;
 use App\Models\InscriptionAcademique;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\Concerns\ActAsScolarite;

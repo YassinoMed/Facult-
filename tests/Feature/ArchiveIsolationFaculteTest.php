@@ -2,6 +2,8 @@
 
 namespace Tests\Feature;
 
+use App\Models\DossierAcademique;
+use App\Models\Etudiant;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
@@ -29,7 +31,7 @@ class ArchiveIsolationFaculteTest extends TestCase
 
     private int $dossierBId;
 
-    private \App\Models\Etudiant $etudiantA;
+    private Etudiant $etudiantA;
 
     protected function setUp(): void
     {
@@ -42,10 +44,10 @@ class ArchiveIsolationFaculteTest extends TestCase
 
         $this->faculteBId = (int) $etudiantB->faculte_id;
 
-        $this->dossierAId = \App\Models\DossierAcademique::create([
+        $this->dossierAId = DossierAcademique::create([
             'etudiant_id' => $this->etudiantA->id, 'matricule' => 'MAT-FACA-1', 'date_archivage' => now()->toDateString(),
         ])->id;
-        $this->dossierBId = \App\Models\DossierAcademique::create([
+        $this->dossierBId = DossierAcademique::create([
             'etudiant_id' => $etudiantB->id, 'matricule' => 'MAT-FACB-SECRET', 'date_archivage' => now()->toDateString(),
         ])->id;
 

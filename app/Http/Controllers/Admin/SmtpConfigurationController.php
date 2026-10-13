@@ -27,7 +27,7 @@ class SmtpConfigurationController extends Controller
 
     public function create(): View
     {
-        return view('admin.smtp.edit', ['configuration' => new SmtpConfiguration()]);
+        return view('admin.smtp.edit', ['configuration' => new SmtpConfiguration]);
     }
 
     public function store(Request $request): RedirectResponse

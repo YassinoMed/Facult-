@@ -54,6 +54,9 @@ class ConnexionController extends Controller
             'etudiant_auth_id' => $etudiant->id,
             'etudiant_auth_prenom' => $etudiant->prenom,
             'etudiant_auth_nom' => $etudiant->nom,
+            // AUTH-01 (correctif 13/10) : version du mot de passe —
+            // re-vérifiée par EnsureStudent à chaque requête.
+            'etudiant_mdp_version' => (int) $etudiant->mot_de_passe_version,
         ]);
 
         return redirect()->intended(route('etudiant.profil.show'))

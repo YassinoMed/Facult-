@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use Illuminate\Database\Connection;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -68,7 +69,7 @@ class BackupRoundtripTest extends TestCase
         parent::tearDown();
     }
 
-    private function serveur(): \Illuminate\Database\Connection
+    private function serveur(): Connection
     {
         // Connexion d'administration dédiée (base système `mysql`) :
         // phpunit force DB_DATABASE=:memory:, inutilisable côté serveur.

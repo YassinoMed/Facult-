@@ -257,6 +257,11 @@ class EtudiantController extends Controller
 
         $etudiant->update(['password' => $nouveau]);
 
+        // AUTH-01 (correctif 13/10) : le reset invalide les sessions
+        // étudiant ouvertes (cookie volé compris) via la version de mot
+        // de passe, re-vérifiée par EnsureStudent à chaque requête.
+        $etudiant->increment('mot_de_passe_version');
+
         IntegrationLog::tracer(
             'etudiants',
             'internal',

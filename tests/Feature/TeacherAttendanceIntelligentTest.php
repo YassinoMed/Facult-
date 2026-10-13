@@ -257,25 +257,29 @@ class TeacherAttendanceIntelligentTest extends TestCase
             'status' => 'scheduled',
         ]);
 
+        // Dates RELATIVES (correctif 13/10) : la présence de B ne doit
+        // jamais porter la date du jour — la page affiche légitimement la
+        // date du jour (sélecteur/notice) et un littéral la ferait échouer
+        // au changement de jour. A = hier, B = demain : écart garanti.
         $presenceA = TeacherPresence::create([
             'schedule_slot_id' => $this->slotLundi->id,
             'teacher_id' => $this->enseignantA->id,
-            'date' => '2026-10-12',
+            'date' => today()->subDay()->toDateString(),
             'statut_calcule' => 'presence_confirmee',
         ]);
 
         $presenceB = TeacherPresence::create([
             'schedule_slot_id' => $slotB->id,
             'teacher_id' => $this->enseignantB->id,
-            'date' => '2026-10-13',
+            'date' => today()->addDay()->toDateString(),
             'statut_calcule' => 'absence_a_verifier',
         ]);
 
         // L'enseignant A ne voit pas la ligne de l'enseignant B dans sa liste
         $this->withSession(['enseignant_auth_id' => $this->enseignantA->id])
             ->get(route('enseignant.presences.index'))
-            ->assertSee('12/10/2026')
-            ->assertDontSee('13/10/2026');
+            ->assertSee(today()->subDay()->format('d/m/Y'))
+            ->assertDontSee(today()->addDay()->format('d/m/Y'));
 
         // L'enseignant A ne peut pas consulter le détail de la présence de l'enseignant B (404)
         $this->withSession(['enseignant_auth_id' => $this->enseignantA->id])

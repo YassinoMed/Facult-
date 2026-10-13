@@ -114,7 +114,15 @@ class AdministrateurController extends Controller
             abort_if($autresActifs === 0, 403, 'Impossible : au moins un super-admin actif doit subsister.');
         }
 
-        $administrateur->update(['actif' => ! $administrateur->actif]);
+        $nouvelEtat = ! $administrateur->actif;
+        $administrateur->update(['actif' => $nouvelEtat]);
+
+        // AUTH-01 (correctif 13/10) : une suspension révoque aussi les
+        // sessions déjà émises du compte — un cookie actif ne survit pas
+        // à la désactivation (double barrière avec EnsureBackOffice).
+        if (! $nouvelEtat) {
+            DB::table('sessions')->where('user_id', $administrateur->id)->delete();
+        }
 
         // §18 — audit applicatif : aucune donnée sensible
         Log::channel(config('logging.default'))->notice('admin.permission_changed', [
@@ -211,6 +219,11 @@ class AdministrateurController extends Controller
 
         $administrateur->update(['password' => $request->input('password')]);
 
+        // AUTH-01 (audit auth 12/10 — P2, correctif 13/10) : la
+        // réinitialisation révoque TOUTES les sessions existantes du
+        // compte cible — un cookie volé ne survit pas au reset.
+        DB::table('sessions')->where('user_id', $administrateur->id)->delete();
+
         // Porte de secours : la réinitialisation coupe aussi le double
         // facteur (secret perdu = compte récupérable, traçé sans secret).
         $mfaCoupe = (bool) $administrateur->mfa_active;
@@ -227,5 +240,25 @@ class AdministrateurController extends Controller
         ]);
 
         return back()->with('success', 'Mot de passe réinitialisé.');
+    }
+
+    /**
+     * Kill-switch (AUTH-01, 13/10) : révocation immédiate de TOUTES les
+     * sessions d'un compte compromis, sans toucher au mot de passe ni
+     * aux données. Super_admin uniquement (groupe de routes) ; le compte
+     * reste reconnectable — traçé sans secret, IP hachée.
+     */
+    public function purgerSessions(Request $request, User $administrateur): RedirectResponse
+    {
+        $supprimees = DB::table('sessions')->where('user_id', $administrateur->id)->delete();
+
+        Log::channel(config('logging.default'))->notice('admin.sessions_purgees', [
+            'acteur_id' => $request->user()->id,
+            'administre_id' => $administrateur->id,
+            'sessions' => $supprimees,
+            'adresse_ip' => hash('sha256', $request->ip()),
+        ]);
+
+        return back()->with('success', "Sessions de « {$administrateur->name} » révoquées ({$supprimees}).");
     }
 }

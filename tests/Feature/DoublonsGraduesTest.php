@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\Etudiant;
 use App\Models\Faculte;
+use App\Models\User;
 use App\Services\DataExchange\DataImportService;
 use App\Services\DataExchange\Definitions\EtudiantDefinition;
 use App\Services\DataExchange\DetecteurDoublonsService;
@@ -182,7 +183,7 @@ class DoublonsGraduesTest extends TestCase
         $this->assertSame([], $resultat->erreurs);
 
         // Confirmation : création, pas d'écrasement du premier étudiant.
-        $agent = \App\Models\User::creerCompteBackOffice([
+        $agent = User::creerCompteBackOffice([
             'name' => 'Agent Doublons',
             'email' => 'doublons@universite.test',
             'password' => 'Motdepasse@123',

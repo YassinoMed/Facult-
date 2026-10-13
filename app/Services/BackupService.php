@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\DatabaseBackup;
 use App\Models\IntegrationLog;
+use App\Services\Sauvegardes\BackupRetentionService;
 use Illuminate\Support\Str;
 use Symfony\Component\Process\Process;
 
@@ -303,7 +304,7 @@ class BackupService
 
             // 11. Déclenchement de la rétention après validation réussie
             try {
-                $retention = app(\App\Services\Sauvegardes\BackupRetentionService::class);
+                $retention = app(BackupRetentionService::class);
                 $retentionJours = (int) config('sauvegardes.retention_jours', 14);
                 $retentionMax = (int) config('sauvegardes.retention_max_backups', 30);
                 $retention->purger($dossier, $retentionMax, $retentionJours);

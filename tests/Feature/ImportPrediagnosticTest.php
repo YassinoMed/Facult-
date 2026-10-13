@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\ImportJob;
 use App\Models\ImportReport;
+use App\Models\User;
 use App\Services\DataExchange\DataImportService;
 use App\Services\DataExchange\ImportPrediagnosticService;
 use App\Services\Io\IoException;
@@ -131,7 +132,7 @@ class ImportPrediagnosticTest extends TestCase
         $this->assertNotNull($premier['empreinte']);
         $this->assertFalse($premier['deja_traite']);
 
-        $auteur = \App\Models\User::creerCompteBackOffice([
+        $auteur = User::creerCompteBackOffice([
             'name' => 'Agent Prédiagnostic',
             'email' => 'prediagnostic@universite.test',
             'password' => 'Motdepasse@123',

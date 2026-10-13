@@ -57,7 +57,8 @@ class MaquettesXssSecuriteTest extends TestCase
             // Le tag n'est jamais rendu en HTML brut : aucun navigateur
             // ne peut l'interpréter, donc aucun script ne s'exécute.
             ->assertDontSee('<img src=x onerror', false)
-            // Le contenu reste consultable, mais échappé.
-            ->assertSee('<img src=x onerror', false);
+            // Le contenu reste consultable, mais échappé (e() = ce que
+            // produit exactement l'échappement Blade de la vue corrigée).
+            ->assertSee(e('<img src=x onerror'), false);
     }
 }

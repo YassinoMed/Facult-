@@ -430,6 +430,13 @@ class ModuleServiceProvider extends ServiceProvider
 
             $planning = Schedule::where('groupe_id', $etudiant->groupe_id)
                 ->where('actif', true)
+                // SCHEDULE-09 (correctif 13/10) : le widget est soumis à la
+                // même garde de publication que le portail EDT et la section
+                // « cours du jour » — un planning brouillon/relecture/valide
+                // ne s'expose JAMAIS aux étudiants (contournement du workflow
+                // démasqué par PortailEtudiantPublicationTest le 13/10 à
+                // 02:50, invisible avant 08:00 par filtre « prochain cours »).
+                ->whereIn('statut', ['publie', 'verrouille'])
                 ->orderByDesc('id')
                 ->first();
 

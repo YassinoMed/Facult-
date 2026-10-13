@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Password;
 use Illuminate\Support\Str;
@@ -59,6 +60,12 @@ class MotDePasseController extends Controller
                     'password' => Hash::make($motDePasse),
                     'remember_token' => Str::random(60),
                 ])->save();
+
+                // AUTH-01 (audit auth 12/10 — P2, correctif 13/10) : la
+                // réinitialisation révoque TOUTES les sessions existantes
+                // du compte (driver `database`) — un cookie volé ne survit
+                // pas à la réaction défensive de la victime.
+                DB::table('sessions')->where('user_id', $utilisateur->id)->delete();
             }
         );
 

@@ -39,6 +39,7 @@ use App\Support\Modules\ModuleRegistry;
 use App\Support\Permissions;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Foundation\DevCommands;
+use Illuminate\Foundation\Http\Middleware\TrimStrings;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\RateLimiter;
@@ -141,7 +142,7 @@ class AppServiceProvider extends ServiceProvider
     public function boot(): void
     {
         // ── Règle CIN (§3) : ne pas trimmer silencieusement la CIN afin que tout espace la rende invalide ──
-        \Illuminate\Foundation\Http\Middleware\TrimStrings::except(['cin']);
+        TrimStrings::except(['cin']);
 
         // ── Politique de mots de passe (audit §P3-21) : 10 caractères
         // minimum, lettres + chiffres, et vérification de compromission

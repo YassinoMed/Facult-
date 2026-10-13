@@ -516,6 +516,9 @@ Route::prefix('admin')->name('admin.')->group(function () {
                 ->middleware('throttle:5,1')->name('reinitialiser');
             Route::patch('{administrateur}/statut', [AdministrateurController::class, 'toggleStatut'])
                 ->name('statut');
+            // Kill-switch AUTH-01 (13/10) : révocation des sessions d'un compte.
+            Route::post('{administrateur}/sessions/purger', [AdministrateurController::class, 'purgerSessions'])
+                ->middleware('throttle:5,1')->name('sessions.purger');
         });
 
         /*
