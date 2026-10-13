@@ -32,7 +32,8 @@
                 <li>Ouvrez votre application d'authentification.</li>
                 <li>Saisissez ce secret (espaces ignorés) :</li>
             </ol>
-            <p class="rounded-xl bg-slate-900 px-4 py-3 text-center font-mono text-sm font-bold tracking-widest text-white select-all">{{ $secret }}</p>
+            <p class="rounded-xl bg-slate-900 px-4 py-3 text-center font-mono text-sm font-bold tracking-widest text-white select-all">{{ trim(chunk_split($secret, 4, ' ')) }}</p>
+            <p class="text-[11px] text-slate-400">Recopiez les lettres dans l'ordre (espaces ignorés). En cas d'échecs répétés : vérifiez l'heure automatique de votre téléphone, puis supprimez l'entrée et recommencez la saisie.</p>
             <form method="POST" action="{{ route('admin.mfa.confirmer') }}" class="space-y-3">
                 @csrf
                 <div>
@@ -42,6 +43,10 @@
                     @error('code')<p class="mt-1 text-xs text-rose-600" role="alert">{{ $message }}</p>@enderror
                 </div>
                 <x-btn type="submit">Activer</x-btn>
+            </form>
+            <form method="POST" action="{{ route('admin.mfa.nouveau-secret') }}" class="mt-2">
+                @csrf
+                <button type="submit" class="text-xs font-bold text-slate-500 underline underline-offset-2">Recommencer avec un nouveau secret</button>
             </form>
         </div>
     @endif

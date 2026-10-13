@@ -47,6 +47,7 @@ class MfaController extends Controller
             return redirect()->route('admin.mfa.configurer');
         }
 
+        $request->merge(['code' => preg_replace('/\s+/', '', (string) $request->input('code'))]);
         $code = (string) $request->validate(['code' => ['required', 'string', 'size:6']])['code'];
 
         if (! $totp->verifier($secret, $code)) {
@@ -64,6 +65,17 @@ class MfaController extends Controller
         ]);
 
         return redirect()->route('admin.mfa.configurer')->with('success', 'Double facteur activé.');
+    }
+
+    /**
+     * Nouveau secret (repartir proprement après une erreur de recopie :
+     * l'ancienne entrée de l'application doit être supprimée côté téléphone).
+     */
+    public function nouveauSecret(Request $request, MfaTotpService $totp): RedirectResponse
+    {
+        $request->session()->put('mfa_secret_attente', $totp->genererSecret());
+
+        return redirect()->route('admin.mfa.configurer')->with('success', 'Nouveau secret généré. Supprimez l’ancienne entrée puis recommencez.');
     }
 
     public function desactiver(Request $request): RedirectResponse

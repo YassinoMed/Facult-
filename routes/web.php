@@ -391,7 +391,9 @@ Route::prefix('admin')->name('admin.')->group(function () {
     Route::post('verrouillage/deconnecter', [VerrouillageController::class, 'deconnecter'])
         ->name('verrouillage.deconnecter');
     Route::post('double-facteur/confirmer', [MfaController::class, 'confirmer'])
-    ->middleware(['auth', 'throttle:10,1'])->name('mfa.confirmer');
+        ->middleware(['auth', 'throttle:10,1'])->name('mfa.confirmer');
+    Route::post('double-facteur/nouveau-secret', [MfaController::class, 'nouveauSecret'])
+        ->middleware(['auth', 'throttle:10,1'])->name('mfa.nouveau-secret');
     Route::post('double-facteur/desactiver', [MfaController::class, 'desactiver'])
         ->middleware(['auth', 'throttle:10,1'])->name('mfa.desactiver');
     /*

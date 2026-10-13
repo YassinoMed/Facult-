@@ -74,7 +74,7 @@ class MfaLoopJTest extends TestCase
         $this->assertNull($compte->fresh()->mfa_secret);
 
         $code = app(MfaTotpService::class)->calculer($secret, (int) floor(time() / 30));
-        $this->post(route('admin.mfa.confirmer'), ['code' => $code])->assertRedirect();
+        $this->post(route('admin.mfa.confirmer'), ['code' => substr($code, 0, 3).' '.substr($code, 3)])->assertRedirect();
         $this->assertTrue((bool) $compte->fresh()->mfa_active);
 
         // Désactivation : mot de passe erroné refusé, correct accepté.
@@ -98,5 +98,17 @@ class MfaLoopJTest extends TestCase
     public function test_defi_sans_session_redirige(): void
     {
         $this->get(route('admin.connexion.defi'))->assertRedirect(route('admin.connexion.show'));
+    }
+
+    public function test_nouveau_secret_regenere(): void
+    {
+        $compte = $this->compte();
+        $this->actingAs($compte);
+        $this->get(route('admin.mfa.configurer'))->assertOk();
+        $ancien = session('mfa_secret_attente');
+
+        $this->post(route('admin.mfa.nouveau-secret'))->assertRedirect();
+        $this->assertNotSame($ancien, session('mfa_secret_attente'));
+        $this->assertNull($compte->fresh()->mfa_secret);
     }
 }

@@ -112,6 +112,7 @@ class AuthController extends Controller
             return redirect()->route('admin.connexion.show');
         }
 
+        $request->merge(['code' => preg_replace('/\s+/', '', (string) $request->input('code'))]);
         $code = (string) $request->validate(['code' => ['required', 'string', 'size:6']])['code'];
 
         if (! $totp->verifier($utilisateur->mfa_secret, $code)) {
