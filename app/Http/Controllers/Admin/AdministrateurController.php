@@ -7,6 +7,7 @@ use App\Http\Requests\StoreAdministrateurRequest;
 use App\Http\Requests\UpdateAdministrateurRequest;
 use App\Models\Faculte;
 use App\Models\User;
+use App\Services\VerrouillageService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -120,8 +121,10 @@ class AdministrateurController extends Controller
         // AUTH-01 (correctif 13/10) : une suspension révoque aussi les
         // sessions déjà émises du compte — un cookie actif ne survit pas
         // à la désactivation (double barrière avec EnsureBackOffice).
+        // LOOP N : suspension = purge du PIN secondaire (plus de reprise).
         if (! $nouvelEtat) {
             DB::table('sessions')->where('user_id', $administrateur->id)->delete();
+            app(VerrouillageService::class)->purger($administrateur, 'suspension');
         }
 
         // §18 — audit applicatif : aucune donnée sensible
@@ -226,11 +229,14 @@ class AdministrateurController extends Controller
 
         // Porte de secours : la réinitialisation coupe aussi le double
         // facteur (secret perdu = compte récupérable, traçé sans secret).
+        // LOOP N : elle coupe aussi le code PIN secondaire.
         $mfaCoupe = (bool) $administrateur->mfa_active;
 
         if ($mfaCoupe) {
             $administrateur->forceFill(['mfa_secret' => null, 'mfa_active' => false])->save();
         }
+
+        app(VerrouillageService::class)->purger($administrateur, 'reinitialisation_mot_de_passe');
 
         Log::channel(config('logging.default'))->notice('admin.password_reset', [
             'acteur_id' => $request->user()->id,

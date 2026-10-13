@@ -77,6 +77,7 @@ use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\RecherchePortailController;
 use App\Http\Controllers\SuiviPublicController;
 use App\Http\Controllers\VerifyDocumentController;
+use App\Http\Controllers\VerrouillageController;
 use App\Services\DataExchange\DefinitionRegistry;
 use Illuminate\Support\Facades\Route;
 
@@ -376,8 +377,21 @@ Route::prefix('admin')->name('admin.')->group(function () {
     // Double facteur TOTP du compte courant (LOOP J) : auth requise.
     Route::get('double-facteur', [MfaController::class, 'configurer'])
         ->middleware('auth')->name('mfa.configurer');
+
+    // Verrouillage secondaire par PIN (LOOP N) : auth requise, exempté
+    // du verrou par son nom (`admin.verrouillage.*`, SecondaireVerrou).
+    Route::get('verrouillage/code', [VerrouillageController::class, 'code'])
+        ->middleware('auth')->name('verrouillage.code');
+    Route::post('verrouillage/code', [VerrouillageController::class, 'definir'])
+        ->middleware(['auth', 'throttle:10,1'])->name('verrouillage.definir');
+    Route::post('verrouillage/verifier', [VerrouillageController::class, 'verifier'])
+        ->middleware(['auth', 'throttle:5,1'])->name('verrouillage.verifier');
+    Route::post('verrouillage/verrouiller', [VerrouillageController::class, 'verrouiller'])
+        ->middleware('auth')->name('verrouillage.verrouiller');
+    Route::post('verrouillage/deconnecter', [VerrouillageController::class, 'deconnecter'])
+        ->name('verrouillage.deconnecter');
     Route::post('double-facteur/confirmer', [MfaController::class, 'confirmer'])
-        ->middleware(['auth', 'throttle:10,1'])->name('mfa.confirmer');
+    ->middleware(['auth', 'throttle:10,1'])->name('mfa.confirmer');
     Route::post('double-facteur/desactiver', [MfaController::class, 'desactiver'])
         ->middleware(['auth', 'throttle:10,1'])->name('mfa.desactiver');
     /*
@@ -386,7 +400,7 @@ Route::prefix('admin')->name('admin.')->group(function () {
     | middleware `admin` = EnsureBackOffice). L'isolation par faculté
     | est ensuite appliquée par les policies + requêtes scopées.
     */
-    Route::middleware(['auth', 'admin'])->group(function () {
+    Route::middleware(['auth', 'admin', 'secondaire.verrou'])->group(function () {
 
         // Recherche globale (§7) : sections scopées + permission-gated.
         Route::get('recherche', [RechercheController::class, 'global'])->name('recherche');

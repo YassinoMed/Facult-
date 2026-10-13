@@ -67,6 +67,36 @@ final class SettingDefinition
                 'regles' => ['required', 'integer', 'min:1'],
                 'sensibilite' => 'interne', 'proprietaire' => 'Exploitation', 'impact' => 'normal',
             ],
+            'verrouillage.actif' => [
+                'type' => 'booleen', 'portee' => 'global', 'defaut' => '1',
+                'regles' => ['required', 'in:0,1,vrai,faux,true,false,oui,non'],
+                'sensibilite' => 'interne', 'proprietaire' => 'Sécurité', 'impact' => 'fort',
+            ],
+            'verrouillage.delai_minutes' => [
+                'type' => 'entier', 'portee' => 'global', 'defaut' => 15,
+                'regles' => ['required', 'integer', 'min:5', 'max:480'],
+                'sensibilite' => 'interne', 'proprietaire' => 'Sécurité', 'impact' => 'normal',
+            ],
+            'verrouillage.preavis_secondes' => [
+                'type' => 'entier', 'portee' => 'global', 'defaut' => 60,
+                'regles' => ['required', 'integer', 'min:0', 'max:300'],
+                'sensibilite' => 'interne', 'proprietaire' => 'Sécurité', 'impact' => 'normal',
+            ],
+            'verrouillage.pin_longueur' => [
+                'type' => 'entier', 'portee' => 'global', 'defaut' => 6,
+                'regles' => ['required', 'integer', 'min:6', 'max:8'],
+                'sensibilite' => 'interne', 'proprietaire' => 'Sécurité', 'impact' => 'normal',
+            ],
+            'verrouillage.tentatives_max' => [
+                'type' => 'entier', 'portee' => 'global', 'defaut' => 5,
+                'regles' => ['required', 'integer', 'min:3', 'max:10'],
+                'sensibilite' => 'interne', 'proprietaire' => 'Sécurité', 'impact' => 'normal',
+            ],
+            'verrouillage.temporisation_secondes' => [
+                'type' => 'entier', 'portee' => 'global', 'defaut' => 30,
+                'regles' => ['required', 'integer', 'min:10', 'max:300'],
+                'sensibilite' => 'interne', 'proprietaire' => 'Sécurité', 'impact' => 'normal',
+            ],
         ];
     }
 

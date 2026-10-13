@@ -19,9 +19,36 @@ class ParametreService
 {
     public function get(string $cle, mixed $defaut = null): mixed
     {
-        $parametre = Cache::rememberForever("parametre.{$cle}", fn () => Parametre::where('cle', $cle)->first());
+        // Jamais de modèle sérialisé en cache (un `Parametre` mis en cache
+        // peut devenir illisible à `unserialize()` et casser la page en
+        // 500) : on ne met en cache qu'un tableau de valeurs pures, avec
+        // repli base de données + purge en cas d'entrée historique corrompue.
+        try {
+            $cached = Cache::rememberForever("parametre.{$cle}", function () use ($cle) {
+                $parametre = Parametre::where('cle', $cle)->first();
 
-        return $parametre === null ? $defaut : $parametre->valeurTypee();
+                return $parametre === null
+                    ? ['trouve' => false, 'valeur' => null]
+                    : ['trouve' => true, 'valeur' => $parametre->valeurTypee()];
+            });
+        } catch (Throwable) {
+            Cache::forget("parametre.{$cle}");
+            $parametre = Parametre::where('cle', $cle)->first();
+
+            return $parametre === null ? $defaut : $parametre->valeurTypee();
+        }
+
+        if (! is_array($cached) || ! ($cached['trouve'] ?? false)) {
+            if (is_object($cached)) {
+                Cache::forget("parametre.{$cle}");
+            }
+
+            $parametre = Parametre::where('cle', $cle)->first();
+
+            return $parametre === null ? $defaut : $parametre->valeurTypee();
+        }
+
+        return $cached['valeur'];
     }
 
     /**

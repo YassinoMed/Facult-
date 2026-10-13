@@ -7,6 +7,7 @@ use App\Http\Requests\AdminLoginRequest;
 use App\Models\User;
 use App\Modules\Schedule\Models\Teacher;
 use App\Services\MfaTotpService;
+use App\Services\VerrouillageService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -86,6 +87,7 @@ class AuthController extends Controller
 
         // Régénération de session : protection contre la fixation de session
         $request->session()->regenerate();
+        app(VerrouillageService::class)->initialiserSession($request, $utilisateur);
 
         return redirect()->intended(route('admin.dashboard'))
             ->with('success', "Bienvenue {$utilisateur->name} — Espace Scolarité.");
@@ -119,6 +121,7 @@ class AuthController extends Controller
         $request->session()->forget('mfa_en_attente');
         Auth::login($utilisateur, false);
         $request->session()->regenerate();
+        app(VerrouillageService::class)->initialiserSession($request, $utilisateur);
 
         return redirect()->intended(route('admin.dashboard'))
             ->with('success', "Bienvenue {$utilisateur->name} — Espace Scolarité.");

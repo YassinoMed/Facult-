@@ -10,6 +10,7 @@ use App\Http\Middleware\EnsureSuperAdmin;
 use App\Http\Middleware\EnsureTeacher;
 use App\Http\Middleware\IdempotencyKey;
 use App\Http\Middleware\RequestId;
+use App\Http\Middleware\SecondaireVerrou;
 use App\Http\Middleware\SecurityHeadersMiddleware;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Auth\AuthenticationException;
@@ -45,6 +46,9 @@ return Application::configure(basePath: dirname(__DIR__))
             'idempotency' => IdempotencyKey::class,
             // Modules (§11) : `module:nom` → 404 si le module est désactivé.
             'module' => EnsureModuleEnabled::class,
+            // Verrouillage secondaire après inactivité (LOOP N) : le
+            // serveur impose l'état, l'overlay client n'autorise rien.
+            'secondaire.verrou' => SecondaireVerrou::class,
         ]);
         // Journal des échanges API : chaque requête /api/* est tracée (§55)
         $middleware->api(prepend: [

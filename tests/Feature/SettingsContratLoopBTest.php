@@ -76,12 +76,26 @@ class SettingsContratLoopBTest extends TestCase
         Parametre::create(['cle' => 'test.cache', 'valeur' => 'a', 'type' => 'texte', 'categorie' => 'interface']);
 
         $this->assertSame('a', app(ParametreService::class)->get('test.cache'));
-        $this->assertSame('a', Cache::get('parametre.test.cache')->valeur);
+        $enCache = Cache::get('parametre.test.cache');
+        $this->assertIsArray($enCache);
+        $this->assertSame('a', $enCache['valeur']);
 
         $cache = Parametre::where('cle', 'test.cache')->first();
         $this->patch(route('admin.parametres.update', $cache), ['valeur' => 'b', 'attendu' => $cache->updated_at?->toIso8601String()])
             ->assertRedirect();
         $this->assertSame('b', app(ParametreService::class)->get('test.cache'));
+    }
+
+    public function test_entree_cache_corrompue_auto_guerie(): void
+    {
+        $this->superAdmin();
+        Parametre::create(['cle' => 'test.poison', 'valeur' => 'saine', 'type' => 'texte', 'categorie' => 'interface']);
+
+        // Entrée historique au mauvais format (ex. modèle sérialisé
+        // illisible) : lecture purgée puis servie depuis la base, sans 500.
+        Cache::forever('parametre.test.poison', new \stdClass);
+        $this->assertSame('saine', app(ParametreService::class)->get('test.poison'));
+        $this->assertSame('saine', app(ParametreService::class)->get('test.poison'));
     }
 
     public function test_journal_sans_secret_et_valeur_par_defaut(): void

@@ -351,5 +351,13 @@
     </script>
 
     @stack('scripts')
+
+    {{-- Surveillance d'inactivité (LOOP N) : overlay seul si éligible
+         (compte avec PIN) et écran autre que le verrouillage. --}}
+    @if(session('secondaire_eligible') && empty($sansSurveillance))
+        <x-verrouillage-surveillance
+            :delai="app(App\Services\VerrouillageService::class)->delaiSecondes()"
+            :preavis="app(App\Services\VerrouillageService::class)->preavisSecondes()" />
+    @endif
 </body>
 </html>
