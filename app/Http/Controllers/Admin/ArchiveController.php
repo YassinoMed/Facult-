@@ -175,11 +175,17 @@ class ArchiveController extends Controller
         // Journal d'audit : la consultation du dossier est tracée
         $this->audit->consultation($dossier->etudiant, $dossier->id);
 
-        $journal = HistoriqueAcademique::where('etudiant_id', $dossier->etudiant_id)
-            ->with('utilisateur')
-            ->latest('id')
-            ->limit(30)
-            ->get();
+        // Journal d'audit : restreint aux agents habilités à MODIFIER le
+        // dossier (l'historique expose acteur, IP et anciennes/nouvelles
+        // valeurs — lecture seule ne suffit pas, LOOP 3). Jamais chargé
+        // sinon : ni requête, ni divulgation.
+        $journal = Gate::allows('update', $dossier)
+            ? HistoriqueAcademique::where('etudiant_id', $dossier->etudiant_id)
+                ->with('utilisateur')
+                ->latest('id')
+                ->limit(30)
+                ->get()
+            : collect();
 
         $ficheService = app(FicheEtudiantService::class);
         $completude = $ficheService->completude($dossier->etudiant);

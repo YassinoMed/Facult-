@@ -209,6 +209,14 @@ $classeInactif = 'text-slate-600 hover:bg-slate-100 hover:text-slate-900';
         Listes et exports
     </a>
     @endcan
+    @can('settings.view')
+        <a href="{{ route('admin.parametres.index') }}"
+           class="{{ $classeLien }} {{ request()->routeIs('admin.parametres.*') ? $classeActif.' admin-nav-lien-actif' : $classeInactif }}"
+           @if(request()->routeIs('admin.parametres.*')) aria-current="page" @endif>
+            <svg class="h-5 w-5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke-width="1.8" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.325.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 0 1 1.37.49l1.296 2.247a1.125 1.125 0 0 1-.216 1.411l-1.001 1.001a1.125 1.125 0 0 0-.29 1.176c.04.077.078.155.113.234l.212 1.281c.09.542-.56.94-1.11.94h-2.593c-.55 0-1.02-.398-1.11-.94l-.213-1.281c-.063-.374-.313-.686-.645-.87a2.107 2.107 0 0 0-.22-.127c-.325-.196-.72-.257-1.075-.124l-1.217.456a1.125 1.125 0 0 1-1.37-.49l-1.296-2.247a1.125 1.125 0 0 1 .216-1.411l1.001-1.001a1.125 1.125 0 0 0 .29-1.176c-.04-.077-.078-.155-.113-.234l-.212-1.281Z" /><path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" /></svg>
+            Paramètres
+        </a>
+    @endcan
     @can('qualite.view')
     <a href="{{ route('admin.qualite.index') }}"
        class="{{ $classeLien }} {{ request()->routeIs('admin.qualite.*') ? $classeActif.' admin-nav-lien-actif' : $classeInactif }}">
@@ -248,6 +256,16 @@ $classeInactif = 'text-slate-600 hover:bg-slate-100 hover:text-slate-900';
                class="{{ $classeLien }} {{ request()->routeIs('admin.personnel.*') ? $classeActif : $classeInactif }}">
                 <svg class="h-5 w-5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke-width="1.8" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M18 18.72a9.094 9.094 0 0 0 3.741-.479 3 3 0 0 0-4.682-2.72m.94 3.198.001.031c0 .225-.012.447-.037.666A11.944 11.944 0 0 1 12 21c-2.17 0-4.207-.576-5.963-1.584A6.062 6.062 0 0 1 6 18.719m12 0a5.971 5.971 0 0 0-.941-3.197m0 0A5.995 5.995 0 0 0 12 12.75a5.995 5.995 0 0 0-5.058 2.772m0 0a3 3 0 0 0-4.681 2.72 8.986 8.986 0 0 0 3.74.477m.94-3.197a5.971 5.971 0 0 0-.94 3.197M15 6.75a3 3 0 1 1-6 0 3 3 0 0 1 6 0Zm6 3a2.25 2.25 0 1 1-4.5 0 2.25 2.25 0 0 1 4.5 0Zm-13.5 0a2.25 2.25 0 1 1-4.5 0 2.25 2.25 0 0 1 4.5 0Z" /></svg>
                 Personnel
+            </a>
+            <a href="{{ route('admin.roles.index') }}"
+               class="{{ $classeLien }} {{ request()->routeIs('admin.roles.*') ? $classeActif : $classeInactif }}">
+                <svg class="h-5 w-5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke-width="1.8" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75 11.25 15 15 9.75m-3-7.036A48.424 48.424 0 0 1 12 2.25c2.623 0 5.146.184 7.5.519 2.355.335 4.5.87 4.5 1.397v11.718c0 .849-.7 1.54-1.562 1.54H4.562A1.562 1.562 0 0 1 3 15.876V4.158c0-.527 2.145-1.062 4.5-1.397A48.424 48.424 0 0 1 12 2.25Zm0 0V21m7.5-5.25v-9" /></svg>
+                Rôles
+            </a>
+            <a href="{{ route('admin.smtp.index') }}"
+               class="{{ $classeLien }} {{ request()->routeIs('admin.smtp.*') ? $classeActif : $classeInactif }}">
+                <svg class="h-5 w-5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke-width="1.8" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M21.75 6.75v10.5a2.25 2.25 0 0 1-2.25 2.25h-15a2.25 2.25 0 0 1-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0 0 19.5 4.5h-15a2.25 2.25 0 0 0-2.25 2.25m19.5 0v.243a2.25 2.25 0 0 1-1.07 1.916l-7.5 4.615a2.25 2.25 0 0 1-2.36 0L3.32 8.91a2.25 2.25 0 0 1-1.07-1.916V6.75" /></svg>
+                SMTP
             </a>
         @endif
     @endif

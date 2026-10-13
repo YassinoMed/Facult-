@@ -32,6 +32,7 @@ use App\Http\Controllers\Admin\ListesController;
 use App\Http\Controllers\Admin\MaintenanceController;
 use App\Http\Controllers\Admin\MaquetteController;
 use App\Http\Controllers\Admin\MensReferenceController;
+use App\Http\Controllers\Admin\MfaController;
 use App\Http\Controllers\Admin\MotDePasseController;
 use App\Http\Controllers\Admin\NoteController;
 use App\Http\Controllers\Admin\NotificationTemplateController;
@@ -44,10 +45,12 @@ use App\Http\Controllers\Admin\PreferenceController;
 use App\Http\Controllers\Admin\QualiteController;
 use App\Http\Controllers\Admin\RechercheController;
 use App\Http\Controllers\Admin\ReinscriptionController;
+use App\Http\Controllers\Admin\RoleController;
 use App\Http\Controllers\Admin\SalleController;
 use App\Http\Controllers\Admin\SauvegardesController;
 use App\Http\Controllers\Admin\SessionsController;
 use App\Http\Controllers\Admin\SituationController;
+use App\Http\Controllers\Admin\SmtpConfigurationController;
 use App\Http\Controllers\Admin\StatistiquesController;
 use App\Http\Controllers\Admin\SystemeController;
 use App\Http\Controllers\Admin\TableauDeBordController;
@@ -345,6 +348,11 @@ Route::prefix('admin')->name('admin.')->group(function () {
         Route::post('connexion', [AuthController::class, 'login'])
             ->middleware('throttle:5,1')
             ->name('connexion.login');
+        // Double facteur TOTP (LOOP J) : défi post-mot de passe, throttlé.
+        Route::get('connexion/defi', [AuthController::class, 'defi'])->name('connexion.defi');
+        Route::post('connexion/defi', [AuthController::class, 'verifierDefi'])
+            ->middleware('throttle:5,1')
+            ->name('connexion.defi.verifier');
         // Mot de passe oublié (broker `users`, 60 min, anti-énumération).
         Route::get('mot-de-passe/oublie', [MotDePasseController::class, 'oublie'])->name('mot-de-passe.oublie');
         Route::post('mot-de-passe/lien', [MotDePasseController::class, 'envoyerLien'])
@@ -364,6 +372,14 @@ Route::prefix('admin')->name('admin.')->group(function () {
         ->middleware('auth')->name('sessions.index');
     Route::delete('sessions/{session}', [SessionsController::class, 'destroy'])
         ->middleware(['auth', 'throttle:10,1'])->name('sessions.destroy');
+
+    // Double facteur TOTP du compte courant (LOOP J) : auth requise.
+    Route::get('double-facteur', [MfaController::class, 'configurer'])
+        ->middleware('auth')->name('mfa.configurer');
+    Route::post('double-facteur/confirmer', [MfaController::class, 'confirmer'])
+        ->middleware(['auth', 'throttle:10,1'])->name('mfa.confirmer');
+    Route::post('double-facteur/desactiver', [MfaController::class, 'desactiver'])
+        ->middleware(['auth', 'throttle:10,1'])->name('mfa.desactiver');
     /*
     | Zone authentifiée — profil BACK-OFFICE (§7/§10) : tout compte doit
     | avoir un rôle RBAC valide ET un compte actif (lus en base via le
@@ -500,6 +516,30 @@ Route::prefix('admin')->name('admin.')->group(function () {
                 ->middleware('throttle:5,1')->name('reinitialiser');
             Route::patch('{administrateur}/statut', [AdministrateurController::class, 'toggleStatut'])
                 ->name('statut');
+        });
+
+        /*
+        | Matrice des rôles (lecture seule, super_admin) : l'attribution
+        | passe par les comptes, la matrice vit en code versionné.
+        */
+        Route::get('roles', [RoleController::class, 'index'])
+            ->middleware('can:roles.view')->name('roles.index');
+
+        /*
+        | Configurations SMTP nommées (LOOP J) : super_admin seul, secret
+        | chiffré jamais réaffiché, test de connexion réel sans envoi.
+        */
+        Route::prefix('smtp')->name('smtp.')->middleware('can:mail.settings.manage')->group(function () {
+            Route::get('/', [SmtpConfigurationController::class, 'index'])->name('index');
+            Route::get('creer', [SmtpConfigurationController::class, 'create'])->name('create');
+            Route::post('/', [SmtpConfigurationController::class, 'store'])
+                ->middleware('throttle:10,1')->name('store');
+            Route::get('{smtp}/modifier', [SmtpConfigurationController::class, 'edit'])->name('edit');
+            Route::match(['put', 'patch'], '{smtp}', [SmtpConfigurationController::class, 'update'])->name('update');
+            Route::delete('{smtp}', [SmtpConfigurationController::class, 'destroy'])
+                ->middleware('throttle:10,1')->name('destroy');
+            Route::post('{smtp}/tester', [SmtpConfigurationController::class, 'tester'])
+                ->middleware('can:mail.test.send', 'throttle:5,1')->name('tester');
         });
 
         /*
@@ -922,7 +962,7 @@ Route::prefix('admin')->name('admin.')->group(function () {
         Route::patch('parametres/{parametre}', [ParametreController::class, 'update'])
             ->middleware(['can:settings.manage', 'throttle:20,1'])->name('parametres.update');
         Route::post('parametres/{parametre}/restaurer', [ParametreController::class, 'restaurer'])
-            ->middleware(['can:settings.manage', 'throttle:10,1'])->name('parametres.restaurer');
+            ->middleware(['can:settings.restore', 'throttle:10,1'])->name('parametres.restaurer');
 
         Route::middleware('super_admin')->group(function () {
             Route::get('maintenance', [MaintenanceController::class, 'index'])->name('maintenance.index');

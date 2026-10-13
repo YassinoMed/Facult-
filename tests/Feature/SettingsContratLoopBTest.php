@@ -55,7 +55,7 @@ class SettingsContratLoopBTest extends TestCase
         // Super-admin : lecture + écriture.
         $this->superAdmin();
         $this->get(route('admin.parametres.index'))->assertOk();
-        $this->patch(route('admin.parametres.update', $cible), ['valeur' => '2'])->assertRedirect();
+        $this->patch(route('admin.parametres.update', $cible), ['valeur' => '2', 'attendu' => $cible->updated_at?->toIso8601String()])->assertRedirect();
         $this->assertSame(2, app(ParametreService::class)->get('test.matrice'));
     }
 
@@ -65,7 +65,7 @@ class SettingsContratLoopBTest extends TestCase
         Parametre::create(['cle' => 'test.typé', 'valeur' => '1', 'type' => 'entier', 'categorie' => 'interface']);
         $cible = Parametre::where('cle', 'test.typé')->first();
 
-        $this->patch(route('admin.parametres.update', $cible), ['valeur' => 'pas-un-entier'])
+        $this->patch(route('admin.parametres.update', $cible), ['valeur' => 'pas-un-entier', 'attendu' => $cible->updated_at?->toIso8601String()])
             ->assertSessionHasErrors('valeur', null, 'p'.$cible->id);
         $this->patch('/admin/parametres/999999', ['valeur' => 'x'])->assertNotFound();
     }
@@ -78,7 +78,8 @@ class SettingsContratLoopBTest extends TestCase
         $this->assertSame('a', app(ParametreService::class)->get('test.cache'));
         $this->assertSame('a', Cache::get('parametre.test.cache')->valeur);
 
-        $this->patch(route('admin.parametres.update', Parametre::where('cle', 'test.cache')->first()), ['valeur' => 'b'])
+        $cache = Parametre::where('cle', 'test.cache')->first();
+        $this->patch(route('admin.parametres.update', $cache), ['valeur' => 'b', 'attendu' => $cache->updated_at?->toIso8601String()])
             ->assertRedirect();
         $this->assertSame('b', app(ParametreService::class)->get('test.cache'));
     }
@@ -97,7 +98,8 @@ class SettingsContratLoopBTest extends TestCase
         // Absent = défaut, jamais d'exception.
         $this->assertSame('defaut', app(ParametreService::class)->get('test.absente', 'defaut'));
 
-        $this->patch(route('admin.parametres.update', Parametre::where('cle', 'test.journal')->first()), ['valeur' => '2'])
+        $journal = Parametre::where('cle', 'test.journal')->first();
+        $this->patch(route('admin.parametres.update', $journal), ['valeur' => '2', 'attendu' => $journal->updated_at?->toIso8601String()])
             ->assertRedirect();
         $this->assertCount(1, $captures);
         $this->assertSame('test.journal', $captures[0]['cle'] ?? null);

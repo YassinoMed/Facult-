@@ -13,7 +13,7 @@ namespace App\Services;
 final class SettingDefinition
 {
     /**
-     * @return array<string, array{type: string, portee: string, defaut: mixed, regles: array<int, string>, sensibilite: string, proprietaire: string}>
+     * @return array<string, array{type: string, portee: string, defaut: mixed, regles: array<int, string>, sensibilite: string, proprietaire: string, impact: string}>
      */
     public static function catalogue(): array
     {
@@ -21,36 +21,51 @@ final class SettingDefinition
             'etablissement.nom' => [
                 'type' => 'texte', 'portee' => 'global', 'defaut' => 'Université',
                 'regles' => ['required', 'string', 'max:2000'],
-                'sensibilite' => 'publique', 'proprietaire' => 'Direction',
+                'sensibilite' => 'publique', 'proprietaire' => 'Direction', 'impact' => 'normal',
             ],
             'etablissement.fuseau' => [
                 'type' => 'texte', 'portee' => 'global', 'defaut' => 'Africa/Casablanca',
                 // Un fuseau invalide casserait tout calcul daté le jour où
                 // la clé est consommée : garde préventive à coût nul.
                 'regles' => ['required', 'timezone:all'],
-                'sensibilite' => 'interne', 'proprietaire' => 'Direction',
+                'sensibilite' => 'interne', 'proprietaire' => 'Direction', 'impact' => 'normal',
             ],
             'academique.seuil_validation' => [
                 'type' => 'entier', 'portee' => 'global', 'defaut' => 10,
                 // Échelle /20 partagée avec RegleEvaluation (min:0, max:20) ;
                 // valeur indicative, les règles versionnées font foi.
                 'regles' => ['required', 'integer', 'min:0', 'max:20'],
-                'sensibilite' => 'interne', 'proprietaire' => 'Scolarité',
+                'sensibilite' => 'interne', 'proprietaire' => 'Scolarité', 'impact' => 'normal',
             ],
             'assiduite.seuil_alerte' => [
                 'type' => 'entier', 'portee' => 'global', 'defaut' => 5,
                 'regles' => ['required', 'integer', 'min:0'],
-                'sensibilite' => 'interne', 'proprietaire' => 'Scolarité',
+                'sensibilite' => 'interne', 'proprietaire' => 'Scolarité', 'impact' => 'normal',
             ],
             'notifications.purge_jours' => [
                 'type' => 'entier', 'portee' => 'global', 'defaut' => 180,
                 'regles' => ['required', 'integer', 'min:1'],
-                'sensibilite' => 'interne', 'proprietaire' => 'Exploitation',
+                'sensibilite' => 'interne', 'proprietaire' => 'Exploitation', 'impact' => 'fort',
             ],
             'interface.pagination' => [
                 'type' => 'entier', 'portee' => 'global', 'defaut' => 15,
                 'regles' => ['required', 'integer', 'min:5', 'max:100'],
-                'sensibilite' => 'publique', 'proprietaire' => 'Exploitation',
+                'sensibilite' => 'publique', 'proprietaire' => 'Exploitation', 'impact' => 'normal',
+            ],
+            'sentinel.file_echecs_seuil' => [
+                'type' => 'entier', 'portee' => 'global', 'defaut' => 5,
+                'regles' => ['required', 'integer', 'min:1'],
+                'sensibilite' => 'interne', 'proprietaire' => 'Exploitation', 'impact' => 'normal',
+            ],
+            'sentinel.file_attente_seuil' => [
+                'type' => 'entier', 'portee' => 'global', 'defaut' => 1000,
+                'regles' => ['required', 'integer', 'min:1'],
+                'sensibilite' => 'interne', 'proprietaire' => 'Exploitation', 'impact' => 'normal',
+            ],
+            'sentinel.notif_cooldown_minutes' => [
+                'type' => 'entier', 'portee' => 'global', 'defaut' => 60,
+                'regles' => ['required', 'integer', 'min:1'],
+                'sensibilite' => 'interne', 'proprietaire' => 'Exploitation', 'impact' => 'normal',
             ],
         ];
     }

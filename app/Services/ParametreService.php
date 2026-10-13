@@ -8,6 +8,7 @@ use DomainException;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Throwable;
 
 /**
  * Paramètres centralisés (§48) : lecture cachée, écriture validée
@@ -55,7 +56,23 @@ class ParametreService
                 'acteur_id' => $auteurId,
                 'motif' => $motif,
             ]);
+            // Invalidation immédiate (comportement historique, tests) PUIS
+            // post-commit (LOOP D, R-C-01) : un `forget` pré-commit seul
+            // laisse une relecture concurrente re-sceller l'ancienne valeur
+            // dans `rememberForever`. Le second `forget` nettoie après commit ;
+            // son échec (panne cache) est journalisé sans faire échouer une
+            // écriture déjà committée (E1.6).
             Cache::forget("parametre.{$cle}");
+            DB::afterCommit(function () use ($cle): void {
+                try {
+                    Cache::forget("parametre.{$cle}");
+                } catch (Throwable $e) {
+                    Log::channel(config('logging.default'))->warning('parametre.cache_invalidation_echec', [
+                        'cle' => $cle,
+                        'erreur' => $e->getMessage(),
+                    ]);
+                }
+            });
 
             Log::channel(config('logging.default'))->notice('parametre.modifie', [
                 'acteur_id' => $auteurId,

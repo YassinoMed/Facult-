@@ -15,6 +15,17 @@
                 class="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm" />
         </div>
 
+        {{-- Diagnostic de configuration (valeurs non sensibles uniquement) --}}
+        <div class="mt-4 ds-card p-4" role="status" aria-label="État de configuration">
+            <p class="text-[11px] text-slate-500">
+                Environnement : <strong class="text-slate-700">{{ $diagnostic['environnement'] }}</strong> ·
+                Langue : <strong class="text-slate-700">{{ $diagnostic['langue'] }}</strong> ·
+                Fuseau PHP : <strong class="text-slate-700">{{ $diagnostic['fuseau_php'] }}</strong> ·
+                Débogage : <strong class="text-slate-700">{{ $diagnostic['debug'] ? 'activé (développement uniquement)' : 'désactivé' }}</strong> ·
+                Courriel : <strong class="text-slate-700">{{ $diagnostic['courriel']['pilote'] }} ({{ $diagnostic['courriel']['expediteur'] }}{{ $diagnostic['courriel']['hote'] ? ' via '.$diagnostic['courriel']['hote'] : '' }})</strong>
+            </p>
+        </div>
+
         @foreach($groupes as $categorie => $parametres)
             <section class="mt-4 ds-card p-5">
                 <h2 class="text-sm font-black uppercase tracking-wider text-slate-500">{{ $categorie }}</h2>
@@ -25,10 +36,16 @@
                             x-show="$el.dataset.recherche.includes(recherche.toLowerCase())"
                             data-initiale="{{ old('valeur', $parametre->valeur) }}"
                             x-data="{ initiale: $el.dataset.initiale, courante: $el.dataset.initiale }">
-                            <form method="post" action="{{ route('admin.parametres.update', $parametre) }}" class="flex flex-wrap items-end gap-2">
+                            <form method="post" action="{{ route('admin.parametres.update', $parametre) }}" class="flex flex-wrap items-end gap-2"
+                                x-data="{ envoi: false }" @submit="envoi = true"
+                                @if(($definition['impact'] ?? 'normal') === 'fort') onsubmit="return confirm('Paramètre à fort impact : confirmer la modification ?')" @endif>
                                 @csrf @method('PATCH')
+                                <input type="hidden" name="attendu" value="{{ $parametre->updated_at?->toIso8601String() }}">
                                 <div class="min-w-52 flex-1">
                                     <label class="text-xs font-bold text-slate-600" for="p-{{ $parametre->id }}">{{ $parametre->cle }}</label>
+                                    @if($definition !== null && (string) $parametre->valeur !== (string) $definition['defaut'])
+                                        <span class="ml-1 rounded-full bg-amber-100 text-amber-800 border border-amber-200 px-2 py-0.5 text-[10px] font-bold">Personnalisé</span>
+                                    @endif
                                     @if($parametre->type === 'entier')
                                         <input id="p-{{ $parametre->id }}" name="valeur" type="number" step="1"
                                             x-model="courante" value="{{ old('valeur', $parametre->valeur) }}"
@@ -88,8 +105,13 @@
                                         </details>
                                     @endif
                                 </div>
-                                <x-btn size="sm" type="submit" x-bind:disabled="courante === initiale"
+                                <x-btn size="sm" type="submit" x-bind:disabled="envoi || courante === initiale"
+                                    x-text="envoi ? 'Enregistrement…' : 'Enregistrer'"
                                     title="Enregistrer (actif si modifié)">Enregistrer</x-btn>
+                                <p x-show="courante !== initiale" x-cloak class="w-full text-[11px] text-slate-500">
+                                    Aperçu : <span class="font-mono line-through" x-text="initiale"></span> →
+                                    <span class="font-mono font-bold text-primary-800" x-text="courante"></span>
+                                </p>
                             </form>
                         </div>
                     @endforeach

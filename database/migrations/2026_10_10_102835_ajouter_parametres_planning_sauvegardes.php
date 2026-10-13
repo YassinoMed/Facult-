@@ -66,11 +66,13 @@ return new class extends Migration
 
     public function up(): void
     {
+        // Idempotence stricte : n'insère que les clés absentes (LOOP J).
         foreach (self::PARAMETRES as $parametre) {
-            DB::table('parametres')->updateOrInsert(
-                ['cle' => $parametre['cle']],
-                $parametre + ['created_at' => now(), 'updated_at' => now()]
-            );
+            if (! DB::table('parametres')->where('cle', $parametre['cle'])->exists()) {
+                DB::table('parametres')->insert(
+                    $parametre + ['created_at' => now(), 'updated_at' => now()]
+                );
+            }
         }
     }
 

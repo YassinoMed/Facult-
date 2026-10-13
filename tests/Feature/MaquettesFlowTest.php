@@ -230,7 +230,9 @@ class MaquettesFlowTest extends TestCase
         $this->actingAs($this->admin)
             ->get(route('admin.maquettes.show', $maquette))
             ->assertOk()
-            ->assertSee('Visualisation directe', false)
+            // SEC-12 (13/10) : le contenu est affiché échappé — le rendu
+            // réel passe par l'aperçu PDF (Dompdf n'exécute pas le JS).
+            ->assertSee('Contenu de la version', false)
             ->assertSee('Exemple titreDocument', false);
     }
 

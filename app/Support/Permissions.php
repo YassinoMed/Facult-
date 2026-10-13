@@ -205,6 +205,25 @@ final class Permissions
 
         'settings.view',
         'settings.manage',
+        'settings.history.view',
+        'settings.restore',
+        'settings.diagnostics.view',
+
+        // Centre d'administration (LOOP J) : granularité comptes, rôles,
+        // messagerie, audit. Assignées au super_admin seul (matrice) —
+        // tout élargissement exige une approbation explicite.
+        'users.view',
+        'users.create',
+        'users.update',
+        'users.suspend',
+        'users.sessions.revoke',
+        'roles.view',
+        'roles.manage',
+        'permissions.view',
+        'permissions.assign',
+        'mail.settings.manage',
+        'mail.test.send',
+        'mail.logs.view',
 
         // Sauvegardes database : granularité view ≠ create ≠ verify
         // ≠ restore ≠ delete ≠ settings (restore/delete/settings :

@@ -16,4 +16,9 @@ class ParametrePolicy
     {
         return $user->hasPermission('settings.manage');
     }
+
+    public function restore(User $user, Parametre $parametre): bool
+    {
+        return $user->hasPermission('settings.restore');
+    }
 }

@@ -204,8 +204,9 @@ class ServicesTransversesTest extends TestCase
 
         $this->actingAs($agent)->get(route('admin.parametres.index'))->assertForbidden();
 
+        $testCle = Parametre::where('cle', 'test.cle')->first();
         $this->actingAs($this->superAdmin)
-            ->patch(route('admin.parametres.update', Parametre::where('cle', 'test.cle')->first()), ['valeur' => '42'])
+            ->patch(route('admin.parametres.update', $testCle), ['valeur' => '42', 'attendu' => $testCle->updated_at?->toIso8601String()])
             ->assertSessionHasNoErrors();
 
         $this->assertSame(42, app(ParametreService::class)->get('test.cle'));

@@ -483,6 +483,9 @@
         </div>
 
         {{-- ═══ HISTORIQUE / AUDIT ═══ --}}
+        {{-- Restreint (LOOP 3) : acteur, IP et valeurs = données sensibles ;
+             l'affichage suit la même garde que le chargement contrôleur. --}}
+        @can('update', $dossier)
         <div class="border-t border-slate-200 bg-slate-50/60 px-6 py-8 sm:px-10 sm:py-10 lg:px-16 xl:px-20">
             <div class="mb-4 flex items-center gap-3 border-b border-slate-800/80 pb-2">
                 <span class="font-serif text-sm font-bold text-slate-900">III.</span>
@@ -513,6 +516,7 @@
                 @endforelse
             </div>
         </div>
+        @endcan
     </div>
 </div>
 @endsection

@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\AdminLoginRequest;
 use App\Models\User;
 use App\Modules\Schedule\Models\Teacher;
+use App\Services\MfaTotpService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -74,7 +75,49 @@ class AuthController extends Controller
             }
         }
 
+        // Double facteur : mot de passe valide mais TOTP requis → session
+        // en attente (aucun accès back-office avant le défi, LOOP J).
+        if ($utilisateur->mfa_active) {
+            Auth::logout();
+            $request->session()->put('mfa_en_attente', $utilisateur->id);
+
+            return redirect()->route('admin.connexion.defi');
+        }
+
         // Régénération de session : protection contre la fixation de session
+        $request->session()->regenerate();
+
+        return redirect()->intended(route('admin.dashboard'))
+            ->with('success', "Bienvenue {$utilisateur->name} — Espace Scolarité.");
+    }
+
+    public function defi(): View|RedirectResponse
+    {
+        if (! session()->has('mfa_en_attente')) {
+            return redirect()->route('admin.connexion.show');
+        }
+
+        return view('admin.connexion-defi');
+    }
+
+    public function verifierDefi(Request $request, MfaTotpService $totp): RedirectResponse
+    {
+        $utilisateur = User::find($request->session()->get('mfa_en_attente'));
+
+        if ($utilisateur === null || ! $utilisateur->mfa_active || $utilisateur->mfa_secret === null) {
+            $request->session()->forget('mfa_en_attente');
+
+            return redirect()->route('admin.connexion.show');
+        }
+
+        $code = (string) $request->validate(['code' => ['required', 'string', 'size:6']])['code'];
+
+        if (! $totp->verifier($utilisateur->mfa_secret, $code)) {
+            return back()->withErrors(['code' => 'Code invalide ou expiré.']);
+        }
+
+        $request->session()->forget('mfa_en_attente');
+        Auth::login($utilisateur, false);
         $request->session()->regenerate();
 
         return redirect()->intended(route('admin.dashboard'))

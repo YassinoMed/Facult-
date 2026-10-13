@@ -45,10 +45,14 @@
             @enderror
         </div>
 
-        <h2 class="mt-6 text-base font-black">Visualisation directe (rendu réel, sans écriture)</h2>
+        <h2 class="mt-6 text-base font-black">Contenu de la version (échappé — rendu réel via l'aperçu PDF, sans écriture)</h2>
         <div class="mt-2 rounded-2xl border border-slate-200 bg-white p-5 text-sm shadow-sm">
             @if($rendu !== null)
-                {!! $rendu !!}
+                {{-- SEC-12 (P1, 13/10) : le contenu d'une maquette est une donnée
+                     d'administrateur — JAMAIS de rendu HTML brut ici (attribut on*
+                     non filtré + CSP unsafe-inline = XSS stockée vers super_admin).
+                     Le rendu fidèle reste assuré par l'aperçu PDF (Dompdf sans JS). --}}
+                <pre class="whitespace-pre-wrap break-words font-mono text-xs text-slate-700">{{ $rendu }}</pre>
                 <div class="mt-4">
                     <a class="underline" target="_blank" rel="noopener" href="{{ route('admin.maquettes.apercu-pdf', $maquette) }}">Ouvrir l'aperçu PDF</a>
                 </div>

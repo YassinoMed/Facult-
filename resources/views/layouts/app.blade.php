@@ -259,6 +259,7 @@
                                      class="absolute right-0 mt-2 w-52 rounded-2xl border border-slate-200 bg-white p-2 shadow-lg" role="menu">
                                     <p class="px-3 py-2 text-[11px] font-bold uppercase tracking-wider text-slate-400">{{ auth()->user()->role_libelle }}</p>
                                     <a href="{{ route('admin.dashboard') }}" role="menuitem" class="block rounded-xl px-3 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-100">Tableau de bord</a>
+                                    <a href="{{ route('admin.mfa.configurer') }}" role="menuitem" class="block rounded-xl px-3 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-100">Double facteur</a>
                                     <form method="POST" action="{{ route('admin.connexion.logout') }}">
                                         @csrf
                                         <button type="submit" role="menuitem" class="block w-full rounded-xl px-3 py-2.5 text-left text-sm font-semibold text-rose-600 hover:bg-rose-50">Déconnexion</button>

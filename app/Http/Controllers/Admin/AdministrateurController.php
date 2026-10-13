@@ -32,6 +32,13 @@ class AdministrateurController extends Controller
     public function index(Request $request): View
     {
         $administrateurs = User::with('faculte')
+            ->when($recherche = trim((string) $request->string('search')), function ($query) use ($recherche) {
+                $motif = '%'.str_replace(['%', '_', '\\'], '', $recherche).'%';
+                $query->where(fn ($q) => $q->where('name', 'like', $motif)->orWhere('email', 'like', $motif));
+            })
+            ->when($request->filled('role'), fn ($query) => $query->where('role', $request->string('role')))
+            ->when($request->filled('faculte_id'), fn ($query) => $query->where('faculte_id', $request->integer('faculte_id')))
+            ->when($request->filled('actif'), fn ($query) => $query->where('actif', $request->boolean('actif')))
             ->orderBy('name')
             ->paginate(15)
             ->withQueryString();
@@ -204,9 +211,18 @@ class AdministrateurController extends Controller
 
         $administrateur->update(['password' => $request->input('password')]);
 
+        // Porte de secours : la réinitialisation coupe aussi le double
+        // facteur (secret perdu = compte récupérable, traçé sans secret).
+        $mfaCoupe = (bool) $administrateur->mfa_active;
+
+        if ($mfaCoupe) {
+            $administrateur->forceFill(['mfa_secret' => null, 'mfa_active' => false])->save();
+        }
+
         Log::channel(config('logging.default'))->notice('admin.password_reset', [
             'acteur_id' => $request->user()->id,
             'administre_id' => $administrateur->id,
+            'mfa_coupe' => $mfaCoupe,
             'adresse_ip' => $request->ip(),
         ]);
 

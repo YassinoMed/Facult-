@@ -29,7 +29,7 @@ class SettingsHistoriqueLoopGTest extends TestCase
         $this->superAdmin();
         $cible = Parametre::where('cle', 'etablissement.nom')->first();
 
-        $this->patch(route('admin.parametres.update', $cible), ['valeur' => 'Nom v2'])
+        $this->patch(route('admin.parametres.update', $cible), ['valeur' => 'Nom v2', 'attendu' => $cible->updated_at?->toIso8601String()])
             ->assertRedirect();
 
         $contenu = $this->get(route('admin.parametres.index'))->assertOk()->getContent();
@@ -53,9 +53,10 @@ class SettingsHistoriqueLoopGTest extends TestCase
     public function test_accessibilite_formulaires(): void
     {
         $this->superAdmin();
+        $cibleAccessibilite = Parametre::where('cle', 'etablissement.nom')->first();
         $this->patch(
-            route('admin.parametres.update', Parametre::where('cle', 'etablissement.nom')->first()),
-            ['valeur' => 'Nom accessibilité']
+            route('admin.parametres.update', $cibleAccessibilite),
+            ['valeur' => 'Nom accessibilité', 'attendu' => $cibleAccessibilite->updated_at?->toIso8601String()]
         )->assertRedirect();
 
         $contenu = $this->get(route('admin.parametres.index'))->assertOk()->getContent();

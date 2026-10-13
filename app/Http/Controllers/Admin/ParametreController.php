@@ -41,6 +41,22 @@ class ParametreController extends Controller
             'groupes' => $parametres,
             'definitions' => SettingDefinition::catalogue(),
             'historiques' => $historiques,
+            // Diagnostic non sensible (Phase B) : jamais de secret ici.
+            'diagnostic' => [
+                'environnement' => (string) config('app.env'),
+                'langue' => (string) config('app.locale'),
+                'fuseau_php' => date_default_timezone_get(),
+                'debug' => (bool) config('app.debug'),
+                // Messagerie (Phase C) : pilote + expéditeur + hôte si SMTP.
+                // Mot de passe et secrets : jamais lus ni affichés.
+                'courriel' => [
+                    'pilote' => (string) config('mail.default'),
+                    'expediteur' => (string) config('mail.from.address'),
+                    'hote' => config('mail.default') === 'smtp'
+                        ? (string) config('mail.mailers.smtp.host')
+                        : null,
+                ],
+            ],
         ]);
     }
 
@@ -60,12 +76,15 @@ class ParametreController extends Controller
         // Redirection explicite vers l'index (LOOP D) : `back()` sans
         // historique renvoyait à `/` et perdait les erreurs. Sac nommé
         // par paramètre : l'erreur ne s'affiche que sur son formulaire.
+        // `attendu` obligatoire (E, point 2) : tout écrasement aveugle est
+        // refusé avec l'état à recharger ; la restauration garde son
+        // intention explicite (motif + nouvelle version).
         $sac = 'p'.$parametre->id;
         $validateur = Validator::make(
             $request->only(['valeur', 'attendu', 'motif']),
             array_merge(
                 ['valeur' => $regles],
-                ['attendu' => ['nullable', 'string', 'max:64'], 'motif' => ['nullable', 'string', 'max:500']]
+                ['attendu' => ['required', 'string', 'max:64'], 'motif' => ['nullable', 'string', 'max:500']]
             )
         );
 
@@ -95,7 +114,7 @@ class ParametreController extends Controller
 
     public function restaurer(Request $request, Parametre $parametre, ParametreService $service): RedirectResponse
     {
-        Gate::authorize('update', $parametre);
+        Gate::authorize('restore', $parametre);
 
         $versionId = (int) $request->validate(['version_id' => ['required', 'integer']])['version_id'];
 

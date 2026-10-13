@@ -32,9 +32,9 @@ class SettingsVersionsLoopFTest extends TestCase
         $this->superAdmin();
         $cible = Parametre::where('cle', 'etablissement.nom')->first();
 
-        $this->patch(route('admin.parametres.update', $cible), ['valeur' => 'Université Nouvelle'])
+        $this->patch(route('admin.parametres.update', $cible), ['valeur' => 'Université Nouvelle', 'attendu' => $cible->updated_at?->toIso8601String()])
             ->assertRedirect();
-        $this->patch(route('admin.parametres.update', $cible->fresh()), ['valeur' => 'Université Finale'])
+        $this->patch(route('admin.parametres.update', $cible->fresh()), ['valeur' => 'Université Finale', 'attendu' => $cible->fresh()->updated_at?->toIso8601String()])
             ->assertRedirect();
 
         $versions = ParametreVersion::where('parametre_id', $cible->id)->orderBy('id')->get();
@@ -50,7 +50,7 @@ class SettingsVersionsLoopFTest extends TestCase
         $this->superAdmin();
         $cible = Parametre::where('cle', 'etablissement.nom')->first();
 
-        $this->patch(route('admin.parametres.update', $cible), ['valeur' => 'Université'])
+        $this->patch(route('admin.parametres.update', $cible), ['valeur' => 'Université', 'attendu' => $cible->updated_at?->toIso8601String()])
             ->assertRedirect();
         $this->assertSame(0, ParametreVersion::where('parametre_id', $cible->id)->count());
     }
@@ -83,9 +83,9 @@ class SettingsVersionsLoopFTest extends TestCase
         $this->superAdmin();
         $cible = Parametre::where('cle', 'etablissement.nom')->first();
 
-        $this->patch(route('admin.parametres.update', $cible), ['valeur' => 'Version deux'])
+        $this->patch(route('admin.parametres.update', $cible), ['valeur' => 'Version deux', 'attendu' => $cible->updated_at?->toIso8601String()])
             ->assertRedirect();
-        $this->patch(route('admin.parametres.update', $cible->fresh()), ['valeur' => 'Version trois'])
+        $this->patch(route('admin.parametres.update', $cible->fresh()), ['valeur' => 'Version trois', 'attendu' => $cible->fresh()->updated_at?->toIso8601String()])
             ->assertRedirect();
         $v1 = ParametreVersion::where('parametre_id', $cible->id)->orderBy('id')->first();
 

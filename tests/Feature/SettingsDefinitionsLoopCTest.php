@@ -38,7 +38,10 @@ class SettingsDefinitionsLoopCTest extends TestCase
             $this->assertSame('global', $definition['portee'], $cle);
             $this->assertNotEmpty($definition['regles'], $cle);
             $this->assertNotEmpty($definition['proprietaire'], $cle);
+            $this->assertContains($definition['impact'], ['normal', 'fort'], $cle);
         }
+
+        $this->assertSame('fort', SettingDefinition::catalogue()['notifications.purge_jours']['impact']);
     }
 
     public function test_fuseau_invalide_refuse(): void
@@ -48,9 +51,9 @@ class SettingsDefinitionsLoopCTest extends TestCase
         $this->assertNotNull($fuseau);
 
         $fuseauId = $fuseau->id;
-        $this->patch(route('admin.parametres.update', $fuseau), ['valeur' => 'Mars/Olympus'])
+        $this->patch(route('admin.parametres.update', $fuseau), ['valeur' => 'Mars/Olympus', 'attendu' => $fuseau->updated_at?->toIso8601String()])
             ->assertSessionHasErrors('valeur', null, 'p'.$fuseauId);
-        $this->patch(route('admin.parametres.update', $fuseau), ['valeur' => 'Africa/Tunis'])
+        $this->patch(route('admin.parametres.update', $fuseau->fresh()), ['valeur' => 'Africa/Tunis', 'attendu' => $fuseau->fresh()->updated_at?->toIso8601String()])
             ->assertSessionHasNoErrors();
     }
 
@@ -66,7 +69,7 @@ class SettingsDefinitionsLoopCTest extends TestCase
 
         foreach ($bornes as $cle => $valeur) {
             $cible = Parametre::where('cle', $cle)->first();
-            $this->patch(route('admin.parametres.update', $cible), ['valeur' => $valeur])
+            $this->patch(route('admin.parametres.update', $cible), ['valeur' => $valeur, 'attendu' => $cible->updated_at?->toIso8601String()])
                 ->assertSessionHasErrors('valeur', null, 'p'.$cible->id);
         }
     }
@@ -79,7 +82,7 @@ class SettingsDefinitionsLoopCTest extends TestCase
         ]);
 
         $this->assertNull(SettingDefinition::reglesPour('test.libre'));
-        $this->patch(route('admin.parametres.update', $libre), ['valeur' => 'nouvelle valeur'])
+        $this->patch(route('admin.parametres.update', $libre), ['valeur' => 'nouvelle valeur', 'attendu' => $libre->updated_at?->toIso8601String()])
             ->assertSessionHasNoErrors();
     }
 }

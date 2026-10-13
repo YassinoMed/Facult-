@@ -34,6 +34,38 @@
         </div>
     @endif
 
+    {{-- Recherche & filtres --}}
+    <form method="GET" action="{{ route('admin.administrateurs.index') }}" role="search" aria-label="Recherche d'administrateurs"
+          class="mb-6 grid grid-cols-2 gap-3 rounded-3xl border border-slate-200/80 bg-white p-5 shadow-xs sm:grid-cols-4">
+        <div class="col-span-2 sm:col-span-1">
+            <label class="sr-only" for="recherche-admin">Rechercher par nom ou email</label>
+            <input id="recherche-admin" type="text" name="search" value="{{ request('search') }}" autocomplete="off"
+                   placeholder="Nom ou email…" class="w-full rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm" />
+        </div>
+        <div>
+            <label class="sr-only" for="filtre-role">Filtrer par rôle</label>
+            <select id="filtre-role" name="role" class="w-full rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm">
+                <option value="">Tous rôles</option>
+                @foreach(['super_admin' => 'Super admin', 'admin_scolarite' => 'Scolarité', 'admin_faculte' => 'Faculté', 'agent_scolarite' => 'Agent', 'consultation' => 'Consultation'] as $valeur => $libelle)
+                    <option value="{{ $valeur }}" {{ request('role') === $valeur ? 'selected' : '' }}>{{ $libelle }}</option>
+                @endforeach
+            </select>
+        </div>
+        <div>
+            <label class="sr-only" for="filtre-faculte-admin">Filtrer par faculté</label>
+            <select id="filtre-faculte-admin" name="faculte_id" class="w-full rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm">
+                <option value="">Toutes facultés</option>
+                @foreach($facultes as $faculte)
+                    <option value="{{ $faculte->id }}" {{ (string) request('faculte_id') === (string) $faculte->id ? 'selected' : '' }}>{{ $faculte->code }}</option>
+                @endforeach
+            </select>
+        </div>
+        <div class="flex gap-2">
+            <a href="{{ route('admin.administrateurs.index') }}" class="rounded-xl border border-slate-200 px-3.5 py-2 text-xs font-bold text-slate-600">Réinitialiser</a>
+            <button type="submit" class="rounded-xl bg-primary-600 px-4 py-2 text-xs font-bold text-white">Filtrer</button>
+        </div>
+    </form>
+
     {{-- Liste --}}
     <div class="overflow-hidden rounded-3xl border border-slate-200/90 bg-white shadow-xs">
         <table class="w-full text-sm">
