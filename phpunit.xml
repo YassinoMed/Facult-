@@ -38,5 +38,16 @@
         <env name="PULSE_ENABLED" value="false"/>
         <env name="TELESCOPE_ENABLED" value="false"/>
         <env name="NIGHTWATCH_ENABLED" value="false"/>
+        <!-- AC-00c (13/10) : contrat d'environnement de tests — les modules
+             que la suite couvre doivent être EXPLICITEMENT actifs : sans
+             .env (CI), les défauts config/modules.php (false) rendaient
+             404 toute route module:xxx (run CI 38347795151 : 17 échecs).
+             phpunit.xml prime sur .env (Dotenv immutable) — local = CI. -->
+        <env name="MODULE_ATTENDANCE" value="true"/>
+        <env name="MODULE_STUDENT_DOSSIERS" value="true"/>
+        <env name="MODULE_ONLINE_REQUESTS" value="true"/>
+        <env name="MODULE_SCHEDULE" value="true"/>
+        <env name="MODULE_EVALUATION" value="true"/>
+        <env name="MODULE_SENTINEL" value="true"/>
     </php>
 </phpunit>

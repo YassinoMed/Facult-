@@ -15,7 +15,18 @@ final class NormaliseurEnTetes
     {
         $texte = trim($texte);
 
-        // Translittération vers l'ASCII (é→e, ç→c, °→o…) avant tout
+        // Carte EXPLICITE des exposants/symboles dont la translittération
+        // iconv VARIE selon la bibliothèque système (libiconv macOS : °→0 ;
+        // glibc Ubuntu/CI : caractère supprimé — run CI 38347795151) : la
+        // clé doit être déterministe sur toute plateforme. Les exposants
+        // unicode deviennent leur chiffre (N°CIN → n0cin, 1ᵉʳ → 1er).
+        $texte = str_replace(
+            ["\u{00B0}", "\u{00B9}", "\u{00B2}", "\u{00B3}"],
+            ['0', '1', '2', '3'],
+            $texte
+        );
+
+        // Translittération vers l'ASCII (é→e, ç→c…) avant tout
         // filtrage : sans elle les lettres accentuées disparaissaient.
         $translittere = iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $texte);
 
