@@ -9,7 +9,7 @@ use Illuminate\Support\Facades\Route;
 |--------------------------------------------------------------------------
 | Toujours enregistrées, verrouillées par `module:tasks`.
 */
-Route::middleware(['auth', 'admin', 'module:tasks'])->prefix('admin')->name('admin.')->group(function () {
+Route::middleware(['auth', 'admin', 'secondaire.verrou', 'module:tasks'])->prefix('admin')->name('admin.')->group(function () {
     Route::get('taches', [TaskController::class, 'index'])
         ->middleware('can:tasks.view')
         ->name('taches.index');

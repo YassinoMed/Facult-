@@ -14,7 +14,7 @@ use Illuminate\Support\Facades\Route;
 | Toujours enregistrées, verrouillées par `module:schedule` :
 | module désactivé = 404, même en appel direct (serveur uniquement).
 */
-Route::middleware(['auth', 'admin', 'module:schedule'])->prefix('admin')->name('admin.')->group(function () {
+Route::middleware(['auth', 'admin', 'secondaire.verrou', 'module:schedule'])->prefix('admin')->name('admin.')->group(function () {
     Route::get('emplois-du-temps', [ScheduleController::class, 'index'])
         ->middleware('can:schedules.view')
         ->name('emplois-du-temps.index');

@@ -14,7 +14,7 @@ use Illuminate\Support\Facades\Route;
 | Toujours enregistrées, verrouillées par `module:parcours-academique` :
 | module désactivé = 404, même en appel direct.
 */
-Route::middleware(['auth', 'admin', 'module:parcours-academique'])->prefix('admin')->name('admin.')->group(function () {
+Route::middleware(['auth', 'admin', 'secondaire.verrou', 'module:parcours-academique'])->prefix('admin')->name('admin.')->group(function () {
     Route::get('parcours', [TableauBordParcoursController::class, 'index'])
         ->middleware('can:parcours.view')
         ->name('parcours.index');

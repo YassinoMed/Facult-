@@ -29,9 +29,9 @@ class MfaController extends Controller
         /** @var User $utilisateur */
         $utilisateur = $request->user();
 
-        // Note : `QrCodeSvg` est un visuel décoratif (hash), pas un QR
-        // encodé — l'enrôlement se fait par saisie manuelle du secret,
-        // supportée par toutes les applications d'authentification.
+        // Enrôlement : QR réel généré côté navigateur depuis l'URI
+        // `otpauth://` (libellé `qrcode-generator` locale, sans réseau ni
+        // fuite du secret) + saisie manuelle en secours.
         return view('admin.mfa.configurer', [
             'secret' => $secret,
             'uri' => $totp->uriProvisionnement($secret, (string) $utilisateur->email),

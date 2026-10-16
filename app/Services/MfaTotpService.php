@@ -4,7 +4,9 @@ namespace App\Services;
 
 /**
  * TOTP RFC 6238 / RFC 4226 en pur PHP (LOOP J) : aucune dépendance —
- * HMAC-SHA1 + troncature dynamique + base32, QR via `QrCodeSvg` existant.
+ * HMAC-SHA1 + troncature dynamique + base32. Enrôlement par QR réel
+ * généré côté navigateur depuis l'URI `otpauth://` (voir la vue
+ * `admin.mfa.configurer`), saisie manuelle en secours.
  * Exactitude prouvée par les vecteurs officiels RFC 6238 (tests).
  */
 final class MfaTotpService
@@ -28,7 +30,10 @@ final class MfaTotpService
 
     public function verifier(string $secret, string $code, ?int $maintenant = null, int $fenetre = 1): bool
     {
-        $code = trim($code);
+        // Normalisation insensible aux espaces (recopie manuelle) — le
+        // contrôleur fait déjà ce nettoyage, le service reste robuste
+        // pour les autres appelants (défi login, verrouillage).
+        $code = preg_replace('/\s+/', '', $code) ?? '';
 
         if (! preg_match('/^\d{6}$/', $code)) {
             return false;
@@ -37,7 +42,13 @@ final class MfaTotpService
         $compteur = (int) floor(($maintenant ?? time()) / self::PERIODE);
 
         for ($decalage = -$fenetre; $decalage <= $fenetre; $decalage++) {
-            if (hash_equals($this->calculer($secret, $compteur + $decalage), $code)) {
+            try {
+                $attendu = $this->calculer($secret, $compteur + $decalage);
+            } catch (\InvalidArgumentException) {
+                // Secret corrompu : échec fermé, jamais d'exception vers l'utilisateur.
+                return false;
+            }
+            if (hash_equals($attendu, $code)) {
                 return true;
             }
         }
@@ -77,7 +88,13 @@ final class MfaTotpService
 
     public static function decoderBase32(string $donnees): string
     {
-        $donnees = strtoupper(rtrim($donnees, '='));
+        // Tolère la recopie manuelle : minuscules, espaces, tirets.
+        $donnees = strtoupper((string) preg_replace('/[\s\-]+/', '', $donnees));
+        $donnees = rtrim($donnees, '=');
+
+        if ($donnees === '') {
+            throw new \InvalidArgumentException('Secret base32 vide.');
+        }
         $binaire = '';
         foreach (str_split($donnees) as $caractere) {
             $position = strpos(self::ALPHABET_BASE32, $caractere);

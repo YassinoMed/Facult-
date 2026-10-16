@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\Etudiant;
 use App\Models\Faculte;
+use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\Concerns\ActAsApiClient;
 use Tests\TestCase;
@@ -56,6 +57,30 @@ class ApiAuthenticationTest extends TestCase
         $this->getApi("/api/v1/students/{$etudiant->id}", $token)->assertOk();
         $this->getApi("/api/v1/students/{$etudiant->id}/grades", $token)->assertOk();
         $this->getApi("/api/v1/students/{$etudiant->id}/academic-record", $token)->assertStatus(404); // pas de dossier : 404 propre, pas 403
+    }
+
+    public function test_token_expire_apres_duree_configurée(): void
+    {
+        // LOOP P §5 : la durée de validité documentée (90 jours) est
+        // réellement appliquée — un token volé cesse de fonctionner.
+        // Mécanisme Sanctum : `expires_at` reste NULL à la création ;
+        // c'est le Guard qui refuse les tokens créés il y a plus de
+        // `config('sanctum.expiration')` minutes (`created_at`).
+        [$client, $token] = $this->clientApi(['students:read']);
+
+        $this->assertSame(90 * 24 * 60, (int) config('sanctum.expiration'));
+        $this->getApi('/api/v1/students', $token)->assertOk();
+
+        try {
+            Carbon::setTestNow(now()->addDays(91));
+            $this->resetAuthGuards();
+            $this->getApi('/api/v1/students', $token)->assertStatus(401);
+        } finally {
+            Carbon::setTestNow();
+        }
+
+        $this->resetAuthGuards();
+        $this->getApi('/api/v1/students', $token)->assertOk();
     }
 
     public function test_token_revoque_est_immediatement_invalide(): void

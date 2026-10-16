@@ -10,7 +10,7 @@ use Illuminate\Support\Facades\Route;
 | Toujours enregistrées, mais verrouillées par `module:sentinel` :
 | module désactivé = 404, même en appel direct.
 */
-Route::middleware(['auth', 'admin', 'module:sentinel'])->prefix('admin')->name('admin.')->group(function () {
+Route::middleware(['auth', 'admin', 'secondaire.verrou', 'module:sentinel'])->prefix('admin')->name('admin.')->group(function () {
     Route::get('sentinelle', [SentinelController::class, 'index'])
         ->middleware('can:sentinel.view')
         ->name('sentinel.index');

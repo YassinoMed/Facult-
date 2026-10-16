@@ -2,6 +2,8 @@
 
 namespace App\Http\Requests;
 
+use App\Support\SaisieIdentification;
+use Closure;
 use Illuminate\Foundation\Http\FormRequest;
 
 /**
@@ -11,7 +13,13 @@ use Illuminate\Foundation\Http\FormRequest;
  *   jamais convertis) ;
  * - date de naissance : SECOND FACTEUR obligatoire — le CIN seul
  *   (identifiant semi-public) ne doit jamais suffire à récupérer
- *   les données personnelles d'un étudiant.
+ *   les données personnelles d'un étudiant ;
+ * - contrôle strict à 4 niveaux : les formulaires publics saisissent
+ *   JJ/MM/AAAA (auto-format JS + pattern HTML + pré-contrôle Alpine),
+ *   normalisés ici vers Y-m-d (format interne des services). La règle
+ *   date délègue au validateur canonique SaisieIdentification::valider
+ *   (format, date RÉELLE — 31/02 refusé, jamais dans le futur, âge
+ *   18-120 ans révolues).
  */
 class VerifierCinRequest extends FormRequest
 {
@@ -24,7 +32,7 @@ class VerifierCinRequest extends FormRequest
     {
         $this->merge([
             'cin' => is_string($this->cin) ? $this->cin : '',
-            'date_naissance' => trim((string) $this->input('date_naissance', '')),
+            'date_naissance' => SaisieIdentification::normaliserDateNaissance((string) $this->input('date_naissance', '')),
         ]);
     }
 
@@ -32,7 +40,13 @@ class VerifierCinRequest extends FormRequest
     {
         return [
             'cin' => ['required', 'string', 'regex:/\A[0-9]{8}\z/'],
-            'date_naissance' => ['required', 'date_format:Y-m-d', 'before:today', 'after:1920-01-01'],
+            'date_naissance' => ['required', 'string', function (string $attribute, mixed $value, Closure $fail) {
+                $resultat = SaisieIdentification::validerDateNaissance((string) $value);
+
+                if (($resultat['valid'] ?? false) !== true) {
+                    $fail($resultat['message']);
+                }
+            }],
         ];
     }
 
@@ -41,10 +55,7 @@ class VerifierCinRequest extends FormRequest
         return [
             'cin.required' => 'Veuillez saisir un numéro de CIN.',
             'cin.regex' => 'Le numéro de CIN doit être composé d\'exactement 8 chiffres (chiffres 0 à 9 uniquement, sans lettre, espace ou tiret).',
-            'date_naissance.required' => 'Veuillez saisir votre date de naissance pour retrouver vos informations.',
-            'date_naissance.date_format' => 'La date de naissance doit être au format AAAA-MM-JJ (ex : 2004-03-15).',
-            'date_naissance.before' => 'La date de naissance doit être antérieure à aujourd\'hui.',
-            'date_naissance.after' => 'La date de naissance doit être postérieure au 01/01/1920.',
+            'date_naissance.required' => 'La date de naissance est obligatoire.',
         ];
     }
 }

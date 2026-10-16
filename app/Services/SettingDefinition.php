@@ -97,6 +97,66 @@ final class SettingDefinition
                 'regles' => ['required', 'integer', 'min:10', 'max:300'],
                 'sensibilite' => 'interne', 'proprietaire' => 'Sécurité', 'impact' => 'normal',
             ],
+            'securite.mfa_obligatoire_admin' => [
+                'type' => 'booleen', 'portee' => 'global', 'defaut' => '0',
+                'regles' => ['required', 'in:0,1,vrai,faux,true,false,oui,non'],
+                'sensibilite' => 'interne', 'proprietaire' => 'Sécurité', 'impact' => 'fort',
+            ],
+            'securite.duree_session_minutes' => [
+                'type' => 'entier', 'portee' => 'global', 'defaut' => 120,
+                'regles' => ['required', 'integer', 'min:15', 'max:720'],
+                'sensibilite' => 'interne', 'proprietaire' => 'Sécurité', 'impact' => 'normal',
+            ],
+            'securite.mot_de_passe_min_longueur' => [
+                'type' => 'entier', 'portee' => 'global', 'defaut' => 10,
+                'regles' => ['required', 'integer', 'min:8', 'max:32'],
+                'sensibilite' => 'interne', 'proprietaire' => 'Sécurité', 'impact' => 'fort',
+            ],
+            'securite.connexion_tentatives_max' => [
+                'type' => 'entier', 'portee' => 'global', 'defaut' => 5,
+                'regles' => ['required', 'integer', 'min:3', 'max:15'],
+                'sensibilite' => 'interne', 'proprietaire' => 'Sécurité', 'impact' => 'normal',
+            ],
+            'inscription.ouverte' => [
+                'type' => 'booleen', 'portee' => 'global', 'defaut' => '1',
+                'regles' => ['required', 'in:0,1,vrai,faux,true,false,oui,non'],
+                'sensibilite' => 'publique', 'proprietaire' => 'Scolarité', 'impact' => 'fort',
+            ],
+            'inscription.prefill_cin_actif' => [
+                'type' => 'booleen', 'portee' => 'global', 'defaut' => '1',
+                'regles' => ['required', 'in:0,1,vrai,faux,true,false,oui,non'],
+                'sensibilite' => 'interne', 'proprietaire' => 'Scolarité', 'impact' => 'normal',
+            ],
+            'inscription.scan_ocr_actif' => [
+                'type' => 'booleen', 'portee' => 'global', 'defaut' => '1',
+                'regles' => ['required', 'in:0,1,vrai,faux,true,false,oui,non'],
+                'sensibilite' => 'interne', 'proprietaire' => 'Scolarité', 'impact' => 'normal',
+            ],
+            'presences.tolerance_retard_minutes' => [
+                'type' => 'entier', 'portee' => 'global', 'defaut' => 15,
+                'regles' => ['required', 'integer', 'min:0', 'max:120'],
+                'sensibilite' => 'interne', 'proprietaire' => 'Scolarité', 'impact' => 'normal',
+            ],
+            'presences.fenetre_pointage_minutes' => [
+                'type' => 'entier', 'portee' => 'global', 'defaut' => 60,
+                'regles' => ['required', 'integer', 'min:10', 'max:240'],
+                'sensibilite' => 'interne', 'proprietaire' => 'Scolarité', 'impact' => 'normal',
+            ],
+            'sauvegarde.conserver' => [
+                'type' => 'entier', 'portee' => 'global', 'defaut' => 14,
+                'regles' => ['required', 'integer', 'min:1', 'max:365'],
+                'sensibilite' => 'interne', 'proprietaire' => 'Exploitation', 'impact' => 'fort',
+            ],
+            'sauvegarde.alerte_age_heures' => [
+                'type' => 'entier', 'portee' => 'global', 'defaut' => 30,
+                'regles' => ['required', 'integer', 'min:1', 'max:168'],
+                'sensibilite' => 'interne', 'proprietaire' => 'Exploitation', 'impact' => 'normal',
+            ],
+            'sauvegarde.notifier_echec' => [
+                'type' => 'booleen', 'portee' => 'global', 'defaut' => '1',
+                'regles' => ['required', 'in:0,1,vrai,faux,true,false,oui,non'],
+                'sensibilite' => 'interne', 'proprietaire' => 'Exploitation', 'impact' => 'normal',
+            ],
         ];
     }
 

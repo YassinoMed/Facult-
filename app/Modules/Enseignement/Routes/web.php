@@ -15,7 +15,7 @@ use Illuminate\Support\Facades\Route;
 | Dashboard, table, fiches, transitions, affectations, évaluation,
 | services, qualité. Verrou `module:enseignement`.
 */
-Route::middleware(['auth', 'admin', 'module:enseignement'])->prefix('admin')->name('admin.')->group(function () {
+Route::middleware(['auth', 'admin', 'secondaire.verrou', 'module:enseignement'])->prefix('admin')->name('admin.')->group(function () {
     Route::prefix('enseignements')->name('enseignements.')->group(function () {
         Route::get('tableau-bord', [EnseignementController::class, 'tableauBord'])
             ->middleware('can:enseignements.view')->name('tableau-bord');

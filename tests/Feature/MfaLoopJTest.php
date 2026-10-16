@@ -68,7 +68,7 @@ class MfaLoopJTest extends TestCase
 
         // Activation : secret en session, confirmation par code.
         $this->get(route('admin.mfa.configurer'))->assertOk()
-            ->assertSee('Saisissez ce secret', false);
+            ->assertSee('saisissez ce secret', false);
         $secret = session('mfa_secret_attente');
         $this->assertIsString($secret);
         $this->assertNull($compte->fresh()->mfa_secret);
@@ -110,5 +110,18 @@ class MfaLoopJTest extends TestCase
         $this->post(route('admin.mfa.nouveau-secret'))->assertRedirect();
         $this->assertNotSame($ancien, session('mfa_secret_attente'));
         $this->assertNull($compte->fresh()->mfa_secret);
+    }
+
+    public function test_configurer_affiche_qr_reel_et_saisie_manuelle(): void
+    {
+        $compte = $this->compte();
+        $this->actingAs($compte);
+
+        // QR réel (libellé locale) + secret manuel + URI otpauth.
+        $this->get(route('admin.mfa.configurer'))->assertOk()
+            ->assertSee('mfa-qr', false)
+            ->assertSee('qrcode-generator.min.js', false)
+            ->assertSee('otpauth://totp/', false)
+            ->assertSee('data-copier="secret"', false);
     }
 }

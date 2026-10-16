@@ -12,6 +12,7 @@ use App\Http\Controllers\Admin\AutomaticAssignmentController;
 use App\Http\Controllers\Admin\BiController;
 use App\Http\Controllers\Admin\CockpitController;
 use App\Http\Controllers\Admin\ConfigurationAcademiqueController;
+use App\Http\Controllers\Admin\CourrielController;
 use App\Http\Controllers\Admin\DashboardFaculteController;
 use App\Http\Controllers\Admin\DataExchangeController;
 use App\Http\Controllers\Admin\DocumentAcademiqueController;
@@ -52,10 +53,12 @@ use App\Http\Controllers\Admin\SessionsController;
 use App\Http\Controllers\Admin\SituationController;
 use App\Http\Controllers\Admin\SmtpConfigurationController;
 use App\Http\Controllers\Admin\StatistiquesController;
+use App\Http\Controllers\Admin\StudioCourrielController;
 use App\Http\Controllers\Admin\SystemeController;
 use App\Http\Controllers\Admin\TableauDeBordController;
 use App\Http\Controllers\Admin\VerificationController;
 use App\Http\Controllers\Admin\VueSauvegardeeController;
+use App\Http\Controllers\DossierExistantController;
 use App\Http\Controllers\Enseignant\ConnexionController as EnseignantConnexionController;
 use App\Http\Controllers\Enseignant\DemandeController as EnseignantDemandeController;
 use App\Http\Controllers\Enseignant\DocumentController as EnseignantDocumentController;
@@ -78,6 +81,11 @@ use App\Http\Controllers\RecherchePortailController;
 use App\Http\Controllers\SuiviPublicController;
 use App\Http\Controllers\VerifyDocumentController;
 use App\Http\Controllers\VerrouillageController;
+use App\Livewire\Admin\Campagnes\AssistantCompositionCampagne;
+use App\Livewire\Admin\Campagnes\GestionGroupesDestinataires;
+use App\Livewire\Admin\Campagnes\SuiviCampagneCourriel;
+use App\Livewire\Admin\Campagnes\TableauDeBordCampagnes;
+use App\Livewire\Admin\Courriels\DesignerCourriel;
 use App\Services\DataExchange\DefinitionRegistry;
 use Illuminate\Support\Facades\Route;
 
@@ -85,8 +93,15 @@ use Illuminate\Support\Facades\Route;
 |--------------------------------------------------------------------------
 | Public Routes - Inscription
 |--------------------------------------------------------------------------
+| La page d'accueil de la plateforme (`/`) est le parcours « dossier
+| existant » (reprise / récupération sans connexion). Le formulaire de
+| NOUVELLE inscription vit en `/inscription/nouvelle` sous le nom
+| historique `inscription.create` (tous les liens existants suivent
+| automatiquement). Aucune logique dupliquée : chaque URL a son
+| contrôleur canonique.
 */
-Route::get('/', [InscriptionController::class, 'create'])->name('inscription.create');
+Route::get('/', [DossierExistantController::class, 'accueil'])->name('accueil');
+Route::get('/inscription/nouvelle', [InscriptionController::class, 'create'])->name('inscription.create');
 Route::view('/hors-ligne', 'hors-ligne')->name('hors-ligne');
 Route::post('/inscription', [InscriptionController::class, 'store'])
     ->name('inscription.store')
@@ -151,6 +166,80 @@ Route::post('/inscription/verifier-cin', [InscriptionController::class, 'verifie
 Route::post('/inscription/identifier', [InscriptionController::class, 'identifier'])
     ->name('inscription.identifier')
     ->middleware('throttle:5,1');
+
+/*
+|--------------------------------------------------------------------------
+| Parcours public sans login — dossier étudiant EXISTANT (extension LOOP)
+|--------------------------------------------------------------------------
+| Séquence : recherche (CIN + naissance) → code à usage unique envoyé à
+| l'adresse email DÉJÀ ENREGISTRÉE → formulaire prérempli → soumission
+| historisée → email de confirmation après commit.
+| Throttling par IP (routes) + par identité (service). POST uniquement
+| pour toute action (le CIN n'apparaît ni dans les URLs ni dans les
+| logs d'accès). CSRF du groupe web obligatoire.
+*/
+Route::get('/inscription/existant', [DossierExistantController::class, 'accueil'])
+    ->name('inscription.existant.accueil');
+Route::post('/inscription/existant/recherche', [DossierExistantController::class, 'rechercher'])
+    ->name('inscription.existant.recherche')
+    ->middleware('throttle:dossier-existant.recherche');
+Route::post('/inscription/existant/verification', [DossierExistantController::class, 'verifier'])
+    ->name('inscription.existant.verification')
+    ->middleware('throttle:dossier-existant.verification');
+Route::get('/inscription/existant/formulaire', [DossierExistantController::class, 'formulaire'])
+    ->name('inscription.existant.formulaire');
+// Données du dossier pour l'interface embarquée (modal d'accueil, sans
+// navigation) : même jeton, mêmes gardes, lecture seule (GET, session).
+Route::get('/inscription/existant/donnees', [DossierExistantController::class, 'donnees'])
+    ->name('inscription.existant.donnees')
+    ->middleware('throttle:dossier-existant.donnees');
+Route::post('/inscription/existant', [DossierExistantController::class, 'enregistrer'])
+    ->name('inscription.existant-store')
+    ->middleware('throttle:dossier-existant.store');
+Route::get('/inscription/existant/confirmation', [DossierExistantController::class, 'confirmation'])
+    ->name('inscription.existant.confirmation');
+
+/*
+|--------------------------------------------------------------------------
+| Changement d'adresse email — popup du parcours dossier existant
+|--------------------------------------------------------------------------
+| Triple preuve : jeton temporaire de session (parcours vérifié) PUIS
+| code à usage unique envoyé à l'adresse DÉJÀ VÉRIFIÉE du dossier
+| (l'adresse actuellement enregistrée) PUIS code à usage unique envoyé
+| à la NOUVELLE adresse candidate (l'email est un identifiant de
+| connexion : la candidate n'est appliquée qu'après sa propre
+| confirmation, l'ancienne restant en vigueur jusque-là). POST
+| uniquement, CSRF du groupe web, throttling par IP et par fonction
+| (compartiments nommés : le parcours nominal complet ne doit jamais
+| se voir opposer un 429 — doctrine LOOP P).
+*/
+Route::post('/inscription/existant/email', [DossierExistantController::class, 'demanderEmail'])
+    ->name('inscription.existant.email')
+    ->middleware('throttle:dossier-existant.email');
+Route::post('/inscription/existant/email/confirmer', [DossierExistantController::class, 'confirmerEmail'])
+    ->name('inscription.existant.email.confirmer')
+    ->middleware('throttle:dossier-existant.email-confirmer');
+Route::post('/inscription/existant/email/confirmer-nouvelle', [DossierExistantController::class, 'confirmerNouvelleAdresse'])
+    ->name('inscription.existant.email.confirmer-nouvelle')
+    ->middleware('throttle:dossier-existant.email-confirmer');
+
+/*
+|--------------------------------------------------------------------------
+| Changement autonome d'adresse email (sans l'ancienne adresse)
+|--------------------------------------------------------------------------
+| CIN + naissance + ANCIENNE adresse + MOT DE PASSE + nouvelle adresse en
+| une seule soumission à réponse neutre, PUIS code à usage unique envoyé
+| à la NOUVELLE adresse (candidate vérifiée avant effet, ancienne active
+| jusque-là). L'autorisation temporaire est liée au dossier exact et à la
+| SEULE opération `email_change` (usage unique). POST uniquement, CSRF du
+| groupe web, throttling par IP (compartiments nommés) + par identité.
+*/
+Route::post('/inscription/existant/autonome', [DossierExistantController::class, 'demanderAutonome'])
+    ->name('inscription.existant.autonome')
+    ->middleware('throttle:dossier-existant.autonome');
+Route::post('/inscription/existant/autonome/confirmer', [DossierExistantController::class, 'confirmerAutonome'])
+    ->name('inscription.existant.autonome.confirmer')
+    ->middleware('throttle:dossier-existant.autonome-confirmer');
 
 /*
 |--------------------------------------------------------------------------
@@ -383,13 +472,17 @@ Route::prefix('admin')->name('admin.')->group(function () {
     Route::get('verrouillage/code', [VerrouillageController::class, 'code'])
         ->middleware('auth')->name('verrouillage.code');
     Route::post('verrouillage/code', [VerrouillageController::class, 'definir'])
-        ->middleware(['auth', 'throttle:10,1'])->name('verrouillage.definir');
+        ->middleware(['auth', 'throttle:10,1,verrou-definir'])->name('verrouillage.definir');
     Route::post('verrouillage/verifier', [VerrouillageController::class, 'verifier'])
-        ->middleware(['auth', 'throttle:5,1'])->name('verrouillage.verifier');
+        ->middleware(['auth', 'throttle:5,1,verrou-verifier'])->name('verrouillage.verifier');
+    // Prolongation explicite : saisie réelle ou bouton « Rester connecté »
+    // uniquement — 423 si le verrou est déjà acquis (aucun réveil rétroactif).
+    Route::post('verrouillage/prolonger', [VerrouillageController::class, 'prolonger'])
+        ->middleware(['auth', 'throttle:30,1,verrou-prolonger'])->name('verrouillage.prolonger');
     Route::post('verrouillage/verrouiller', [VerrouillageController::class, 'verrouiller'])
         ->middleware('auth')->name('verrouillage.verrouiller');
     Route::post('verrouillage/deconnecter', [VerrouillageController::class, 'deconnecter'])
-        ->name('verrouillage.deconnecter');
+        ->middleware('auth')->name('verrouillage.deconnecter');
     Route::post('double-facteur/confirmer', [MfaController::class, 'confirmer'])
         ->middleware(['auth', 'throttle:10,1'])->name('mfa.confirmer');
     Route::post('double-facteur/nouveau-secret', [MfaController::class, 'nouveauSecret'])
@@ -559,6 +652,94 @@ Route::prefix('admin')->name('admin.')->group(function () {
                 ->middleware('throttle:10,1')->name('destroy');
             Route::post('{smtp}/tester', [SmtpConfigurationController::class, 'tester'])
                 ->middleware('can:mail.test.send', 'throttle:5,1')->name('tester');
+        });
+
+        /*
+        | Cockpit de messagerie (LOOP-MAIL-ENTERPRISE-01) : supervision du
+        | journal technique expurgé, catalogue et aperçu des modèles, reprise
+        | encadrée des échecs, envoi manuel restreint. Permissions distinctes
+        | (mail.logs.view / mail.retry / mail.send), CSRF du groupe web,
+        | limitation de débit sur les écritures. Aucun secret, OTP, corps
+        | ou adresse en clair exposé.
+        */
+        /*
+        | Module universitaire d'envoi de courriels (LOOP-MAIL-CAMPAIGNS-01) :
+        | campagnes d'envoi de masse et ciblées, groupes enregistrés dynamiques
+        | et listes fixes, traitement asynchrone par lots, planification, annulation
+        | et relance sélective des échecs.
+        */
+        Route::prefix('courriels/campagnes')->name('campagnes-courriel.')->middleware('can:campagnes.view')->group(function () {
+            Route::get('/', TableauDeBordCampagnes::class)->name('index');
+            Route::get('composer/{campagne?}', AssistantCompositionCampagne::class)->middleware('can:campagnes.manage')->name('composer');
+            Route::get('groupes', GestionGroupesDestinataires::class)->name('groupes');
+            Route::get('{campagne}', SuiviCampagneCourriel::class)->name('details');
+        });
+
+        Route::prefix('courriels')->name('courriels.')->group(function () {
+            Route::get('/', [CourrielController::class, 'index'])
+                ->middleware('can:mail.logs.view')->name('index');
+            Route::get('modeles', [CourrielController::class, 'catalogue'])
+                ->middleware('can:mail.logs.view')->name('catalogue');
+            Route::get('creer', [CourrielController::class, 'creer'])
+                ->middleware('can:mail.send')->name('creer');
+            Route::post('/', [CourrielController::class, 'envoyer'])
+                ->middleware(['can:mail.send', 'throttle:5,1'])->name('envoyer');
+            Route::get('{courriel}', [CourrielController::class, 'voir'])
+                ->whereNumber('courriel')
+                ->middleware('can:mail.logs.view')->name('voir');
+            Route::post('{courriel}/reessayer', [CourrielController::class, 'reessayer'])
+                ->whereNumber('courriel')
+                ->middleware(['can:mail.retry', 'throttle:10,1'])->name('reessayer');
+        });
+
+        /*
+        | Studio de modèles e-mail (LOOP-MAIL-TEMPLATE-STUDIO-03) : bibliothèque,
+        | éditeur validé serveur, cycle BROUILLON → À_VALIDER → PUBLIÉ →
+        | ARCHIVÉ, thèmes, comparatif, envoi de test autorisé. Permissions
+        | distinctes (mail.modeles.view/gerer/publier/themes, mail.test.modele),
+        | CSRF du groupe web, limitation de débit sur les écritures. Les
+        | modèles système du catalogue restent verrouillés (lecture seule).
+        */
+        Route::prefix('studio')->name('studio.')->group(function () {
+            // Designer une page (LOOP-MAIL-LIVEWIRE-DESIGNER-04) : même
+            // permission de consultation que la bibliothèque ; écritures
+            // = méthodes du composant protégées par les mêmes `can:` que
+            // le cockpit (gerer/publier) via Policies Livewire à venir —
+            // ici, garde minimale symétrique à `editer`.
+            Route::get('designer', DesignerCourriel::class)
+                ->middleware('can:mail.modeles.view')->name('designer');
+            Route::get('/', [StudioCourrielController::class, 'index'])
+                ->middleware('can:mail.modeles.view')->name('index');
+            Route::post('/', [StudioCourrielController::class, 'store'])
+                ->middleware(['can:mail.modeles.gerer', 'throttle:10,1'])->name('store');
+            Route::get('themes', [StudioCourrielController::class, 'themes'])
+                ->middleware('can:mail.modeles.themes')->name('themes');
+            Route::post('themes', [StudioCourrielController::class, 'themeStore'])
+                ->middleware(['can:mail.modeles.themes', 'throttle:10,1'])->name('themes.store');
+            Route::match(['put', 'patch'], 'themes/{theme}', [StudioCourrielController::class, 'themeUpdate'])
+                ->middleware(['can:mail.modeles.themes', 'throttle:10,1'])->name('themes.update');
+            Route::get('{modele}', [StudioCourrielController::class, 'voir'])
+                ->middleware('can:mail.modeles.view')->name('voir');
+            Route::get('{modele}/editer', [StudioCourrielController::class, 'editer'])
+                ->middleware('can:mail.modeles.gerer')->name('editer');
+            Route::post('{modele}/enregistrer', [StudioCourrielController::class, 'enregistrer'])
+                ->middleware(['can:mail.modeles.gerer', 'throttle:30,1'])->name('enregistrer');
+            Route::post('{modele}/apercu', [StudioCourrielController::class, 'apercu'])
+                ->middleware(['can:mail.modeles.gerer', 'throttle:30,1'])->name('apercu');
+            Route::post('{modele}/soumettre', [StudioCourrielController::class, 'soumettre'])
+                ->middleware(['can:mail.modeles.publier', 'throttle:10,1'])->name('soumettre');
+            Route::post('{modele}/publier', [StudioCourrielController::class, 'publier'])
+                ->middleware(['can:mail.modeles.publier', 'throttle:10,1'])->name('publier');
+            Route::post('{modele}/archiver', [StudioCourrielController::class, 'archiver'])
+                ->middleware(['can:mail.modeles.publier', 'throttle:10,1'])->name('archiver');
+            Route::post('{modele}/restaurer', [StudioCourrielController::class, 'restaurer'])
+                ->middleware(['can:mail.modeles.publier', 'throttle:10,1'])->name('restaurer');
+            Route::post('{modele}/dupliquer', [StudioCourrielController::class, 'dupliquer'])
+                ->middleware(['can:mail.modeles.gerer', 'throttle:10,1'])->name('dupliquer');
+            Route::delete('{modele}', [StudioCourrielController::class, 'supprimer'])
+                ->middleware(['can:mail.modeles.gerer', 'throttle:10,1'])->name('supprimer');
+            Route::post('{modele}/envoi-test', [StudioCourrielController::class, 'envoiTest'])
+                ->middleware(['can:mail.test.modele', 'throttle:5,1'])->name('envoi-test');
         });
 
         /*

@@ -60,4 +60,39 @@ class MfaTotpServiceTest extends TestCase
         );
         $this->assertStringStartsWith('otpauth://totp/', $service->uriProvisionnement($secret, 'admin@univ.test'));
     }
+
+    public function test_normalisation_espaces_tirets_minuscules(): void
+    {
+        $service = new MfaTotpService;
+        $secret = self::SECRET;
+
+        // Recopie manuelle : espaces, tirets, minuscules acceptés.
+        $variantes = [
+            strtolower($secret),
+            trim(chunk_split($secret, 4, ' ')),
+            implode('-', str_split($secret, 8)),
+        ];
+
+        foreach ($variantes as $variante) {
+            $this->assertSame(
+                $service->calculer($secret, 42),
+                $service->calculer($variante, 42),
+                'Variante de secret rejetée : '.$variante
+            );
+        }
+
+        // Code avec espaces accepté (saisie « 123 456 »).
+        $this->assertTrue($service->verifier($secret, '287 082', 59));
+        $this->assertTrue($service->verifier($secret, ' 287082 ', 59));
+    }
+
+    public function test_secret_invalide_ou_vide_echec_ferme(): void
+    {
+        $service = new MfaTotpService;
+
+        // Jamais d'exception vers l'utilisateur : échec fermé.
+        $this->assertFalse($service->verifier('', '123456', 59));
+        $this->assertFalse($service->verifier('!!!', '123456', 59));
+        $this->assertFalse($service->verifier('   ', '123456', 59));
+    }
 }

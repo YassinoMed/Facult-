@@ -12,6 +12,7 @@ use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\View\View;
 
@@ -26,7 +27,24 @@ class ParametreController extends Controller
     {
         Gate::authorize('viewAny', Parametre::class);
 
-        $parametres = Parametre::with('auteur')->orderBy('categorie')->orderBy('cle')->get()->groupBy('categorie');
+        $ordre = [
+            'securite' => 1,
+            'etablissement' => 2,
+            'inscription' => 3,
+            'academique' => 4,
+            'sentinel' => 5,
+            'sauvegardes' => 6,
+            'presences' => 7,
+            'notifications' => 8,
+            'interface' => 9,
+        ];
+
+        $parametres = Parametre::with('auteur')
+            ->orderBy('categorie')
+            ->orderBy('cle')
+            ->get()
+            ->groupBy('categorie')
+            ->sortBy(fn ($items, $key) => $ordre[$key] ?? 99);
 
         // Historique récent groupé (1 requête, pas de N+1) pour la section
         // versions de la vue (LOOP G).
@@ -37,10 +55,105 @@ class ParametreController extends Controller
             ->get()
             ->groupBy('parametre_id');
 
+        $categoriesMeta = [
+            'securite' => [
+                'nom' => 'Sécurité & Verrouillage',
+                'icone' => '🛡️',
+                'description' => 'Verrouillage secondaire, code PIN, temporisation anti-brute-force et politiques d\'authentification.',
+            ],
+            'etablissement' => [
+                'nom' => 'Établissement & Général',
+                'icone' => '🏢',
+                'description' => 'Identité officielle de l\'établissement et fuseau horaire de référence.',
+            ],
+            'inscription' => [
+                'nom' => 'Inscriptions & Dépôts',
+                'icone' => '📝',
+                'description' => 'Ouverture du portail, pré-remplissage automatique par CIN et reconnaissance OCR.',
+            ],
+            'academique' => [
+                'nom' => 'Scolarité & Académique',
+                'icone' => '🎓',
+                'description' => 'Seuil de validation de moyenne et alertes d\'assiduité des étudiants.',
+            ],
+            'sentinel' => [
+                'nom' => 'Surveillance Sentinel',
+                'icone' => '👁️',
+                'description' => 'Surveillance de santé applicative, seuils des files d\'attente et cooldown des alertes.',
+            ],
+            'sauvegardes' => [
+                'nom' => 'Sauvegardes & Rétention',
+                'icone' => '💾',
+                'description' => 'Politique de rétention des archives SQL et alertes de fraîcheur.',
+            ],
+            'presences' => [
+                'nom' => 'Pointage & Émargement',
+                'icone' => '⏱️',
+                'description' => 'Tolérance de retard et fenêtres d\'appariement des présences enseignants.',
+            ],
+            'notifications' => [
+                'nom' => 'Centre de Notifications',
+                'icone' => '🔔',
+                'description' => 'Durée de conservation et purge automatique des notifications lues.',
+            ],
+            'interface' => [
+                'nom' => 'Interface & Ergonomie',
+                'icone' => '🎨',
+                'description' => 'Pagination par défaut et réglages d\'affichage des tableaux.',
+            ],
+        ];
+
+        $securiteRaccourcis = [
+            [
+                'titre' => 'Code PIN de verrouillage',
+                'description' => 'Définir ou modifier votre code secret de déverrouillage de session.',
+                'route' => route('admin.verrouillage.code'),
+                'icone' => '🔒',
+                'libelle' => 'Gérer mon PIN',
+            ],
+            [
+                'titre' => 'Double facteur (MFA / 2FA)',
+                'description' => 'Protection renforcée par code TOTP Google Authenticator.',
+                'route' => route('admin.mfa.configurer'),
+                'icone' => '🛡️',
+                'libelle' => 'Configurer 2FA',
+            ],
+            [
+                'titre' => 'Sessions actives',
+                'description' => 'Visualiser et révoquer les sessions connectées sur tous les appareils.',
+                'route' => route('admin.sessions.index'),
+                'icone' => '💻',
+                'libelle' => 'Voir les sessions',
+            ],
+            [
+                'titre' => 'Sonde Sentinel',
+                'description' => 'Audit de sécurité, santé de base de données et intégrité plateforme.',
+                'route' => Route::has('admin.sentinel.index') ? route('admin.sentinel.index') : '#',
+                'icone' => '🚨',
+                'libelle' => 'Ouvrir Sentinel',
+            ],
+            [
+                'titre' => 'Sauvegardes BD',
+                'description' => 'Créer, restaurer ou vérifier les sauvegardes de la base.',
+                'route' => Route::has('admin.system.backups.index') ? route('admin.system.backups.index') : '#',
+                'icone' => '💾',
+                'libelle' => 'Sauvegardes',
+            ],
+            [
+                'titre' => 'Serveur SMTP',
+                'description' => 'Tester la délivrabilité et paramétrer le serveur de messagerie sortant.',
+                'route' => Route::has('admin.smtp.index') ? route('admin.smtp.index') : '#',
+                'icone' => '✉️',
+                'libelle' => 'Gérer SMTP',
+            ],
+        ];
+
         return view('admin.parametres.index', [
             'groupes' => $parametres,
             'definitions' => SettingDefinition::catalogue(),
             'historiques' => $historiques,
+            'categoriesMeta' => $categoriesMeta,
+            'securiteRaccourcis' => $securiteRaccourcis,
             // Diagnostic non sensible (Phase B) : jamais de secret ici.
             'diagnostic' => [
                 'environnement' => (string) config('app.env'),

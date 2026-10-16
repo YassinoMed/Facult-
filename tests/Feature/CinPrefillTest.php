@@ -4,12 +4,13 @@ namespace Tests\Feature;
 
 use App\Http\Requests\VerifierCinRequest;
 use App\Models\AnneeUniversitaire;
-use App\Models\DossierAcademique;
 use App\Models\Etudiant;
 use App\Models\Faculte;
 use App\Models\MensReference;
 use App\Services\PeriodeInscriptionService;
 use App\Services\StudentLookupService;
+use App\Support\SaisieIdentification;
+use DateTimeImmutable;
 use Illuminate\Foundation\Http\Middleware\PreventRequestForgery;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Request;
@@ -117,14 +118,9 @@ class CinPrefillTest extends TestCase
     {
         $etudiant = $this->creerEtudiant();
 
-        // Matricule via le dossier académique (module Archives, §11)
-        DossierAcademique::create([
-            'etudiant_id' => $etudiant->id,
-            'matricule' => 'MAT-2023-0456',
-            'date_archivage' => '2023-09-01',
-            'statut' => 'actif',
-        ]);
-
+        // Extension LOOP « dossier existant » : CIN + naissance ne sont
+        // PAS une preuve d'identité suffisante — la réponse n'expose
+        // AUCUNE donnée du dossier, elle exige la vérification par code.
         $reponse = $this->postJson(route('inscription.verifierCin'), [
             'cin' => '12345678',
             'date_naissance' => '2003-05-17',
@@ -132,19 +128,13 @@ class CinPrefillTest extends TestCase
 
         $reponse->assertOk()
             ->assertJsonPath('exists', true)
-            ->assertJsonPath('etudiant.cin', '12345678')
-            ->assertJsonPath('etudiant.nom', 'BEN ALI')
-            ->assertJsonPath('etudiant.prenom', 'Mohamed')
-            ->assertJsonPath('etudiant.email', 'mohamed.benali@example.com')
-            ->assertJsonPath('etudiant.telephone', '+212612345678')
-            ->assertJsonPath('etudiant.date_naissance', '2003-05-17')
-            ->assertJsonPath('etudiant.sexe', 'M')
-            ->assertJsonPath('etudiant.adresse', '45 Avenue Hassan II')
-            ->assertJsonPath('etudiant.ville', 'Rabat')
-            ->assertJsonPath('etudiant.code_postal', '10000')
-            ->assertJsonPath('etudiant.faculte_id', (string) $this->faculte->id)
-            ->assertJsonPath('etudiant.niveau', 'L2')
-            ->assertJsonPath('etudiant.matricule', 'MAT-2023-0456');
+            ->assertJsonPath('verification_requise', true);
+
+        $etudiantDto = $reponse->json('etudiant');
+        $this->assertNull($etudiantDto); // AUCUN DTO de données personnelles
+        $this->assertStringNotContainsString('mohamed.benali@example.com', $reponse->getContent());
+        $this->assertStringNotContainsString('+212612345678', $reponse->getContent());
+        $this->assertStringNotContainsString('45 Avenue Hassan II', $reponse->getContent());
     }
 
     public function test_cin_zero_initial_preserve_comme_chaine(): void
@@ -160,13 +150,15 @@ class CinPrefillTest extends TestCase
 
         $reponse->assertOk()
             ->assertJsonPath('exists', true)
-            ->assertJsonPath('etudiant.cin', '01234567');
+            ->assertJsonPath('verification_requise', true)
+            ->assertJsonMissing(['cin' => '01234567']);
     }
 
     public function test_cin_existant_sans_dossier_academique_retourne_matricule_null(): void
     {
         $this->creerEtudiant();
 
+        // Aucune donnée académique n'est exposée avant vérification.
         $reponse = $this->postJson(route('inscription.verifierCin'), [
             'cin' => '12345678',
             'date_naissance' => '2003-05-17',
@@ -174,7 +166,7 @@ class CinPrefillTest extends TestCase
 
         $reponse->assertOk()
             ->assertJsonPath('exists', true)
-            ->assertJsonPath('etudiant.matricule', null);
+            ->assertJsonMissing(['matricule' => 'MAT-2023-0456']);
     }
 
     /* ---------------------------------------------------------------
@@ -239,17 +231,13 @@ class CinPrefillTest extends TestCase
             'date_naissance' => '2003-05-17',
         ]);
 
-        $etudiantDto = $reponse->json('etudiant');
+        // Whitelist exacte des clés retournées (extension LOOP : aucune
+        // donnée personnelle avant vérification par code à usage unique).
+        $etudiantDto = $reponse->json();
         $this->assertIsArray($etudiantDto);
 
-        // Aucune clé sensible dans le DTO
-        foreach (['password', 'password_confirmation', 'password_hash', 'remember_token', 'statut', 'id', 'num_inscription'] as $cleInterdite) {
-            $this->assertArrayNotHasKey($cleInterdite, $etudiantDto, "La clé « {$cleInterdite} » ne doit jamais être exposée.");
-        }
-
-        // Whitelist exacte des champs retournés
         $this->assertEqualsCanonicalizing(
-            ['cin', 'nom', 'prenom', 'email', 'telephone', 'date_naissance', 'sexe', 'adresse', 'ville', 'code_postal', 'faculte_id', 'niveau', 'matricule'],
+            ['exists', 'verification_requise', 'email_masque', 'redirection'],
             array_keys($etudiantDto)
         );
 
@@ -502,9 +490,33 @@ class CinPrefillTest extends TestCase
         $this->assertContains('required', $regles['cin']);
         $this->assertContains('regex:/\A[0-9]{8}\z/', $regles['cin']);
 
-        // Second facteur obligatoire (§P0-4) : la date de naissance
+        // Second facteur obligatoire (§P0-4) : la date de naissance, validée
+        // par le validateur centralisé (formats JJ/MM/AAAA et Y-m-d, date
+        // réelle, jamais future — contrat COMPORTEMENTAL, indépendant de la
+        // forme des règles).
         $this->assertContains('required', $regles['date_naissance']);
-        $this->assertContains('before:today', $regles['date_naissance']);
+
+        $valide = SaisieIdentification::validerDateNaissance('17/05/2003');
+        $this->assertTrue($valide['valid']);
+
+        $valideInterne = SaisieIdentification::validerDateNaissance('2003-05-17');
+        $this->assertTrue($valideInterne['valid']);
+
+        $future = SaisieIdentification::validerDateNaissance(
+            (new DateTimeImmutable('tomorrow'))->format('d/m/Y')
+        );
+        $this->assertFalse($future['valid']);
+
+        $impossible = SaisieIdentification::validerDateNaissance('31/02/2025');
+        $this->assertFalse($impossible['valid']);
+
+        // La route reste derrière la validation dédiée (comportement réel) :
+        // une date future est refusée avec erreur, sans oracle.
+        $reponse = $this->postJson(route('inscription.verifierCin'), [
+            'cin' => '12345678',
+            'date_naissance' => (new DateTimeImmutable('tomorrow'))->format('Y-m-d'),
+        ]);
+        $reponse->assertStatus(422)->assertJsonValidationErrors(['date_naissance']);
     }
 
     /* ---------------------------------------------------------------

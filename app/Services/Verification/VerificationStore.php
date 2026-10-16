@@ -29,6 +29,10 @@ final class VerificationStore
             'duree_ms' => $resultat->dureeMs,
             'source' => $source,
             'auteur_id' => $auteurId,
+            // Traçabilité de la configuration utilisée (reproductibilité
+            // des runs dans le temps : version + règles exécutées).
+            'moteur_version' => $resultat->versionMoteur,
+            'regles_executees' => $resultat->reglesExecutees,
         ]);
     }
 }

@@ -148,6 +148,10 @@
                              clearInterval(this.pollingTimer);
                              this.pollingTimer = null;
                          }
+                     } else if (resp.status === 423) {
+                         // Session verrouillée (verrou secondaire) : recharger
+                         // pour afficher l'écran de verrouillage serveur.
+                         window.location.reload();
                      }
                  } catch (e) {
                      console.error('Erreur actualisation statut:', e);

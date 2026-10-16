@@ -224,6 +224,13 @@ final class Permissions
         'mail.settings.manage',
         'mail.test.send',
         'mail.logs.view',
+        'mail.retry',
+        'mail.send',
+        'mail.modeles.view',
+        'mail.modeles.gerer',
+        'mail.modeles.publier',
+        'mail.modeles.themes',
+        'mail.test.modele',
 
         // Sauvegardes database : granularité view ≠ create ≠ verify
         // ≠ restore ≠ delete ≠ settings (restore/delete/settings :

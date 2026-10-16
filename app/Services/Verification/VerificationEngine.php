@@ -18,6 +18,14 @@ use Illuminate\Support\Facades\Log;
  */
 class VerificationEngine
 {
+    /**
+     * Version du moteur (persistée sur chaque run `dossier_verifications.moteur_version`).
+     * Incrémenter à chaque ajout, retrait ou modification de règle,
+     * ou changement de pondération/seuil — les runs passés restent
+     * interprétables dans le temps.
+     */
+    public const VERSION = '1';
+
     /** @var VerificationRule[] */
     private array $regles;
 
@@ -61,11 +69,13 @@ class VerificationEngine
                 }
             } catch (\Throwable $e) {
                 // Fail-soft : une règle qui échoue ne bloque pas le reste.
-                // On enregistre l'échec comme anomalie info (sans PII dans le message).
+                // L'échec est enregistré en `avertissement` (jamais `info`) :
+                // un contrôle obligatoire non exécuté ne doit jamais laisser
+                // un dossier CONFORME par défaut (verdict A_VERIFIER, −5 pts).
                 $anomalies[] = new Anomalie(
                     regle: $regle->code(),
                     categorie: $regle->categorie(),
-                    gravite: 'info',
+                    gravite: 'avertissement',
                     message: "Règle « {$regle->libelle()} » : erreur d'exécution.",
                     justification: 'Exception technique lors de l\'exécution de la règle (détail dans les logs).',
                     recommandation: 'Contacter l\'administrateur système.',
@@ -88,6 +98,7 @@ class VerificationEngine
             reglesExecutees: $reglesExecutees,
             dureeMs: $dureeMs,
             etudiantId: $etudiant->id,
+            versionMoteur: self::VERSION,
         );
     }
 

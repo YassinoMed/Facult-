@@ -9,7 +9,7 @@ use Illuminate\Support\Facades\Route;
 |--------------------------------------------------------------------------
 | Toujours enregistrées, verrouillées par `module:calendar`.
 */
-Route::middleware(['auth', 'admin', 'module:calendar'])->prefix('admin')->name('admin.')->group(function () {
+Route::middleware(['auth', 'admin', 'secondaire.verrou', 'module:calendar'])->prefix('admin')->name('admin.')->group(function () {
     Route::get('calendrier', [CalendrierController::class, 'index'])
         ->middleware('can:calendriers.view')
         ->name('calendrier.index');

@@ -10,7 +10,7 @@ use Illuminate\Support\Facades\Route;
 |--------------------------------------------------------------------------
 | Toujours enregistrées, verrouillées par `module:student-archive`.
 */
-Route::middleware(['auth', 'admin', 'module:student-archive'])->prefix('admin')->name('admin.')->group(function () {
+Route::middleware(['auth', 'admin', 'secondaire.verrou', 'module:student-archive'])->prefix('admin')->name('admin.')->group(function () {
     Route::get('etudiants/{etudiant}/archive', [StudentArchiveController::class, 'show'])
         ->middleware('can:student_archive.view')
         ->name('etudiants.archive');

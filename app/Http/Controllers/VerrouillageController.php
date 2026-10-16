@@ -2,14 +2,17 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\VerrouillagePin;
 use App\Services\MfaTotpService;
 use App\Services\VerrouillageService;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
 use Illuminate\View\View;
+use Symfony\Component\HttpFoundation\Response;
 
 /**
  * Verrouillage secondaire (LOOP N) : code PIN personnel, vérification
@@ -18,7 +21,7 @@ use Illuminate\View\View;
  */
 class VerrouillageController extends Controller
 {
-    public function code(): View|RedirectResponse
+    public function code(VerrouillageService $verrouillage): View|RedirectResponse
     {
         $utilisateur = Auth::user();
 
@@ -26,7 +29,12 @@ class VerrouillageController extends Controller
             return redirect()->route('admin.connexion.show');
         }
 
-        return view('verrouillage.code');
+        return view('verrouillage.code', [
+            'pinDefini' => VerrouillagePin::where('user_id', $utilisateur->id)->exists(),
+            'delaiMinutes' => (int) round($verrouillage->delaiSecondes() / 60),
+            'longueur' => $verrouillage->longueurPin(),
+            'mfaActif' => (bool) $utilisateur->mfa_active,
+        ]);
     }
 
     public function definir(Request $request, VerrouillageService $verrouillage): RedirectResponse
@@ -63,7 +71,7 @@ class VerrouillageController extends Controller
         return redirect()->route('admin.verrouillage.code')->with('success', 'Code de verrouillage enregistré.');
     }
 
-    public function verifier(Request $request, VerrouillageService $verrouillage): RedirectResponse
+    public function verifier(Request $request, VerrouillageService $verrouillage): RedirectResponse|JsonResponse
     {
         $utilisateur = Auth::user() ?? $request->user();
 
@@ -77,19 +85,45 @@ class VerrouillageController extends Controller
         $resultat = $verrouillage->verifier($utilisateur, $code);
 
         if (! $resultat['ok']) {
-            if ($resultat['attente_secondes'] > 0) {
-                return back()->withErrors(['code' => 'Trop de tentatives. Réessayez dans '.$resultat['attente_secondes'].' secondes.']);
+            // Message générique : aucune indication sur le code attendu.
+            $message = $resultat['attente_secondes'] > 0
+                ? 'Trop de tentatives. Réessayez plus tard.'
+                : 'Code incorrect.';
+
+            if ($request->expectsJson()) {
+                return response()->json(['message' => $message], 422);
             }
 
-            return back()->withErrors(['code' => 'Code incorrect.']);
+            return back()->withErrors(['code' => $message]);
         }
 
         $request->session()->forget('secondaire_verrouille');
         $request->session()->put('derniere_activite', now()->timestamp);
+        $request->session()->put('secondaire_eligible', true);
+
+        if ($request->expectsJson()) {
+            // Contrat fetch du voile client : 200 = voile levé sans
+            // rechargement (page et données non enregistrées conservées).
+            return response()->json(['ok' => true]);
+        }
 
         // Reprise de la page verrouillée (l'URL navigateur n'a jamais
         // changé : l'écran remplaçait la réponse côté serveur).
         return back(fallback: route('admin.dashboard'));
+    }
+
+    /**
+     * Prolongation explicite (« Rester connecté » ou saisie réelle,
+     * jamais automatique) : 204 si le minuteur est touché, 423 si le
+     * verrou est déjà acquis — aucun réveil rétroactif possible.
+     */
+    public function prolonger(Request $request, VerrouillageService $verrouillage): Response
+    {
+        abort_if($request->user() === null, 401);
+
+        abort_unless($verrouillage->prolonger($request), 423);
+
+        return response()->noContent();
     }
 
     public function verrouiller(Request $request): RedirectResponse

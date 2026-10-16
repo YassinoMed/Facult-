@@ -301,11 +301,14 @@ class EtudiantController extends Controller
         $etudiants = Etudiant::whereIn('id', $valide['ids'])->get();
         $compteur = 0;
         $service = app(StudentStatusService::class);
+        // Traçabilité : l'acteur du lot est enregistré sur chaque
+        // transition (situations_etudiant.auteur_id), comme en individuel.
+        $auteurId = (int) $request->user()->id;
 
-        DB::transaction(function () use ($etudiants, $valide, $service, &$compteur) {
+        DB::transaction(function () use ($etudiants, $valide, $service, $auteurId, &$compteur) {
             foreach ($etudiants as $etudiant) {
                 Gate::authorize('update', $etudiant);
-                $service->changer($etudiant, $valide['statut'], null, 'bulk');
+                $service->changer($etudiant, $valide['statut'], $auteurId, 'bulk');
                 $compteur++;
             }
         });

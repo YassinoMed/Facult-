@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Services\VerrouillageService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -66,6 +67,11 @@ class MotDePasseController extends Controller
                 // du compte (driver `database`) — un cookie volé ne survit
                 // pas à la réaction défensive de la victime.
                 DB::table('sessions')->where('user_id', $utilisateur->id)->delete();
+
+                // LOOP N : changement de mot de passe = purge du PIN de
+                // verrouillage secondaire (le contexte ne survit pas à
+                // l'événement de sécurité ; le code sera redéfini).
+                app(VerrouillageService::class)->purger($utilisateur, 'reinitialisation_mot_de_passe');
             }
         );
 

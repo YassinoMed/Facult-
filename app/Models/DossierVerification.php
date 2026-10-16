@@ -17,11 +17,12 @@ class DossierVerification extends Model
     protected $fillable = [
         'etudiant_id', 'verdict', 'score', 'regles_verifiees',
         'regles_reussies', 'regles_echouees', 'anomalies_count', 'duree_ms', 'source', 'auteur_id',
+        'moteur_version', 'regles_executees',
     ];
 
     protected function casts(): array
     {
-        return ['regles_echouees' => 'array'];
+        return ['regles_echouees' => 'array', 'regles_executees' => 'array'];
     }
 
     /** @return BelongsTo<Etudiant, $this> */

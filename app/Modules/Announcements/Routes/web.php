@@ -11,7 +11,7 @@ use Illuminate\Support\Facades\Route;
 |--------------------------------------------------------------------------
 | Toujours enregistrées, verrouillées par `module:announcements`.
 */
-Route::middleware(['auth', 'admin', 'module:announcements'])->prefix('admin')->name('admin.')->group(function () {
+Route::middleware(['auth', 'admin', 'secondaire.verrou', 'module:announcements'])->prefix('admin')->name('admin.')->group(function () {
     Route::get('annonces', [AnnonceController::class, 'index'])
         ->middleware('can:annonces.view')
         ->name('annonces.index');

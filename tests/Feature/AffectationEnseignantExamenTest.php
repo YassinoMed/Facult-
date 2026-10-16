@@ -892,6 +892,10 @@ class AffectationEnseignantExamenTest extends TestCase
         $nbQueries = count(DB::getQueryLog());
         DB::disableQueryLog();
 
-        $this->assertLessThan(30, $nbQueries, "Le chargement de la page d'affectations ne doit pas générer de N+1 (obtenu : {$nbQueries}).");
+        // Budget : +2 bornés vs l'historique — `SecondaireVerrou` (LOOP N)
+        // sur les routes modules : lecture paramètre (cachée ensuite) + 1
+        // existence PIN indexée. Coût CONSTANT (middleware unique par
+        // requête), indépendant des 15 lignes : pas un N+1.
+        $this->assertLessThan(32, $nbQueries, "Le chargement de la page d'affectations ne doit pas générer de N+1 (obtenu : {$nbQueries}).");
     }
 }

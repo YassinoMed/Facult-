@@ -3,25 +3,31 @@
 namespace App\Providers;
 
 use App\Contracts\CanalNotificationExterneInterface;
+use App\Listeners\JournaliserCourrielEnvoye;
 use App\Models\Admission;
 use App\Models\AnomalieQualite;
 use App\Models\AppNotification;
+use App\Models\CampagneCourriel;
 use App\Models\DocumentAcademique;
 use App\Models\DossierAcademique;
 use App\Models\Etudiant;
+use App\Models\GroupeDestinataires;
 use App\Models\InscriptionAcademique;
 use App\Models\Note;
 use App\Models\Parametre;
 use App\Models\User;
 use App\Policies\AdmissionPolicy;
 use App\Policies\ArchivePolicy;
+use App\Policies\CampagneCourrielPolicy;
 use App\Policies\DocumentAcademiquePolicy;
 use App\Policies\EtudiantPolicy;
+use App\Policies\GroupeDestinatairesPolicy;
 use App\Policies\InscriptionAcademiquePolicy;
 use App\Policies\NotePolicy;
 use App\Policies\ParametrePolicy;
 use App\Policies\QualitePolicy;
 use App\Services\CanalNotificationExterneSimule;
+use App\Services\DonneesFormulaireInscription;
 use App\Services\Identity\ArabicTransliterationService;
 use App\Services\Identity\Engines\NullOcrEngine;
 use App\Services\Identity\OcrEngineInterface;
@@ -41,12 +47,17 @@ use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Foundation\DevCommands;
 use Illuminate\Foundation\Http\Middleware\TrimStrings;
 use Illuminate\Http\Request;
+use Illuminate\Mail\Events\MessageSending;
+use Illuminate\Mail\Events\MessageSent;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\View;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Validation\Rules\Password;
+use Livewire\Livewire;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -141,6 +152,11 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        // Commandes destructrices (migrate:fresh, migrate:refresh, db:wipe…)
+        // interdites en production : un wipe accidentel a déjà vidé une base
+        // le 16/10/2026. En local/test elles restent autorisées (récupération).
+        DB::prohibitDestructiveCommands($this->app->isProduction());
+
         // ── Règle CIN (§3) : ne pas trimmer silencieusement la CIN afin que tout espace la rende invalide ──
         TrimStrings::except(['cin']);
 
@@ -155,6 +171,22 @@ class AppServiceProvider extends ServiceProvider
         foreach (Permissions::TOUTES as $permission) {
             Gate::define($permission, fn ($user) => $user->hasPermission($permission));
         }
+
+        // ── Verrouillage secondaire (LOOP N, B2 ; LOOP P : ordre) : l'endpoint
+        // Livewire `/livewire/update` traverse `secondaire.verrou` APRÈS le
+        // groupe `web` — le verrou lit la session et l'utilisateur, donc la
+        // session doit être démarrée avant lui (invités et non-éligibles
+        // traversent, garde `user() === null`).
+        if (class_exists(Livewire::class)) {
+            Livewire::setUpdateRoute(fn ($gestionnaire) => Route::post('/livewire/update', $gestionnaire)
+                ->middleware(['web', 'secondaire.verrou']));
+        }
+
+        // ── Journal passif des courriels (LOOP-MAIL-ENTERPRISE-01, LOOP 04) :
+        // métadonnées expurgées uniquement, fail-soft (le journal ne doit
+        // jamais empêcher l'envoi d'un code de sécurité).
+        Event::listen(MessageSending::class, [JournaliserCourrielEnvoye::class, 'surEnvoi']);
+        Event::listen(MessageSent::class, [JournaliserCourrielEnvoye::class, 'surEnvoye']);
 
         // ── Policies du module Archives Académiques ──
         Gate::policy(DossierAcademique::class, ArchivePolicy::class);
@@ -187,6 +219,10 @@ class AppServiceProvider extends ServiceProvider
 
         // Qualité des données (Phase 19) : qualite.view/manage.
         Gate::policy(AnomalieQualite::class, QualitePolicy::class);
+
+        // Campagnes de courriels (LOOP-MAIL-CAMPAIGNS-01)
+        Gate::policy(CampagneCourriel::class, CampagneCourrielPolicy::class);
+        Gate::policy(GroupeDestinataires::class, GroupeDestinatairesPolicy::class);
 
         // ── Actions rapides contextuelles (Phase 7 §7.3) : navigation
         // uniquement (GET), permission + périmètre + route existante —
@@ -254,12 +290,51 @@ class AppServiceProvider extends ServiceProvider
             return Limit::perMinute($quota)->by($request->ip());
         });
 
+        // ── Formulaire officiel partagé (`inscription._wizard`) : la page
+        // canonique fournit déjà ces variables ; le parcours embarqué
+        // (modal d'accueil) les reçoit ici — MÊME source, aucune divergence.
+        // Seules les clés MANQUANTES sont complétées (jamais d'écrasement).
+        View::composer('inscription._wizard', function ($vue) {
+            $manquantes = array_diff(
+                ['facultes', 'niveaux', 'anneesAcademiques', 'anneesBac', 'mentionsBac', 'etatInscription', 'checklistsDocuments', 'idempotencyToken'],
+                array_keys($vue->getData())
+            );
+
+            if ($manquantes !== []) {
+                $vue->with(array_intersect_key(
+                    app(DonneesFormulaireInscription::class)->pourCreation(),
+                    array_flip($manquantes)
+                ));
+            }
+        });
         // ── Scan de documents d'identité (§19) : OCR coûteux — quota
         // dédié configurable, par IP, anti-uploads massifs. ──
         RateLimiter::for('identity.scan', function (Request $request) {
             return Limit::perMinute((int) config('identity.throttle.scan', 5))
                 ->by($request->ip());
         });
+
+        // ── Parcours public « dossier existant » : compartiments par
+        // fonction (doctrine LOOP P) — mêmes budgets que les anciens
+        // `throttle:X,1` inline, mais des seaux isolés par étape : le
+        // parcours nominal complet (recherche → vérification → demande →
+        // confirmation ancienne → confirmation nouvelle → soumission) ne
+        // doit jamais se voir opposer un 429. Limitation par identité en
+        // complément dans `DossierExistantService`. ──
+        foreach ([
+            'dossier-existant.recherche' => 5,
+            'dossier-existant.verification' => 10,
+            'dossier-existant.store' => 5,
+            'dossier-existant.email' => 5,
+            'dossier-existant.email-confirmer' => 10,
+            'dossier-existant.donnees' => 30,
+            'dossier-existant.autonome' => 5,
+            'dossier-existant.autonome-confirmer' => 10,
+        ] as $nom => $quota) {
+            RateLimiter::for($nom, function (Request $request) use ($quota) {
+                return Limit::perMinute($quota)->by($request->ip());
+            });
+        }
 
         // ── Cloche de notifications : compteur + 6 dernières, par espace.
         // Une seule requête bornée par page (index user/étudiant).

@@ -105,20 +105,43 @@ final class VerrouillageService
         $request->session()->forget('secondaire_verrouille');
     }
 
+    /**
+     * Prolongation explicite (action utilisateur réelle, jamais
+     * automatique) : ne touche le minuteur QUE si le verrou n'est pas
+     * déjà acquis — impossible de réanimer un délai échu.
+     */
+    public function prolonger(Request $request): bool
+    {
+        if ((bool) $request->session()->get('secondaire_verrouille', false)) {
+            return false;
+        }
+
+        $derniere = $request->session()->get('derniere_activite');
+
+        if ($derniere !== null && now()->timestamp - (int) $derniere > $this->delaiSecondes()) {
+            return false;
+        }
+
+        $request->session()->put('derniere_activite', now()->timestamp);
+
+        return true;
+    }
+
     private function enregistrerEchec(User $utilisateur, VerrouillagePin $pin): void
     {
         $max = max(3, (int) $this->parametres->get('verrouillage.tentatives_max', 5));
         $base = max(10, (int) $this->parametres->get('verrouillage.temporisation_secondes', 30));
 
-        $echecs = $pin->echecs + 1;
-        $donnees = ['echecs' => $echecs];
+        // Incrément atomique en base : deux onglets soumettant en
+        // parallèle ne peuvent ni sous-compter ni sur-compter (§4).
+        VerrouillagePin::where('user_id', $utilisateur->id)->increment('echecs');
+        $pin->refresh();
+        $echecs = (int) $pin->echecs;
 
-        if ($echecs >= $max) {
+        if ($echecs >= $max && ($pin->bloque_until === null || $pin->bloque_until->isPast())) {
             // Temporisation progressive : base × dépassement, plafond 15 min.
-            $donnees['bloque_until'] = now()->addSeconds(min(900, $base * ($echecs - $max + 1)));
+            $pin->update(['bloque_until' => now()->addSeconds(min(900, $base * ($echecs - $max + 1)))]);
         }
-
-        $pin->update($donnees);
 
         Log::channel(config('logging.default'))->notice('verrouillage.echec', [
             'acteur_id' => $utilisateur->id,

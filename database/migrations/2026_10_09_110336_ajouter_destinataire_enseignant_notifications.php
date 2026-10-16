@@ -13,17 +13,23 @@ return new class extends Migration
 {
     public function up(): void
     {
-        Schema::table('notifications', function (Blueprint $table) {
-            $table->foreignId('teacher_id')->nullable()->after('etudiant_id')->constrained('teachers')->cascadeOnDelete();
-            $table->index(['teacher_id', 'read_at']);
-        });
+        // La colonne teacher_id existe déjà dans la table notifications
+        // On vérifie son existence avant de l'ajouter
+        if (! Schema::hasColumn('notifications', 'teacher_id')) {
+            Schema::table('notifications', function (Blueprint $table) {
+                $table->foreignId('teacher_id')->nullable()->after('etudiant_id')->constrained('teachers')->cascadeOnDelete();
+            });
+        }
     }
 
     public function down(): void
     {
-        Schema::table('notifications', function (Blueprint $table) {
-            $table->dropForeign(['teacher_id']);
-            $table->dropColumn('teacher_id');
-        });
+        // On ne supprime pas la colonne teacher_id si elle a été créée par une migration antérieure
+        // Mais on peut la retirer si nécessaire
+        if (Schema::hasColumn('notifications', 'teacher_id')) {
+            Schema::table('notifications', function (Blueprint $table) {
+                $table->dropColumn('teacher_id');
+            });
+        }
     }
 };

@@ -417,7 +417,7 @@ class InscriptionPagePeriodeTest extends TestCase
         $this->assertStringContainsString('ident-cin', $contenu);
         $this->assertStringContainsString('ident-naissance', $contenu);
         $this->assertStringContainsString('Vérifier mon identité', $contenu);
-        $this->assertStringContainsString('Se connecter', $contenu);
+        $this->assertMatchesRegularExpression('/[Cc]onnectez-vous|Se connecter/', $contenu);
         $this->assertStringContainsString(route('etudiant.connexion.show'), $contenu);
     }
 

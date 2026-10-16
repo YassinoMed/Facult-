@@ -24,7 +24,7 @@ use Illuminate\Support\Facades\Route;
 | Toujours enregistrées, verrouillées par `module:evaluation` :
 | module désactivé = 404, même en appel direct.
 */
-Route::middleware(['auth', 'admin', 'module:evaluation'])->prefix('admin')->name('admin.')->group(function () {
+Route::middleware(['auth', 'admin', 'secondaire.verrou', 'module:evaluation'])->prefix('admin')->name('admin.')->group(function () {
     Route::get('evaluations', [TableauBordEvaluationController::class, 'index'])
         ->middleware('can:evaluations.view')
         ->name('evaluations.index');
@@ -211,7 +211,7 @@ Route::middleware(['auth', 'admin', 'module:evaluation'])->prefix('admin')->name
         ->middleware(['can:epreuves.view', 'throttle:60,1'])
         ->name('evaluations.affectations.runs.actif');
     Route::get('evaluations/affectations/runs/{run}/status', [AffectationEnseignantController::class, 'runStatus'])
-        ->middleware(['can:epreuves.view', 'throttle:60,1'])
+        ->middleware(['can:epreuves.view', 'secondaire.verrou:passif', 'throttle:60,1'])
         ->name('evaluations.affectations.runs.status');
     Route::post('evaluations/affectations/{epreuve}/assigner', [AffectationEnseignantController::class, 'assigner'])
         ->middleware(['can:surveillances.assign', 'throttle:30,1'])

@@ -12,7 +12,11 @@ Prérequis envoi : fournisseur + secrets coffre + test vers destinataire approuv
 
 ## MFA : implémentée, adoption nulle
 
-TOTP pur PHP prouvé par 6 vecteurs RFC 6238 (8/8) ; enrôlement QR-confirmé ;
+TOTP pur PHP prouvé par 6 vecteurs RFC 6238 (8/8) ; enrôlement par QR réel
+généré localement dans le navigateur (libellé MIT vendored `public/js/`,
+aucun réseau, secret jamais exfiltré) + saisie manuelle en secours
+(normalisation insensible aux espaces/tirets/casse, secret vide rejeté) ;
+défi throttlé post-login (session sans droits) ; codes fenêtrés ±1 ;
 défi throttlé post-login (session sans droits) ; codes fenêtrés ±1 ;
 désactivation par mot de passe ; reset super-admin coupe la MFA (audité) ;
 secret chiffré + masqué + hors fillable (4/4 flux). Dev : **0 compte actif**.

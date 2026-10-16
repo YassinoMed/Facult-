@@ -13,8 +13,9 @@ class Parametre extends Model
     public const TYPES = ['texte', 'entier', 'booleen', 'liste'];
 
     public const CATEGORIES = [
-        'etablissement', 'academique', 'evaluation', 'notifications',
-        'documents', 'demandes', 'securite', 'interface', 'import_export',
+        'etablissement', 'securite', 'academique', 'inscription', 'presences',
+        'sauvegardes', 'sentinel', 'notifications', 'interface', 'evaluation',
+        'documents', 'demandes', 'import_export',
     ];
 
     protected $fillable = ['cle', 'valeur', 'type', 'categorie', 'description', 'updated_by'];

@@ -9,6 +9,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Illuminate\View\View;
 use Symfony\Component\Mailer\Transport\Smtp\EsmtpTransport;
+use Symfony\Component\Mailer\Transport\Smtp\Stream\SocketStream;
 use Throwable;
 
 /**
@@ -68,8 +69,16 @@ class SmtpConfigurationController extends Controller
     public function tester(SmtpConfiguration $smtp): RedirectResponse
     {
         try {
+            // Cartographie du chiffrement : 'ssl' = TLS implicite (port
+            // 465) ; 'tls' = STARTTLS opportuniste (port 587, négocié
+            // automatiquement par autoTls) ; 'aucun' = clair. Le timeout
+            // se règle sur le FLUX (SocketStream) : EsmtpTransport
+            // n'expose aucun setTimeout (appel = Error fatale).
             $transport = new EsmtpTransport($smtp->hote, $smtp->port, $smtp->chiffrement === 'ssl');
-            $transport->setTimeout(10);
+            $flux = $transport->getStream();
+            if ($flux instanceof SocketStream) {
+                $flux->setTimeout(10);
+            }
             if ($smtp->identifiant !== null && $smtp->identifiant !== '') {
                 $transport->setUsername($smtp->identifiant);
                 $transport->setPassword((string) $smtp->mot_de_passe);
@@ -80,12 +89,25 @@ class SmtpConfigurationController extends Controller
             Log::channel(config('logging.default'))->warning('smtp.test_echec', [
                 'configuration_id' => $smtp->id,
                 'classe' => $e::class,
+                'message' => $this->messageExpurge($e->getMessage(), (string) $smtp->mot_de_passe),
             ]);
 
             return back()->withErrors(['connexion' => 'Connexion SMTP impossible ('.$smtp->hote.'). Voir le journal.']);
         }
 
         return back()->with('success', "Connexion SMTP « {$smtp->nom} » réussie (aucun e-mail envoyé).");
+    }
+
+    /**
+     * Message d'erreur journalisable : tronqué et expurgé du secret
+     * (un mot de passe ne doit jamais atteindre le journal, même en
+     * cas d'échec d'authentification).
+     */
+    private function messageExpurge(string $message, string $secret): string
+    {
+        $expurge = $secret !== '' ? str_replace($secret, '***', $message) : $message;
+
+        return mb_substr($expurge, 0, 500);
     }
 
     /**

@@ -10,7 +10,7 @@ use Illuminate\Support\Facades\Route;
 | Toujours enregistrées, verrouillées par `module:finances`.
 | Montants en centimes, jamais de floats. Aucune donnée bancaire.
 */
-Route::middleware(['auth', 'admin', 'module:finances'])->prefix('admin')->name('admin.')->group(function () {
+Route::middleware(['auth', 'admin', 'secondaire.verrou', 'module:finances'])->prefix('admin')->name('admin.')->group(function () {
     Route::get('finances', [FinanceController::class, 'dashboard'])
         ->middleware('can:finances.view')
         ->name('finances.index');

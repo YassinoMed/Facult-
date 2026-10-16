@@ -22,6 +22,7 @@ Schedule::command('taches:generer')->dailyAt('06:30');
 // Phase 15 — Campagnes + publication planifiée des annonces
 Schedule::command('campagnes:envoyer')->everyFifteenMinutes();
 Schedule::command('annonces:publier')->everyFifteenMinutes();
+Schedule::command('campagnes-courriel:traiter-planifiees')->everyFiveMinutes();
 
 // Module Présences : rapprochement périodique des présences enseignants
 Schedule::command('presences:rapprocher-enseignants')->everyThirtyMinutes();

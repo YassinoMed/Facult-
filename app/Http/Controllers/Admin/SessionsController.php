@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\View\View;
 
 /**
@@ -32,9 +33,21 @@ class SessionsController extends Controller
         return view('admin.sessions.index', ['sessions' => $sessions]);
     }
 
+    /**
+     * Révocation d'une autre session : opération privilégiée soumise à
+     * réauthentification (mot de passe actuel), comme la désactivation
+     * de la double facteur. La session courante reste révoquée par la
+     * déconnexion (aucune auto-révocation ici).
+     */
     public function destroy(Request $request, string $session): RedirectResponse
     {
         abort_if($session === $request->session()->getId(), 422, 'Session courante : utilisez la déconnexion.');
+
+        $request->validate(['password' => ['required', 'string']]);
+
+        if (! Hash::check((string) $request->input('password'), (string) $request->user()->password)) {
+            return back()->withErrors(['password' => 'Mot de passe incorrect.']);
+        }
 
         DB::table('sessions')
             ->where('user_id', $request->user()->id)

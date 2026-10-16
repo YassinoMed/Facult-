@@ -117,12 +117,22 @@ class IndustrialisationTest extends TestCase
         $reponse->assertOk()->assertSee('1.2.3.4', false)->assertDontSee('9.9.9.9');
 
         // Session d'autrui : non supprimée (scope user_id).
-        $this->actingAs($this->admin)->delete(route('admin.sessions.destroy', 'autre-1'))
+        $this->actingAs($this->admin)->delete(route('admin.sessions.destroy', 'autre-1'), ['password' => 'Motdepasse@123'])
             ->assertSessionHas('success');
         $this->assertDatabaseHas('sessions', ['id' => 'autre-1']);
 
+        // Sans mot de passe : refusé (réauthentification requise).
+        $this->actingAs($this->admin)->delete(route('admin.sessions.destroy', 'autre-1'))
+            ->assertSessionHasErrors('password');
+        $this->assertDatabaseHas('sessions', ['id' => 'autre-1']);
+
+        // Mot de passe erroné : refusé.
+        $this->actingAs($this->admin)->delete(route('admin.sessions.destroy', 'autre-1'), ['password' => 'FauxMdp123'])
+            ->assertSessionHasErrors('password');
+        $this->assertDatabaseHas('sessions', ['id' => 'autre-1']);
+
         // La sienne : révoquée.
-        $this->actingAs($this->admin)->delete(route('admin.sessions.destroy', 'mienne-1'))
+        $this->actingAs($this->admin)->delete(route('admin.sessions.destroy', 'mienne-1'), ['password' => 'Motdepasse@123'])
             ->assertSessionHas('success');
         $this->assertDatabaseMissing('sessions', ['id' => 'mienne-1']);
 

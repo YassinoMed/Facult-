@@ -20,13 +20,19 @@
                         <p class="text-[11px] tabular-nums text-slate-400">Dernière activité : {{ $session['activite'] }}</p>
                     </div>
                     @unless($session['courante'])
-                        <form method="POST" action="{{ route('admin.sessions.destroy', $session['id']) }}">
+                        <form method="POST" action="{{ route('admin.sessions.destroy', $session['id']) }}" class="flex items-center gap-2"
+                              onsubmit="return confirm('Révoquer cette session ?')">
                             @csrf @method('DELETE')
+                            <label class="sr-only" for="mdp-{{ $session['id'] }}">Mot de passe actuel (confirmation)</label>
+                            <input id="mdp-{{ $session['id'] }}" name="password" type="password" required autocomplete="current-password"
+                                   placeholder="Mot de passe" title="Confirmez avec votre mot de passe actuel"
+                                   class="w-36 rounded-xl border border-slate-200 px-3 py-1.5 text-xs" />
                             <x-btn size="sm" variant="secondary" type="submit">Révoquer</x-btn>
                         </form>
                     @endunless
                 </li>
             @endforeach
         </ul>
+        @error('password')<p class="mt-2 text-xs text-rose-600" role="alert">{{ $message }}</p>@enderror
     </div>
 @endsection

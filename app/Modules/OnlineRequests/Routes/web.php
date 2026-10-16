@@ -12,7 +12,7 @@ use Illuminate\Support\Facades\Route;
 | Toujours enregistrées, verrouillées par `module:online-requests` :
 | module désactivé = 404, même en appel direct (serveur uniquement).
 */
-Route::middleware(['auth', 'admin', 'module:online-requests'])->prefix('admin')->name('admin.')->group(function () {
+Route::middleware(['auth', 'admin', 'secondaire.verrou', 'module:online-requests'])->prefix('admin')->name('admin.')->group(function () {
     Route::get('demandes', [OnlineRequestController::class, 'index'])
         ->middleware('can:demandes.view')
         ->name('demandes.index');

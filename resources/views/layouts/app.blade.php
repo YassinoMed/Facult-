@@ -43,6 +43,8 @@
     <div x-data="{ barreLaterale: false, menuUtilisateur: false, reduite: localStorage.getItem('sidebar-collapsed') === '1' }"
          :class="reduite && 'is-reduite'" class="flex min-h-screen flex-1">
         {{-- ── Sidebar desktop (collapsible, préférence persistée) ── --}}
+        {{-- Masquée sur les pages déclarant `sans_sidebar` (ex. accueil public). --}}
+        @sectionMissing('sans_sidebar')
         <aside :class="reduite ? 'lg:w-20' : 'lg:w-64'" class="lateral hidden lg:flex w-64 flex-shrink-0 flex-col border-r border-slate-200 bg-white no-print transition-all" aria-label="Navigation principale">
             <div class="flex h-16 items-center gap-3 border-b border-slate-100 px-5">
                 <a href="{{ route('inscription.create') }}" class="flex min-w-0 flex-1 items-center gap-3">
@@ -74,8 +76,10 @@
                 </p>
             </div>
         </aside>
+        @endif
 
         {{-- ── Drawer mobile ── --}}
+        @sectionMissing('sans_sidebar')
         <div x-show="barreLaterale" x-cloak class="fixed inset-0 z-[60] lg:hidden"
              @keydown.escape.window="barreLaterale = false" role="dialog" aria-modal="true" aria-label="Menu de navigation">
             <div class="absolute inset-0 bg-slate-900/50" @click="barreLaterale = false" aria-hidden="true"></div>
@@ -93,17 +97,20 @@
                 </nav>
             </aside>
         </div>
+        @endif
 
         {{-- ── Colonne principale ── --}}
         <div class="flex min-w-0 flex-1 flex-col">
             <header class="sticky top-0 z-40 border-b border-slate-200 bg-white/90 backdrop-blur no-print">
                 <div class="flex h-16 items-center gap-3 px-4 sm:px-6">
+                    @sectionMissing('sans_sidebar')
                     <button type="button" @click="barreLaterale = true" aria-label="Ouvrir le menu"
                             class="lg:hidden rounded-xl p-2 text-slate-600 hover:bg-slate-100 min-h-[44px] min-w-[44px]">
                         <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" aria-hidden="true">
                             <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
                         </svg>
                     </button>
+                    @endif
 
                     <a href="{{ route('inscription.create') }}" class="lg:hidden flex items-center gap-2">
                         <span class="flex h-9 w-9 items-center justify-center rounded-xl bg-primary-800 text-sm font-black text-white" aria-hidden="true">U</span>
@@ -260,6 +267,7 @@
                                     <p class="px-3 py-2 text-[11px] font-bold uppercase tracking-wider text-slate-400">{{ auth()->user()->role_libelle }}</p>
                                     <a href="{{ route('admin.dashboard') }}" role="menuitem" class="block rounded-xl px-3 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-100">Tableau de bord</a>
                                     <a href="{{ route('admin.mfa.configurer') }}" role="menuitem" class="block rounded-xl px-3 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-100">Double facteur</a>
+                                    <a href="{{ route('admin.verrouillage.code') }}" role="menuitem" class="block rounded-xl px-3 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-100">Code de verrouillage</a>
                                     <form method="POST" action="{{ route('admin.connexion.logout') }}">
                                         @csrf
                                         <button type="submit" role="menuitem" class="block w-full rounded-xl px-3 py-2.5 text-left text-sm font-semibold text-rose-600 hover:bg-rose-50">Déconnexion</button>
@@ -279,6 +287,7 @@
             {{-- ── Contenu ── --}}
             <main id="contenu" class="flex-1 px-4 sm:px-6 lg:px-8 py-6 sm:py-8" tabindex="-1">
                 <div class="mx-auto max-w-[88rem]">
+                    {{ $slot ?? '' }}
                     @yield('content')
                 </div>
             </main>
@@ -357,7 +366,8 @@
     @if(session('secondaire_eligible') && empty($sansSurveillance))
         <x-verrouillage-surveillance
             :delai="app(App\Services\VerrouillageService::class)->delaiSecondes()"
-            :preavis="app(App\Services\VerrouillageService::class)->preavisSecondes()" />
+            :preavis="app(App\Services\VerrouillageService::class)->preavisSecondes()"
+            :ancreServeur="time()" />
     @endif
 </body>
 </html>

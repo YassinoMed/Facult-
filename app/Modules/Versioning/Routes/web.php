@@ -12,7 +12,7 @@ use Illuminate\Support\Facades\Route;
 | Protégées par auth + admin + module:versioning.
 | Toutes les actions sensibles sont de surcroît gardées par Policy.
 */
-Route::middleware(['auth', 'admin', 'module:versioning'])
+Route::middleware(['auth', 'admin', 'secondaire.verrou', 'module:versioning'])
     ->prefix('admin/versioning')
     ->name('admin.versioning.')
     ->group(function () {

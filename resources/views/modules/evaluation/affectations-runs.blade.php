@@ -126,7 +126,11 @@
                         },
                         actualiser() {
                             fetch(url, { headers: { Accept: 'application/json' }, cache: 'no-store' })
-                                .then((r) => (r.ok ? r.json() : Promise.reject()))
+                                .then((r) => {
+                                    // Session verrouillée : recharger vers l'écran serveur.
+                                    if (r.status === 423) { window.location.reload(); return Promise.reject(); }
+                                    return r.ok ? r.json() : Promise.reject();
+                                })
                                 .then((d) => {
                                     this.etat = d;
                                     if (this.termine && this.minuteur) { clearInterval(this.minuteur); }

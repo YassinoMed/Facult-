@@ -16,8 +16,17 @@ window.Livewire = Livewire;
  *   par l'utilisateur avant validation finale (§9) ;
  * - document temporaire : le serveur supprime le fichier après OCR (§13).
  */
-Alpine.data('inscriptionForm', (sexeInitial = '', checklistsInitiales = {}) => ({
+Alpine.data('inscriptionForm', (sexeInitial = '', checklistsInitiales = {}, embarque = false, prefixeId = '') => ({
     submitting: false,
+    /** Mode embarqué (modal d'accueil) : soumission fetch, pas de brouillon. */
+    embarque: !!embarque,
+    /** Préfixe des identifiants en collision avec la page hôte (canonique : vide). */
+    prefixeId: prefixeId || '',
+    /** Résultat de la soumission embarquée (panneaux dédiés). */
+    embarqueEnvoi: false,
+    embarqueErreurs: {},
+    embarqueMessage: '',
+    embarqueSucces: null,
     sexe: sexeInitial,
     /** Catégorie de parcours adaptatif (LOOP 02) : premiere | transfert | reinscription */
     categorie: 'premiere',
@@ -57,6 +66,16 @@ Alpine.data('inscriptionForm', (sexeInitial = '', checklistsInitiales = {}) => (
     /** Message d'orientation académique interactif (LOOP 08) */
     orientationInfo: { visible: false, type: 'info', icone: 'ℹ', titre: '', message: '' },
 
+    /** Résolution d'identifiant avec préfixe d'instance : préfixé d'abord,
+     *  héritage ensuite. Canonique inchangé (préfixe vide = appel direct). */
+    champ(id) {
+        if (this.prefixeId) {
+            const prefixe = document.getElementById(this.prefixeId + id);
+            if (prefixe) return prefixe;
+        }
+        return document.getElementById(id);
+    },
+
     /** L'utilisateur retouche un champ : il n'est plus marqué pré-rempli. */
     champModifie(champ) {
         this.preliles = this.preliles.filter((c) => c !== champ);
@@ -83,8 +102,8 @@ Alpine.data('inscriptionForm', (sexeInitial = '', checklistsInitiales = {}) => (
      * à la validation stricte côté serveur (unicité CIN, anti-doublon).
      */
     async rechercherCin() {
-        const champCin = document.getElementById('cin');
-        const champDate = document.getElementById('date_naissance');
+        const champCin = this.champ('cin');
+        const champDate = this.champ('date_naissance');
         const cin = (champCin?.value || '').trim().toUpperCase();
         const dateNaissance = (champDate?.value || '').trim();
 
@@ -166,7 +185,7 @@ Alpine.data('inscriptionForm', (sexeInitial = '', checklistsInitiales = {}) => (
         const marques = [];
 
         this.champsPrefill.forEach((champ) => {
-            const element = document.getElementById(champ);
+            const element = this.champ(champ);
             const valeur = etudiant[champ];
             if (element && valeur !== null && valeur !== undefined && valeur !== '') {
                 element.value = valeur;
@@ -195,7 +214,7 @@ Alpine.data('inscriptionForm', (sexeInitial = '', checklistsInitiales = {}) => (
                 if (champ === 'sexe') {
                     this.sexe = '';
                 } else {
-                    const element = document.getElementById(champ);
+                    const element = this.champ(champ);
                     if (element) element.value = '';
                 }
             });
@@ -334,7 +353,7 @@ Alpine.data('inscriptionForm', (sexeInitial = '', checklistsInitiales = {}) => (
                 ['prenom', donnees.prenom],
                 ['date_naissance', donnees.date_naissance],
             ].forEach(([champ, valeur]) => {
-                const element = document.getElementById(champ);
+                const element = this.champ(champ);
                 if (element && valeur) {
                     element.value = valeur;
                     marques.push(champ);
@@ -350,9 +369,12 @@ Alpine.data('inscriptionForm', (sexeInitial = '', checklistsInitiales = {}) => (
             this.cinRecherche = { etat: 'inactif', cin: '', date: '' };
         }
 
-        // L'utilisateur doit vérifier le bloc identité : on l'y amène.
-        document.getElementById('section-identite')
-            ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        // L'utilisateur doit vérifier le bloc identité : on l'y amène
+        // (page canonique ; en mode embarqué la modale reste en place).
+        if (!this.embarque) {
+            document.getElementById('section-identite')
+                ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
     },
 
     /**
@@ -379,7 +401,7 @@ Alpine.data('inscriptionForm', (sexeInitial = '', checklistsInitiales = {}) => (
     /** Adaptation dynamique selon la catégorie (LOOP 02 & 04). */
     async changerCategorie(nouvelle) {
         this.categorie = nouvelle;
-        const niveauEl = document.getElementById('niveau');
+        const niveauEl = this.champ('niveau');
         if (niveauEl && nouvelle === 'premiere' && (!niveauEl.value || !niveauEl.value.startsWith('L1'))) {
             niveauEl.value = 'L1';
         }
@@ -459,13 +481,14 @@ Alpine.data('inscriptionForm', (sexeInitial = '', checklistsInitiales = {}) => (
     },
 
     defilerVersFormulaire() {
+        if (this.embarque) return; // modale : position stable, aucun défilement
         document.getElementById('inscription')
             ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     },
 
     /** Libellé d'option sélectionnée (récapitulatif). */
     libelleOption(id) {
-        const el = document.getElementById(id);
+        const el = this.champ(id);
         if (!el) return '—';
         if (el.tagName === 'SELECT') return el.options[el.selectedIndex]?.text?.trim() || '—';
         return (el.value || '').trim() || '—';
@@ -473,7 +496,7 @@ Alpine.data('inscriptionForm', (sexeInitial = '', checklistsInitiales = {}) => (
 
     /** Construit le récapitulatif de l'étape 5 (§10). */
     preparerRecap() {
-        const val = (id) => (document.getElementById(id)?.value || '').trim() || '—';
+        const val = (id) => (this.champ(id)?.value || '').trim() || '—';
         this.recap = {
             identite: [
                 ['CIN', val('cin')],
@@ -672,8 +695,10 @@ Alpine.data('inscriptionForm', (sexeInitial = '', checklistsInitiales = {}) => (
         this.restaurerBrouillon();
     },
 
-    /** Sauvegarde différée (500 ms) après chaque modification de champ. */
+    /** Sauvegarde différée (500 ms) après chaque modification de champ.
+     *  Désactivée en mode embarqué (parcours transient, aucun stockage). */
     planifierSauvegardeBrouillon() {
+        if (this.embarque) return;
         clearTimeout(this._minuterieBrouillon);
         this._minuterieBrouillon = setTimeout(() => this.sauvegarderBrouillon(), 500);
     },
@@ -721,8 +746,10 @@ Alpine.data('inscriptionForm', (sexeInitial = '', checklistsInitiales = {}) => (
      * Restauration : uniquement les champs encore vides (placeholder),
      * jamais par-dessus une valeur serveur (`old()`) ou un défaut
      * choisi. Brouillon expiré ou illisible = ignoré silencieusement.
+     * Jamais en mode embarqué (aucune lecture du stockage navigateur).
      */
     restaurerBrouillon() {
+        if (this.embarque) return;
         let brut = null;
         try {
             brut = localStorage.getItem(this.CLE_BROUILLON);
@@ -791,6 +818,71 @@ Alpine.data('inscriptionForm', (sexeInitial = '', checklistsInitiales = {}) => (
             localStorage.removeItem(this.CLE_BROUILLON);
         } catch (e) {}
         this.brouillon = { etat: 'inactif', existe: false, restaure: false, dateSauvegarde: '' };
+    },
+
+    /**
+     * Soumission embarquée (modal d'accueil, SANS navigation) : même
+     * endpoint, mêmes validations et mêmes règles métier — seule
+     * l'enveloppe de réponse change (JSON). 422 → erreurs mappées +
+     * saut à l'étape fautive ; succès → panneau de confirmation.
+     * Double-clic neutralisé par `submitting` (comme le canonique).
+     */
+    async soumettreEmbarque() {
+        if (this.submitting) return;
+        const form = this.$el.tagName === 'FORM' ? this.$el : this.$el.querySelector('form');
+        if (!form) return;
+        this.submitting = true;
+        this.embarqueErreurs = {};
+        this.embarqueMessage = '';
+        try {
+            const reponse = await fetch(form.action, {
+                method: 'POST',
+                headers: {
+                    Accept: 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'X-CSRF-TOKEN':
+                        document.querySelector('meta[name="csrf-token"]')?.content ?? '',
+                },
+                body: new FormData(form),
+            });
+            if (reponse.status === 429) {
+                this.embarqueMessage = 'Trop de tentatives. Patientez une minute avant de réessayer.';
+                return;
+            }
+            const donnees = await reponse.json().catch(() => ({}));
+            if (!reponse.ok) {
+                this.embarqueErreurs = donnees.errors || {};
+                this.embarqueMessage = donnees.message || 'Veuillez corriger les champs indiqués.';
+                this.allerEtapeEmbarquee();
+                return;
+            }
+            this.embarqueSucces = donnees;
+            const mdp = form.querySelector('[name="password"]');
+            const mdp2 = form.querySelector('[name="password_confirmation"]');
+            if (mdp) mdp.value = '';
+            if (mdp2) mdp2.value = '';
+        } catch (e) {
+            this.embarqueMessage = 'Erreur réseau. Vérifiez votre connexion et réessayez.';
+        } finally {
+            this.submitting = false;
+        }
+    },
+
+    /** Saut à l'étape du premier champ en erreur (mode embarqué). */
+    allerEtapeEmbarquee() {
+        const carte = {
+            cin: 2, nom: 2, prenom: 2, date_naissance: 2, sexe: 2,
+            email: 3, telephone: 3, adresse: 3, ville: 3, code_postal: 3,
+            faculte_id: 4, programme_id: 4, niveau: 4, annee_academique: 4,
+            annee_bac: 4, mention_bac: 4, periode: 4, identification: 2, eligibilite: 4,
+            password: 6, password_confirmation: 6,
+        };
+        const premier = Object.keys(this.embarqueErreurs)[0];
+        if (premier && carte[premier]) this.allerEtape(carte[premier]);
+        this.$nextTick(() => {
+            document.getElementById('embarque-erreurs')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            document.getElementById('embarque-erreurs')?.focus?.({ preventScroll: true });
+        });
     },
 }));
 
@@ -939,6 +1031,558 @@ Alpine.data('ordreWidgets', () => ({
         if (i < 0 || j < 0 || j >= enfants.length) return;
         this.$el.insertBefore(enfants[i], delta < 0 ? enfants[j] : enfants[j].nextSibling);
         this.sauvegarder();
+    },
+}));
+
+/**
+ * Changement autonome d'adresse email (parcours public sans navigation) :
+ * soumission en fetch JSON (même neutralité que le POST classique, repli
+ * intact), ouverture de la popup de validation sur place, confirmation
+ * sur place. Le mot de passe est effacé du DOM après chaque envoi et
+ * n'est jamais réaffiché ni journalisé.
+ */
+Alpine.data('autonomeEmail', (config = {}) => ({
+    confirme: false,
+    codeOuvert: !!config.codeOuvert,
+    envoi: false,
+    message: '',
+    erreurs: {},
+    succes: '',
+    succesAdresse: '',
+
+    jetonCsrf() {
+        return document.querySelector('meta[name="csrf-token"]')?.content || '';
+    },
+
+    async envoyerDemande() {
+        const form = this.$refs.autonomeForm;
+        if (!form || !form.reportValidity()) return;
+        this.erreurs = {};
+        this.message = '';
+        this.envoi = true;
+        try {
+            const reponse = await fetch(form.action, {
+                method: 'POST',
+                headers: { 'X-CSRF-TOKEN': this.jetonCsrf(), Accept: 'application/json' },
+                body: new FormData(form),
+            });
+            if (reponse.status === 422) {
+                const donnees = await reponse.json().catch(() => ({}));
+                this.erreurs = donnees.errors || {};
+                this.message = 'Veuillez corriger les champs indiqués.';
+                return;
+            }
+            if (reponse.status === 429) {
+                this.message = 'Trop de tentatives. Patientez une minute avant de réessayer.';
+                return;
+            }
+            const donnees = await reponse.json();
+            this.message = donnees.message || '';
+            if (donnees.etape === 'code') {
+                this.confirme = false;
+                this.codeOuvert = true;
+                this.$nextTick(() => document.getElementById('code_autonome')?.focus());
+            }
+        } catch (e) {
+            this.message = 'Erreur réseau. Vérifiez votre connexion et réessayez.';
+        } finally {
+            const mdp = document.getElementById('autonome_password');
+            if (mdp) mdp.value = '';
+            this.envoi = false;
+        }
+    },
+
+    async confirmerCode() {
+        const form = this.$refs.autonomeCodeForm;
+        if (!form || !form.reportValidity()) return;
+        this.erreurs = {};
+        this.message = '';
+        this.envoi = true;
+        try {
+            const reponse = await fetch(form.action, {
+                method: 'POST',
+                headers: { 'X-CSRF-TOKEN': this.jetonCsrf(), Accept: 'application/json' },
+                body: new FormData(form),
+            });
+            if (reponse.status === 422) {
+                const donnees = await reponse.json().catch(() => ({}));
+                this.erreurs = donnees.errors || {};
+                this.message = 'Veuillez corriger le code indiqué.';
+                return;
+            }
+            if (reponse.status === 429) {
+                this.message = 'Trop de tentatives. Patientez une minute avant de réessayer.';
+                return;
+            }
+            const donnees = await reponse.json();
+            if (donnees.ok) {
+                this.codeOuvert = false;
+                this.succes = donnees.message || '';
+                this.succesAdresse = donnees.succes || '';
+            } else {
+                this.message = donnees.message || '';
+            }
+        } catch (e) {
+            this.message = 'Erreur réseau. Vérifiez votre connexion et réessayez.';
+        } finally {
+            const champ = document.getElementById('code_autonome');
+            if (champ) champ.value = '';
+            this.envoi = false;
+        }
+    },
+}));
+
+/**
+ * Parcours d'inscription 100 % sur la page d'accueil (modal, SANS
+ * navigation) : choix → existant (recherche → code → dossier → email) ou
+ * nouvelle (identification → wizard embarqué). Tous les endpoints sont les
+ * parcours canoniques (mêmes validations, services, transactions) ; seules
+ * les enveloppes de réponse changent (JSON). Aucune donnée avant preuve,
+ * aucun secret conservé, mots de passe effacés après envoi.
+ */
+Alpine.data('parcoursAccueil', () => ({
+    ouvert: false,
+    vue: 'choix',
+    retour: [],
+    envoi: false,
+    message: '',
+    erreurs: {},
+    /** Dernier déclencheur (retour focus à la fermeture, a11y). */
+    declencheurPrecedent: null,
+    // Existant.
+    dossier: null,
+    dossierFlags: {},
+    coordsSucces: null,
+    emailEtape: 'saisie',
+    emailMessage: '',
+    emailErreurs: {},
+    emailSucces: '',
+    // Suivi embarqué (consultation, endpoint canonique JSON, sans navigation).
+    suivi: null,
+    suiviMessage: '',
+    suiviErreurs: {},
+    // Nouvelle.
+    identMessage: '',
+    identErreurs: {},
+    nouvellePrete: false,
+    // Wizard embarqué.
+    inscriptionOk: null,
+    // Période (miroir du scope `periodeInscription` de la page canonique :
+    // le wizard partagé lit `periode.interactif`). Défaut fermé, puis état
+    // réel via l'endpoint canonique à l'entrée de l'état nouvelle.
+    periode: { interactif: false, statut: '', titre: '', message: 'Vérification de la période en cours…', debut: null, fin: null },
+    periodeChargee: false,
+
+    /** État réel des périodes (même endpoint que la page canonique). */
+    async actualiserPeriode() {
+        try {
+            const panneau = document.getElementById('panneau-nouvelle');
+            const params = new URLSearchParams({
+                faculte_id: panneau?.querySelector('[name="faculte_id"]')?.value ?? '',
+                annee: panneau?.querySelector('[name="annee_academique"]')?.value ?? '',
+                cin: panneau?.querySelector('[name="cin"]')?.value ?? '',
+            });
+            const reponse = await fetch(`/inscription/periode-etat?${params.toString()}`, {
+                headers: { Accept: 'application/json' },
+                cache: 'no-store',
+            });
+            if (!reponse.ok) return;
+            const json = await reponse.json();
+            if (json && typeof json.interactif === 'boolean') {
+                this.periode = json;
+                window.dispatchEvent(new CustomEvent('periode-actualisee', { detail: { interactif: json.interactif } }));
+            }
+        } catch (e) { /* fail-closed : l'état restrictif est conservé */ }
+    },
+
+    jetonCsrf() {
+        return document.querySelector('meta[name="csrf-token"]')?.content ?? '';
+    },
+
+    async postJSON(url, donnees) {
+        const reponse = await fetch(url, {
+            method: 'POST',
+            headers: {
+                Accept: 'application/json',
+                'X-Requested-With': 'XMLHttpRequest',
+                'X-CSRF-TOKEN': this.jetonCsrf(),
+            },
+            body: donnees,
+        });
+        let corps = {};
+        try { corps = await reponse.json(); } catch (e) { corps = {}; }
+        return { statut: reponse.status, corps };
+    },
+
+    async getJSON(url) {
+        const reponse = await fetch(url, { headers: { Accept: 'application/json' } });
+        let corps = {};
+        try { corps = await reponse.json(); } catch (e) { corps = {}; }
+        return { statut: reponse.status, corps };
+    },
+
+    /* États d'interface (LOOP-POPUP-HOME-ONLY-04, sans navigation) :
+     * `choix` (= choix), `existant` (= dossier_existant : recherche),
+     * `existant-code` (= verification : code à usage unique),
+     * `dossier` (= dossier_verifie : lecture + mises à jour autorisées),
+     * `nouvelle` (= nouvelle_inscription : identification + wizard officiel
+     * embarqué), `suivi` (= suivi_dossier : consultation publique, endpoint
+     * canonique JSON). Le changement d'état ne provoque AUCUNE navigation
+     * complète (ni changement d'URL applicative, ni rechargement). */
+    ciblesFocus() {
+        return {
+            choix: 'titre-parcours-accueil',
+            existant: 'm-ex-cin',
+            'existant-code': 'm-ex-code',
+            dossier: 'titre-dossier',
+            nouvelle: 'm-id-cin',
+            suivi: 'm-sv-reference',
+        };
+    },
+
+    donnerFocus(vue) {
+        const cible = (this.ciblesFocus()[vue] || 'titre-parcours-accueil');
+        this.$nextTick(() => document.getElementById(cible)?.focus?.({ preventScroll: true }));
+    },
+
+    ouvrir(vueInitiale = 'choix') {
+        this.declencheurPrecedent = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+        this.retour = [];
+        this.vue = 'choix';
+        this.message = '';
+        this.erreurs = {};
+        this.suivi = null;
+        this.suiviMessage = '';
+        this.suiviErreurs = {};
+        if (vueInitiale !== 'choix') {
+            this.retour.push('choix');
+            this.vue = vueInitiale;
+            if (vueInitiale === 'nouvelle' && !this.periodeChargee) {
+                this.periodeChargee = true;
+                this.actualiserPeriode();
+            }
+        }
+        this.ouvert = true;
+        this.$nextTick(() => document.getElementById('titre-parcours-accueil')?.focus());
+        document.body.style.overflow = 'hidden';
+    },
+
+    fermer() {
+        this.ouvert = false;
+        this.vue = 'choix';
+        this.retour = [];
+        this.message = '';
+        document.body.style.overflow = '';
+        this.$nextTick(() => {
+            const cible = this.declencheurPrecedent && document.contains(this.declencheurPrecedent)
+                ? this.declencheurPrecedent
+                : document.getElementById('btn-commencer-accueil');
+            cible?.focus?.();
+        });
+    },
+
+    aller(vue) {
+        if (this.vue && this.vue !== vue) this.retour.push(this.vue);
+        this.vue = vue;
+        this.message = '';
+        this.erreurs = {};
+        if (vue === 'nouvelle' && !this.periodeChargee) {
+            this.periodeChargee = true;
+            this.actualiserPeriode();
+        }
+        this.donnerFocus(vue);
+    },
+
+    precedant() {
+        const avant = this.retour.pop();
+        this.vue = avant || 'choix';
+        this.message = '';
+        this.erreurs = {};
+        this.donnerFocus(this.vue);
+    },
+
+    /* ── Branche existante (endpoints canoniques, JSON) ── */
+
+    async rechercherDossier(form) {
+        if (!form.reportValidity()) return;
+        this.erreurs = {};
+        this.message = '';
+        this.envoi = true;
+        try {
+            const { statut, corps } = await this.postJSON(form.action, new FormData(form));
+            if (statut === 429) {
+                this.message = 'Trop de tentatives. Patientez une minute avant de réessayer.';
+                return;
+            }
+            this.message = corps.message || '';
+            if (corps.etape === 'code') this.aller('existant-code');
+        } catch (e) {
+            this.message = 'Erreur réseau. Vérifiez votre connexion et réessayez.';
+        } finally {
+            this.envoi = false;
+        }
+    },
+
+    async verifierCode(form) {
+        if (!form.reportValidity()) return;
+        this.erreurs = {};
+        this.message = '';
+        this.envoi = true;
+        try {
+            const { statut, corps } = await this.postJSON(form.action, new FormData(form));
+            if (statut === 422) {
+                this.erreurs = corps.errors || {};
+                this.message = 'Veuillez corriger le code indiqué.';
+                return;
+            }
+            if (statut === 429) {
+                this.message = 'Trop de tentatives. Patientez une minute avant de réessayer.';
+                return;
+            }
+            if (!corps.ok) {
+                this.message = corps.message || '';
+                return;
+            }
+            await this.chargerDossier();
+        } catch (e) {
+            this.message = 'Erreur réseau. Vérifiez votre connexion et réessayez.';
+        } finally {
+            const champ = document.getElementById('m-ex-code');
+            if (champ) champ.value = '';
+            this.envoi = false;
+        }
+    },
+
+    async chargerDossier() {
+        const { statut, corps } = await this.getJSON('/inscription/existant/donnees');
+        if (!corps.ok) {
+            this.message = corps.message || '';
+            return;
+        }
+        this.dossier = corps.dossier || null;
+        this.dossierFlags = {
+            modifiable: !!corps.dossierModifiable,
+            email: !!corps.emailModifiable,
+            message: corps.messageStatut || null,
+            modifiables: corps.modifiables || [],
+        };
+        this.coordsSucces = null;
+        this.emailEtape = 'saisie';
+        this.emailSucces = '';
+        this.aller('dossier');
+    },
+
+    async enregistrerCoords(form) {
+        if (!form.reportValidity()) return;
+        this.erreurs = {};
+        this.message = '';
+        this.envoi = true;
+        try {
+            const { statut, corps } = await this.postJSON(form.action, new FormData(form));
+            if (statut === 422) {
+                this.erreurs = corps.errors || {};
+                this.message = corps.message || 'Veuillez corriger les champs indiqués.';
+                return;
+            }
+            if (statut === 429) {
+                this.message = 'Trop de tentatives. Patientez une minute avant de réessayer.';
+                return;
+            }
+            if (!corps.ok) {
+                this.message = corps.message || '';
+                return;
+            }
+            this.coordsSucces = corps.confirmation || {};
+            await this.chargerDossierSilencieux();
+        } catch (e) {
+            this.message = 'Erreur réseau. Vérifiez votre connexion et réessayez.';
+        } finally {
+            this.envoi = false;
+        }
+    },
+
+    async chargerDossierSilencieux() {
+        const { corps } = await this.getJSON('/inscription/existant/donnees');
+        if (corps.ok) {
+            this.dossier = corps.dossier || null;
+            this.dossierFlags = {
+                modifiable: !!corps.dossierModifiable,
+                email: !!corps.emailModifiable,
+                message: corps.messageStatut || null,
+                modifiables: corps.modifiables || [],
+            };
+        }
+    },
+
+    /* Email triple preuve (endpoints canoniques JSON, jeton de session). */
+
+    async demanderEmail(form) {
+        if (!form.reportValidity()) return;
+        this.emailErreurs = {};
+        this.emailMessage = '';
+        this.envoi = true;
+        try {
+            const { statut, corps } = await this.postJSON(form.action, new FormData(form));
+            if (statut === 422) {
+                this.emailErreurs = corps.errors || {};
+                this.emailMessage = corps.message || 'Veuillez corriger les champs indiqués.';
+                return;
+            }
+            if (statut === 429) {
+                this.emailMessage = 'Trop de tentatives. Patientez une minute avant de réessayer.';
+                return;
+            }
+            this.emailMessage = corps.message || '';
+            if (corps.etape === 'code') {
+                this.emailEtape = 'code';
+                this.$nextTick(() => document.getElementById('m-email-code')?.focus());
+            }
+        } catch (e) {
+            this.emailMessage = 'Erreur réseau. Vérifiez votre connexion et réessayez.';
+        } finally {
+            this.envoi = false;
+        }
+    },
+
+    async confirmerEmail(form, champCode, etapeSuivante) {
+        if (!form.reportValidity()) return;
+        this.emailErreurs = {};
+        this.emailMessage = '';
+        this.envoi = true;
+        try {
+            const { statut, corps } = await this.postJSON(form.action, new FormData(form));
+            if (statut === 422) {
+                this.emailErreurs = corps.errors || {};
+                this.emailMessage = corps.message || 'Veuillez corriger le code indiqué.';
+                return;
+            }
+            if (statut === 429) {
+                this.emailMessage = 'Trop de tentatives. Patientez une minute avant de réessayer.';
+                return;
+            }
+            if (!corps.ok) {
+                this.emailMessage = corps.message || '';
+                if (corps.etape) this.emailEtape = (corps.etape === 'code-nouvelle') ? 'code-nouvelle' : 'code';
+                return;
+            }
+            if (corps.succes) {
+                this.emailEtape = 'succes';
+                this.emailSucces = corps.succes;
+                this.emailMessage = corps.message || '';
+                await this.chargerDossierSilencieux();
+            } else if (corps.etape) {
+                this.emailEtape = (corps.etape === 'code-nouvelle') ? 'code-nouvelle' : 'code';
+                this.emailMessage = corps.message || '';
+                this.$nextTick(() => document.getElementById('m-email-code2')?.focus());
+            }
+        } catch (e) {
+            this.emailMessage = 'Erreur réseau. Vérifiez votre connexion et réessayez.';
+        } finally {
+            const champ = document.getElementById(champCode);
+            if (champ) champ.value = '';
+            this.envoi = false;
+        }
+    },
+
+    /* ── Branche nouvelle (identification JSON + wizard embarqué) ── */
+
+    async identifierNouveau(form) {
+        if (!form.reportValidity()) return;
+        this.identErreurs = {};
+        this.identMessage = '';
+        this.envoi = true;
+        try {
+            const { statut, corps } = await this.postJSON(form.action, new FormData(form));
+            if (statut === 422) {
+                this.identErreurs = corps.errors || {};
+                this.identMessage = 'Veuillez corriger les champs indiqués.';
+                return;
+            }
+            if (statut === 429) {
+                this.identMessage = 'Trop de tentatives. Patientez une minute avant de réessayer.';
+                return;
+            }
+            const statutDossier = corps.status || corps.statut || '';
+            if (statutDossier === 'EXISTING_STUDENT') {
+                // Dossier existant détecté : bascule vers la branche
+                // existante SANS navigation (CIN/DOB repris).
+                const cin = form.querySelector('[name="cin"]')?.value || '';
+                const dob = form.querySelector('[name="date_naissance"]')?.value || '';
+                const cibleCin = document.getElementById('m-ex-cin');
+                const cibleDob = document.getElementById('m-ex-dob');
+                if (cibleCin) cibleCin.value = cin;
+                if (cibleDob) cibleDob.value = dob;
+                this.identMessage = corps.message || '';
+                this.aller('existant');
+                return;
+            }
+            if (statutDossier === 'MENS_FOUND' && corps.prefill) {
+                this.appliquerPrefillModal(corps.prefill);
+                if (corps.prefill.sexe) {
+                    window.dispatchEvent(new CustomEvent('sexe-identifie', { detail: { sexe: corps.prefill.sexe } }));
+                }
+            }
+            if (statutDossier === 'MENS_UNAVAILABLE' || statutDossier === 'AMBIGUOUS') {
+                this.identMessage = corps.message || '';
+            }
+            this.nouvellePrete = true;
+            window.dispatchEvent(new CustomEvent('identification-verifiee'));
+            this.aller('nouvelle');
+        } catch (e) {
+            this.identMessage = 'Erreur réseau. Vérifiez votre connexion et réessayez.';
+        } finally {
+            this.envoi = false;
+        }
+    },
+
+    /* ── Branche suivi (endpoint canonique JSON, sans navigation) ── */
+
+    async rechercherSuivi(form) {
+        if (!form.reportValidity()) return;
+        this.suiviErreurs = {};
+        this.suiviMessage = '';
+        this.envoi = true;
+        try {
+            const { statut, corps } = await this.postJSON(form.action, new FormData(form));
+            if (statut === 422) {
+                this.suiviErreurs = corps.errors || {};
+                this.suiviMessage = 'Veuillez corriger les champs indiqués.';
+                return;
+            }
+            if (statut === 429) {
+                this.suiviMessage = 'Trop de tentatives. Patientez une minute avant de réessayer.';
+                return;
+            }
+            if (!corps.ok) {
+                this.suivi = null;
+                this.suiviMessage = corps.message || '';
+                return;
+            }
+            this.suivi = corps.suivi || null;
+            this.suiviMessage = '';
+        } catch (e) {
+            this.suiviMessage = 'Erreur réseau. Vérifiez votre connexion et réessayez.';
+        } finally {
+            this.envoi = false;
+        }
+    },
+
+    nouvelleRechercheSuivi() {
+        this.suivi = null;
+        this.suiviMessage = '';
+        this.suiviErreurs = {};
+        this.donnerFocus('suivi');
+    },
+
+    /** Pré-remplissage MENS limité au panneau modal (par nom, jamais global). */
+    appliquerPrefillModal(prefill) {
+        const panneau = document.getElementById('panneau-nouvelle');
+        if (!panneau || !prefill) return;
+        ['cin', 'nom', 'prenom', 'date_naissance', 'nationalite'].forEach((champ) => {
+            const el = panneau.querySelector(`[name="${champ}"]`);
+            const valeur = prefill[champ];
+            if (el && valeur !== null && valeur !== undefined && valeur !== '') el.value = valeur;
+        });
     },
 }));
 

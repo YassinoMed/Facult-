@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Services\SuiviDossierService;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
 
@@ -23,7 +24,7 @@ class SuiviPublicController extends Controller
         ]);
     }
 
-    public function rechercher(Request $request, SuiviDossierService $service): View
+    public function rechercher(Request $request, SuiviDossierService $service): View|JsonResponse
     {
         $request->validate([
             'reference' => 'required|string|max:50',
@@ -35,6 +36,21 @@ class SuiviPublicController extends Controller
 
         $reference = $request->string('reference')->toString();
         $secondaire = $request->string('secondaire')->toString();
+
+        // Branche embarquée (popup d'accueil, sans navigation) : même
+        // validation, même service, même neutralité — enveloppe JSON.
+        if ($request->wantsJson()) {
+            $suivi = $service->rechercherPublic($reference, $secondaire);
+
+            if ($suivi === null) {
+                return response()->json([
+                    'ok' => false,
+                    'message' => 'Aucun dossier correspondant n’a été trouvé avec ces références. Vérifiez vos identifiants ou connectez-vous à votre Espace Étudiant.',
+                ]);
+            }
+
+            return response()->json(['ok' => true, 'suivi' => $suivi]);
+        }
 
         $suivi = $service->rechercherPublic($reference, $secondaire);
 

@@ -18,7 +18,7 @@ use Illuminate\Support\Facades\Route;
 | module désactivé = 404, même en appel direct. L'activation est
 | serveur uniquement (config/modules.php ← env).
 */
-Route::middleware(['auth', 'admin', 'module:attendance'])->prefix('admin')->name('admin.')->group(function () {
+Route::middleware(['auth', 'admin', 'secondaire.verrou', 'module:attendance'])->prefix('admin')->name('admin.')->group(function () {
     Route::get('presences', [PresenceController::class, 'index'])
         ->middleware('can:attendance.view')
         ->name('presences.index');

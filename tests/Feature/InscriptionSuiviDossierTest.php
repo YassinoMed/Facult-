@@ -293,4 +293,35 @@ class InscriptionSuiviDossierTest extends TestCase
         $reponse->assertSee('Inscription validée');
         $reponse->assertSee('Télécharger le récépissé officiel');
     }
+
+    /**
+     * Test 10 : Branche JSON embarquée (popup d'accueil, sans navigation) :
+     * même validation, même service, même neutralité anti-énumération.
+     */
+    public function test_branche_json_embarquee_popup_sans_navigation(): void
+    {
+        // Succès : enveloppe JSON avec la synthèse publique (données masquées uniquement).
+        $reponse = $this->postJson(route('inscription.suivi.rechercher'), [
+            'reference' => $this->etudiantA->num_inscription,
+            'secondaire' => $this->etudiantA->cin,
+        ]);
+
+        $reponse->assertOk()->assertJsonPath('ok', true);
+        $reponse->assertJsonPath('suivi.reference', $this->etudiantA->num_inscription);
+        $reponse->assertJsonPath('suivi.etudiant.nom_complet', $this->etudiantA->nom_complet);
+
+        // Aucune donnée brute sensible dans l'enveloppe JSON.
+        $contenu = $reponse->getContent();
+        $this->assertStringNotContainsString('karim.benali@test.ma', $contenu);
+        $this->assertStringNotContainsString('KA100001', $contenu);
+
+        // Échec neutre : même enveloppe, aucun oracle d'existence.
+        $reponseInconnue = $this->postJson(route('inscription.suivi.rechercher'), [
+            'reference' => 'INS-2025-99999',
+            'secondaire' => 'KA100001',
+        ]);
+
+        $reponseInconnue->assertOk()->assertJsonPath('ok', false);
+        $reponseInconnue->assertJsonStructure(['ok', 'message']);
+    }
 }

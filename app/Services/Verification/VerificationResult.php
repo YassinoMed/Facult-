@@ -39,6 +39,7 @@ readonly class VerificationResult
         public array $reglesExecutees,
         public float $dureeMs,
         public int $etudiantId,
+        public string $versionMoteur = VerificationEngine::VERSION,
     ) {
         $this->rulesChecked = count($reglesExecutees);
 

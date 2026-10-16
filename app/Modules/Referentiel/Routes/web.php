@@ -13,7 +13,7 @@ use Illuminate\Support\Facades\Route;
 | Fondation académique : tableau de bord, arbre, qualité, CRUD des
 | entités, maquettes versionnées, ECUE. Verrou `module:referentiel`.
 */
-Route::middleware(['auth', 'admin', 'module:referentiel'])->prefix('admin')->name('admin.')->group(function () {
+Route::middleware(['auth', 'admin', 'secondaire.verrou', 'module:referentiel'])->prefix('admin')->name('admin.')->group(function () {
     Route::prefix('referentiel')->name('referentiel.')->group(function () {
         Route::get('tableau-bord', [ReferentielController::class, 'tableauBord'])
             ->middleware('can:referentiel.view')->name('tableau-bord');

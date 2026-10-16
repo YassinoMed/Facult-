@@ -13,6 +13,7 @@ use App\Modules\Sentinel\Services\Checks\OperationsSensiblesCheck;
 use App\Modules\Sentinel\Services\Checks\SauvegardeEchecsCheck;
 use App\Modules\Sentinel\Services\Checks\SauvegardeFraicheurCheck;
 use App\Modules\Sentinel\Services\Checks\StockagePriveCheck;
+use App\Modules\Sentinel\Services\Checks\VerrouillageSecuriteCheck;
 
 /*
 |--------------------------------------------------------------------------
@@ -37,5 +38,6 @@ return [
         DossierPiecesRequisesCheck::class,
         SauvegardeFraicheurCheck::class,
         SauvegardeEchecsCheck::class,
+        VerrouillageSecuriteCheck::class,
     ],
 ];

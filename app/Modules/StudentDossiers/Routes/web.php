@@ -14,7 +14,7 @@ use Illuminate\Support\Facades\Route;
 | Toujours enregistrées, verrouillées par `module:student-dossiers` :
 | module désactivé = 404, même en appel direct (serveur uniquement).
 */
-Route::middleware(['auth', 'admin', 'module:student-dossiers'])->prefix('admin')->name('admin.')->group(function () {
+Route::middleware(['auth', 'admin', 'secondaire.verrou', 'module:student-dossiers'])->prefix('admin')->name('admin.')->group(function () {
     Route::get('student-dossiers', [StudentDossierController::class, 'index'])
         ->middleware('can:student_dossiers.view')
         ->name('student-dossiers.index');

@@ -7,13 +7,12 @@ use App\Http\Requests\InscriptionRequest;
 use App\Http\Requests\ScanIdentityDocumentRequest;
 use App\Http\Requests\VerifierCinRequest;
 use App\Models\Etudiant;
-use App\Models\Faculte;
 use App\Models\MensReference;
 use App\Modules\Referentiel\Models\Niveau;
-use App\Modules\Referentiel\Models\Programme;
 use App\Services\AssistantFaqService;
 use App\Services\AuditService;
 use App\Services\DocumentsRequisService;
+use App\Services\DonneesFormulaireInscription;
 use App\Services\EligibiliteParcoursService;
 use App\Services\IdentificationIntelligenteService;
 use App\Services\Identity\IdentityDocumentService;
@@ -24,52 +23,15 @@ use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Str;
 use Illuminate\View\View;
 
 class InscriptionController extends Controller
 {
-    public function create(PeriodeInscriptionService $periodes, DocumentsRequisService $documentsRequis)
+    public function create(DonneesFormulaireInscription $donnees)
     {
-        $facultes = Faculte::where('active', true)
-            ->with(['programmes' => fn ($q) => $q->where('statut', Programme::STATUT_ACTIF)->with('niveaux')])
-            ->orderBy('nom')
-            ->get();
-        $niveaux = ['L1', 'L2', 'L3', 'M1', 'M2', 'D1', 'D2', 'D3'];
-
-        $anneeActuelle = (int) date('Y');
-
-        // Années académiques (ex: 2024-2025, 2025-2026, 2026-2027)
-        $anneesAcademiques = [];
-        for ($i = 0; $i <= 2; $i++) {
-            $debut = $anneeActuelle - 1 + $i;
-            $fin = $debut + 1;
-            $anneesAcademiques[] = "$debut-$fin";
-        }
-
-        // Années d'obtention du baccalauréat (15 dernières années)
-        $anneesBac = [];
-        for ($year = $anneeActuelle; $year >= $anneeActuelle - 15; $year--) {
-            $anneesBac[] = (string) $year;
-        }
-
-        $mentionsBac = ['Passable', 'Assez Bien', 'Bien', 'Très Bien', 'Excellent'];
-
-        // LOOP périodes : état global initial (sans contexte) — affiné
-        // par faculté/année via /inscription/periode-etat.
-        $etatInscription = $periodes->etatGlobal();
-
-        // LOOP 04 : checklist documentaire dynamique par type d'inscription
-        $checklistsDocuments = [
-            'premiere' => $documentsRequis->checklistPourType('premiere'),
-            'reinscription' => $documentsRequis->checklistPourType('reinscription'),
-            'transfert' => $documentsRequis->checklistPourType('transfert'),
-        ];
-
-        // LOOP 09 : Jeton d'idempotence pour prévenir le double dépôt
-        $idempotencyToken = (string) Str::uuid();
-
-        return view('inscription.create', compact('facultes', 'niveaux', 'anneesAcademiques', 'anneesBac', 'mentionsBac', 'etatInscription', 'checklistsDocuments', 'idempotencyToken'));
+        // Données centralisées (service partagé avec le parcours embarqué) :
+        // mêmes facultés, référentiels, état des périodes et jeton.
+        return view('inscription.create', $donnees->pourCreation());
     }
 
     /**
@@ -93,6 +55,13 @@ class InscriptionController extends Controller
                 $request->string('cin')->toString() ?: null,
             );
         } catch (\DomainException $e) {
+            if ($request->wantsJson()) {
+                return response()->json([
+                    'message' => $e->getMessage(),
+                    'errors' => ['periode' => [$e->getMessage()]],
+                ], 422);
+            }
+
             return back()->withErrors(['periode' => $e->getMessage()])->withInput();
         }
 
@@ -118,12 +87,30 @@ class InscriptionController extends Controller
                         && $estMemeEmail;
 
                     if ($estMemeEmail && ($estMemeTokenSession || $estCreationRecente)) {
+                        if ($request->wantsJson()) {
+                            return response()->json([
+                                'ok' => true,
+                                'deja_enregistre' => true,
+                                'num_inscription' => $existant->num_inscription,
+                                'nom_etudiant' => $existant->nom_complet,
+                                'faculte_nom' => $existant->faculte?->nom,
+                                'message' => 'Votre inscription a déjà été enregistrée avec succès !',
+                            ]);
+                        }
+
                         return redirect()->route('inscription.success')
                             ->with('num_inscription', $existant->num_inscription)
                             ->with('nom_etudiant', $existant->nom_complet)
                             ->with('faculte_nom', $existant->faculte?->nom)
                             ->with('success', 'Votre inscription a déjà été enregistrée avec succès !');
                     }
+                }
+
+                if ($request->wantsJson()) {
+                    return response()->json([
+                        'message' => 'Un dossier existe déjà avec ce numéro de CIN. Veuillez vous connecter pour continuer votre inscription.',
+                        'errors' => ['cin' => ['Un dossier existe déjà avec ce numéro de CIN. Veuillez vous connecter pour continuer votre inscription.']],
+                    ], 422);
                 }
 
                 return back()->withErrors([
@@ -137,11 +124,29 @@ class InscriptionController extends Controller
             $existantEmail = Etudiant::whereRaw('LOWER(TRIM(email)) = ?', [$emailNormalise])->first();
             if ($existantEmail) {
                 if ($idempotencyToken !== '' && session("idempotency_token_{$idempotencyToken}") === $existantEmail->num_inscription) {
+                    if ($request->wantsJson()) {
+                        return response()->json([
+                            'ok' => true,
+                            'deja_enregistre' => true,
+                            'num_inscription' => $existantEmail->num_inscription,
+                            'nom_etudiant' => $existantEmail->nom_complet,
+                            'faculte_nom' => $existantEmail->faculte?->nom,
+                            'message' => 'Votre inscription a déjà été enregistrée avec succès !',
+                        ]);
+                    }
+
                     return redirect()->route('inscription.success')
                         ->with('num_inscription', $existantEmail->num_inscription)
                         ->with('nom_etudiant', $existantEmail->nom_complet)
                         ->with('faculte_nom', $existantEmail->faculte?->nom)
                         ->with('success', 'Votre inscription a déjà été enregistrée avec succès !');
+                }
+
+                if ($request->wantsJson()) {
+                    return response()->json([
+                        'message' => 'Un dossier existe déjà avec cette adresse email. Veuillez vous connecter pour continuer votre inscription.',
+                        'errors' => ['email' => ['Un dossier existe déjà avec cette adresse email. Veuillez vous connecter pour continuer votre inscription.']],
+                    ], 422);
                 }
 
                 return back()->withErrors([
@@ -158,6 +163,13 @@ class InscriptionController extends Controller
         $naissanceSoumise = trim((string) $request->input('date_naissance'));
 
         if ($naissanceSoumise === '') {
+            if ($request->wantsJson()) {
+                return response()->json([
+                    'message' => $this->messageIdentification(),
+                    'errors' => ['identification' => [$this->messageIdentification()]],
+                ], 422);
+            }
+
             return back()->withErrors(['identification' => $this->messageIdentification()])->withInput();
         }
 
@@ -170,6 +182,13 @@ class InscriptionController extends Controller
             ->contains(fn ($divergence) => ($divergence['gravite'] ?? null) === 'BLOQUANT');
 
         if (! in_array($identification['statut'], ['MENS_SEUL', 'MENS_ET_LOCAL'], true) || $bloquant) {
+            if ($request->wantsJson()) {
+                return response()->json([
+                    'message' => $this->messageIdentification(),
+                    'errors' => ['identification' => [$this->messageIdentification()]],
+                ], 422);
+            }
+
             return back()->withErrors(['identification' => $this->messageIdentification()])->withInput();
         }
 
@@ -177,6 +196,16 @@ class InscriptionController extends Controller
         $bilanEligibilite = app(EligibiliteParcoursService::class)->evaluer($request->all());
 
         if (! $bilanEligibilite['eligible']) {
+            if ($request->wantsJson()) {
+                $bloquants = $bilanEligibilite['bloquants'] ?? ['eligibilite' => 'Inscription non éligible.'];
+                $messagePremier = is_array($bloquants) ? (string) reset($bloquants) : (string) $bloquants;
+
+                return response()->json([
+                    'message' => $messagePremier,
+                    'errors' => is_array($bloquants) ? $bloquants : ['eligibilite' => [$bloquants]],
+                ], 422);
+            }
+
             return back()->withErrors($bilanEligibilite['bloquants'])->withInput();
         }
 
@@ -222,12 +251,30 @@ class InscriptionController extends Controller
                     ->whereRaw("REPLACE(UPPER(TRIM(cin)), ' ', '') = ?", [$cinNormalise])
                     ->first();
                 if ($existant && $existant->created_at && $existant->created_at->diffInSeconds(now()) < 30) {
+                    if ($request->wantsJson()) {
+                        return response()->json([
+                            'ok' => true,
+                            'deja_enregistre' => true,
+                            'num_inscription' => $existant->num_inscription,
+                            'nom_etudiant' => $existant->nom_complet,
+                            'faculte_nom' => $existant->faculte?->nom,
+                            'message' => 'Votre inscription a été enregistrée avec succès !',
+                        ]);
+                    }
+
                     return redirect()->route('inscription.success')
                         ->with('num_inscription', $existant->num_inscription)
                         ->with('nom_etudiant', $existant->nom_complet)
                         ->with('faculte_nom', $existant->faculte?->nom)
                         ->with('success', 'Votre inscription a été enregistrée avec succès !');
                 }
+            }
+
+            if ($request->wantsJson()) {
+                return response()->json([
+                    'message' => 'Un dossier avec ce numéro de CIN ou cette adresse email a déjà été enregistré.',
+                    'errors' => ['cin' => ['Un dossier avec ce numéro de CIN ou cette adresse email a déjà été enregistré.']],
+                ], 422);
             }
 
             return back()->withErrors([
@@ -247,6 +294,17 @@ class InscriptionController extends Controller
         // parcours d'inscription les connaisse. Aucun effet de bord ici
         // si aucun listener n'est enregistré.
         StudentRegistered::dispatch($etudiant);
+
+        if ($request->wantsJson()) {
+            return response()->json([
+                'ok' => true,
+                'deja_enregistre' => false,
+                'num_inscription' => $etudiant->num_inscription,
+                'nom_etudiant' => $etudiant->nom_complet,
+                'faculte_nom' => $etudiant->faculte?->nom,
+                'message' => 'Votre inscription a été enregistrée avec succès !',
+            ]);
+        }
 
         return redirect()->route('inscription.success')
             ->with('num_inscription', $etudiant->num_inscription)
@@ -329,16 +387,18 @@ class InscriptionController extends Controller
     }
 
     /**
-     * Recherche publique par CIN + DATE DE NAISSANCE pour le
-     * pré-remplissage (§1-6, audit §P0-4).
+     * Recherche publique par CIN + DATE DE NAISSANCE (audit §P0-4,
+     * extension LOOP « dossier existant »).
      *
      * POST (CSRF obligatoire, CIN jamais exposé dans les URLs/logs) :
      * - étudiant introuvable OU date incorrecte → { "exists": false }
      *   (réponse identique : aucune énumération possible) ;
-     * - correspondance exacte → { "exists": true, "etudiant": { DTO whitelist } }
-     *   SANS mot de passe, sans hash, sans modèle complet.
-     * La création/mise à jour n'a JAMAIS lieu ici : la soumission finale
-     * reste soumise à la validation stricte d'unicité (message métier).
+     * - correspondance exacte → { "exists": true, "verification_requise": true,
+     *   "email_masque", "redirection" } — AUCUNE donnée personnelle du
+     *   dossier (le couple CIN + naissance ne constitue PAS une preuve
+     *   d'identité suffisante) : l'accès aux données exige le code de
+     *   vérification à usage unique du parcours sécurisé dédié.
+     * La création/mise à jour n'a JAMAIS lieu ici.
      */
     public function verifierCin(VerifierCinRequest $request, StudentLookupService $lookup): JsonResponse
     {
@@ -353,7 +413,9 @@ class InscriptionController extends Controller
 
         return response()->json([
             'exists' => true,
-            'etudiant' => $lookup->donneesPrefill($etudiant),
+            'verification_requise' => true,
+            'email_masque' => $etudiant->email_masque,
+            'redirection' => route('inscription.existant.accueil'),
         ]);
     }
 
@@ -412,9 +474,16 @@ class InscriptionController extends Controller
                 MensReference::normaliserCin($request->validated('cin'))
             )->whereDate('date_naissance', $request->validated('date_naissance'))->firstOrFail();
 
+            // Extension LOOP « dossier existant » : AUCUNE donnée du
+            // dossier avant vérification d'identité (code à usage unique
+            // envoyé à l'adresse déjà enregistrée). L'adresse n'est
+            // retournée que masquée (pattern établi), avec la redirection
+            // vers le parcours sécurisé de mise à jour.
             return response()->json([
                 'status' => 'EXISTING_STUDENT',
                 'masked_email' => $local->email_masque,
+                'redirection' => route('inscription.existant.accueil'),
+                'message' => 'Un dossier existe déjà pour ces références. Poursuivez via le parcours sécurisé de mise à jour.',
             ]);
         }
 
