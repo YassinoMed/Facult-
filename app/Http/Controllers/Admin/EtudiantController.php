@@ -3,10 +3,14 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\StoreEtudiantAdminRequest;
+use App\Http\Requests\UpdateEtudiantAdminRequest;
 use App\Models\AnneeUniversitaire;
 use App\Models\Etudiant;
 use App\Models\Faculte;
+use App\Models\InscriptionAcademique;
 use App\Models\IntegrationLog;
+use App\Models\User;
 use App\Models\VueSauvegardee;
 use App\Modules\Finances\Services\FinanceService;
 use App\Modules\Referentiel\Models\Niveau;
@@ -15,15 +19,18 @@ use App\Modules\Schedule\Models\Group;
 use App\Modules\StudentArchive\Services\StudentArchiveService;
 use App\Services\AcademicProgressionService;
 use App\Services\AuditService;
+use App\Services\CreationEtudiantAdminService;
 use App\Services\Exports\ListeEtudiantsService;
 use App\Services\FicheEtudiantService;
 use App\Services\Interface\RecentsService;
+use App\Services\ModificationEtudiantAdminService;
 use App\Services\PreferencesService;
 use App\Services\StudentStatusService;
 use App\Services\Verification\VerificationEngine;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Storage;
@@ -154,6 +161,156 @@ class EtudiantController extends Controller
                     fn ($q) => $q->where('faculte_id', $request->user()->faculteRestreinteId()))->get(),
             'annees' => AnneeUniversitaire::orderByDesc('libelle')->get(),
         ]);
+    }
+
+    /**
+     * Écran de création administrative d'un étudiant complet.
+     *
+     * Les référentiels sont scopés à la faculté de l'agent : un
+     * admin_faculte ne voit que sa faculté, ses parcours, ses niveaux
+     * et ses groupes (anti-IDOR dès le formulaire).
+     */
+    public function create(Request $request): View
+    {
+        Gate::authorize('create', Etudiant::class);
+
+        $utilisateur = $request->user();
+
+        return view('admin.etudiants.create', array_merge(
+            $this->referentielsFormulaire($utilisateur),
+            [
+                'anneeActive' => AnneeUniversitaire::active(),
+            ]
+        ));
+    }
+
+    /**
+     * Crée l'étudiant, son inscription validée et son affectation.
+     * Le statut de paiement est un simple oui/non : aucune facture ni
+     * transaction locale n'est créée (paiement effectué sur un site externe).
+     */
+    public function store(StoreEtudiantAdminRequest $request, CreationEtudiantAdminService $service): RedirectResponse
+    {
+        Gate::authorize('create', Etudiant::class);
+
+        try {
+            $resultat = $service->creer($request->validated(), $request->user());
+        } catch (\DomainException $exception) {
+            return back()->withInput()->withErrors(['creation' => $exception->getMessage()]);
+        } catch (\Throwable $exception) {
+            report($exception);
+
+            return back()->withInput()->withErrors([
+                'creation' => 'La création a échoué. Aucune donnée n’a été enregistrée.',
+            ]);
+        }
+
+        $message = "Étudiant {$resultat['etudiant']->nom_complet} créé et inscription validée.";
+
+        return redirect()->route('admin.etudiants.show', $resultat['etudiant'])
+            ->with('success', $message)
+            ->with('mot_de_passe_provisoire', $resultat['mot_de_passe']);
+    }
+
+    /**
+     * Écran de modification administrative de la fiche d'un étudiant.
+     *
+     * Les référentiels sont scopés à la faculté de l'agent (anti-IDOR dès
+     * le formulaire) : mêmes sources que `create()`, jamais une seconde
+     * requête de référentiel. Le statut, le groupe et le mot de passe ne
+     * sont pas modifiables ici (workflows dédiés).
+     */
+    public function edit(Request $request, Etudiant $etudiant): View
+    {
+        Gate::authorize('update', $etudiant);
+
+        $utilisateur = $request->user();
+
+        // Inscription courante : année universitaire la plus récente
+        // (scope `InscriptionAcademique::courante()` — source unique).
+        $inscription = InscriptionAcademique::courante()
+            ->where('inscriptions_academiques.etudiant_id', $etudiant->id)
+            ->first();
+
+        return view('admin.etudiants.edit', array_merge(
+            $this->referentielsFormulaire($utilisateur),
+            [
+                'etudiant' => $etudiant,
+                'inscription' => $inscription,
+                'groupeCourant' => $etudiant->groupe_id !== null ? Group::find((int) $etudiant->groupe_id) : null,
+            ]
+        ));
+    }
+
+    /**
+     * Référentiels du formulaire étudiant, scopés à la faculté de l'agent.
+     * Source unique pour `create()` et `edit()` — aucune duplication.
+     *
+     * Un agent restreint à une faculté ne voit que cette faculté, ses
+     * parcours, ses niveaux et ses groupes (anti-IDOR dès le formulaire).
+     *
+     * @return array<string, Collection>
+     */
+    private function referentielsFormulaire(User $utilisateur): array
+    {
+        $faculteRestreinteId = $utilisateur->faculteRestreinteId();
+
+        return [
+            'facultes' => Faculte::where('active', true)
+                ->when($faculteRestreinteId !== null, fn ($query) => $query->whereKey($faculteRestreinteId))
+                ->orderBy('nom')
+                ->get(),
+
+            'programmes' => Programme::query()->actifs()
+                ->when($faculteRestreinteId !== null, fn ($query) => $query->where('faculte_id', $faculteRestreinteId))
+                ->orderBy('code')
+                ->get(['id', 'faculte_id', 'code', 'nom']),
+
+            'niveaux' => Niveau::where('actif', true)
+                ->when($faculteRestreinteId !== null, fn ($query) => $query->whereHas(
+                    'programme',
+                    fn ($programme) => $programme->where('faculte_id', $faculteRestreinteId)
+                ))
+                ->with('programme:id,faculte_id,code,nom')
+                ->orderBy('ordre')
+                ->get(['id', 'programme_id', 'code', 'nom']),
+
+            'groupes' => Group::where('actif', true)
+                ->when($faculteRestreinteId !== null, fn ($query) => $query->where('faculte_id', $faculteRestreinteId))
+                ->withCount(['affectations as effectif_actuel' => fn ($query) => $query->where('statut', 'active')])
+                ->orderBy('code')
+                ->get([
+                    'id', 'code', 'nom', 'faculte_id', 'programme_id', 'niveau_id',
+                    'niveau', 'annee_universitaire_id', 'capacite', 'capacite_illimitee',
+                ]),
+
+            'annees' => AnneeUniversitaire::orderByDesc('date_debut')->get(),
+        ];
+    }
+
+    /**
+     * Enregistre la modification de la fiche : fiche + inscription courante
+     * + situation + audit, dans UNE seule transaction. Le statut, le
+     * groupe et le mot de passe ne sont jamais modifiés ici.
+     */
+    public function update(UpdateEtudiantAdminRequest $request, Etudiant $etudiant): RedirectResponse
+    {
+        Gate::authorize('update', $etudiant);
+
+        try {
+            app(ModificationEtudiantAdminService::class)->modifier($etudiant, $request->validated(), $request->user());
+        } catch (\DomainException $exception) {
+            return back()->withInput()->withErrors(['modification' => $exception->getMessage()]);
+        } catch (\Throwable $exception) {
+            report($exception);
+
+            return back()->withInput()->withErrors([
+                'modification' => 'La modification a échoué. Aucune donnée n’a été enregistrée.',
+            ]);
+        }
+
+        return redirect()->route('admin.etudiants.show', $etudiant)
+            ->with('success', "Dossier de {$etudiant->nom_complet} mis à jour.");
     }
 
     public function show(Etudiant $etudiant)

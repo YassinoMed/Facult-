@@ -16,13 +16,13 @@
                     </svg>
                 </div>
                 <div>
-                    <h1 class="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">Registre des Inscriptions</h1>
+                    <h1 class="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight" data-motion-block>Registre des Inscriptions</h1>
                     <p class="text-xs sm:text-sm text-slate-500">Gestion centrale des dossiers académiques, filtres multicritères et validation. <strong class="tabular-nums">{{ $etudiants->total() }}</strong> résultat(s).</p>
                 </div>
             </div>
         </div>
 
-        <div class="flex items-center gap-2.5">
+        <div class="flex flex-wrap items-center justify-end gap-2.5">
             <button type="button"
                     onclick="window.print()"
                     class="no-print inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50 shadow-xs transition-smooth">
@@ -31,6 +31,16 @@
                 </svg>
                 Imprimer le registre
             </button>
+
+            @can('create', App\Models\Etudiant::class)
+                <a href="{{ route('admin.etudiants.creer') }}"
+                   class="inline-flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2 text-xs font-bold text-emerald-800 shadow-xs hover:bg-emerald-100 transition-smooth">
+                    <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke-width="2.2" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+                    </svg>
+                    Créer un étudiant
+                </a>
+            @endcan
 
             <a href="{{ route('inscription.create') }}"
                class="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-primary-600 to-accent-600 px-4 py-2 text-xs font-bold text-white shadow-md shadow-primary-500/20 hover:shadow-lg hover:shadow-primary-500/30 hover:-translate-y-0.5 transition-smooth">
@@ -365,6 +375,10 @@
                                     <x-slot:liens>
                                         <a href="{{ route('admin.etudiants.show', $etudiant) }}" role="menuitem"
                                            class="block px-4 py-2.5 text-xs font-bold text-slate-700 hover:bg-slate-50 min-h-[44px]">Consulter le dossier</a>
+                                        @can('update', $etudiant)
+                                            <a href="{{ route('admin.etudiants.modifier', $etudiant) }}" role="menuitem"
+                                               class="block px-4 py-2.5 text-xs font-bold text-slate-700 hover:bg-slate-50 min-h-[44px]">Modifier</a>
+                                        @endcan
                                         <button type="button" role="menuitem"
                                                 @click="suppressionUrl = '{{ route('admin.etudiants.destroy', $etudiant) }}'; suppressionNom = @js($etudiant->nom_complet)"
                                                 class="block w-full px-4 py-2.5 text-left text-xs font-bold text-rose-700 hover:bg-slate-50 min-h-[44px]">Supprimer</button>
@@ -419,6 +433,12 @@
                        class="flex-1 text-center py-2 px-3 rounded-xl bg-primary-50 text-xs font-bold text-primary-700 min-h-[44px] inline-flex items-center justify-center">
                         Consulter Fiche
                     </a>
+                    @can('update', $etudiant)
+                        <a href="{{ route('admin.etudiants.modifier', $etudiant) }}"
+                           class="py-2 px-3 rounded-xl border border-primary-200 text-xs font-bold text-primary-700 min-h-[44px] inline-flex items-center justify-center">
+                            Modifier
+                        </a>
+                    @endcan
                     <button type="button"
                             @click="suppressionUrl = '{{ route('admin.etudiants.destroy', $etudiant) }}'; suppressionNom = @js($etudiant->nom_complet)"
                             class="py-2 px-3 rounded-xl border border-rose-200 text-xs font-bold text-rose-600 min-h-[44px]">

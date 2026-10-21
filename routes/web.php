@@ -489,6 +489,10 @@ Route::prefix('admin')->name('admin.')->group(function () {
         ->middleware(['auth', 'throttle:10,1'])->name('mfa.nouveau-secret');
     Route::post('double-facteur/desactiver', [MfaController::class, 'desactiver'])
         ->middleware(['auth', 'throttle:10,1'])->name('mfa.desactiver');
+    // Codes de secours (LOOP-SECURITY-REMEDIATION-01) : régénération
+    // protégée par mot de passe, anciens codes immédiatement révoqués.
+    Route::post('double-facteur/codes-secours', [MfaController::class, 'nouveauxCodesSecours'])
+        ->middleware(['auth', 'throttle:10,1'])->name('mfa.codes-secours');
     /*
     | Zone authentifiée — profil BACK-OFFICE (§7/§10) : tout compte doit
     | avoir un rôle RBAC valide ET un compte actif (lus en base via le
@@ -549,6 +553,28 @@ Route::prefix('admin')->name('admin.')->group(function () {
             ->middleware('can:document_template.view')->name('maquettes.index');
         Route::get('mens', [MensReferenceController::class, 'index'])
             ->middleware('can:data.import')->name('mens.index');
+        // Manipulation directe du référentiel (LOOP-MENS-ADMIN-CRUD-01) :
+        // mêmes permissions que la page et l'import (data.import) ;
+        // l'isolation facultaire est appliquée par le contrôleur.
+        Route::get('mens/creer', [MensReferenceController::class, 'create'])
+            ->middleware('can:data.import')->name('mens.create');
+        // Assistance de saisie (auto-complétion + pré-remplissage CIN) :
+        // lecture seule bornée, seau de limitation dédié par utilisateur
+        // — jamais le compteur des écritures (`throttle:N,1` partagé).
+        Route::get('mens/referentiels', [MensReferenceController::class, 'referentiels'])
+            ->middleware(['can:data.import', 'throttle:mens-assistance'])->name('mens.referentiels');
+        Route::get('mens/assistance', [MensReferenceController::class, 'assistance'])
+            ->middleware(['can:data.import', 'throttle:mens-assistance'])->name('mens.assistance');
+        Route::post('mens', [MensReferenceController::class, 'store'])
+            ->middleware(['can:data.import', 'throttle:20,1'])->name('mens.store');
+        Route::get('mens/{reference}', [MensReferenceController::class, 'show'])
+            ->middleware('can:data.import')->name('mens.show');
+        Route::get('mens/{reference}/modifier', [MensReferenceController::class, 'edit'])
+            ->middleware('can:data.import')->name('mens.edit');
+        Route::put('mens/{reference}', [MensReferenceController::class, 'update'])
+            ->middleware(['can:data.import', 'throttle:20,1'])->name('mens.update');
+        Route::delete('mens/{reference}', [MensReferenceController::class, 'destroy'])
+            ->middleware(['can:data.import', 'throttle:10,1'])->name('mens.destroy');
         Route::post('mens/{reference}/creer-dossier', [MensReferenceController::class, 'creerDossier'])
             ->middleware(['can:data.import', 'throttle:10,1'])->name('mens.creer-dossier');
         Route::get('maquettes/creer', [MaquetteController::class, 'create'])
@@ -625,6 +651,13 @@ Route::prefix('admin')->name('admin.')->group(function () {
                 ->middleware('throttle:5,1')->name('reinitialiser');
             Route::patch('{administrateur}/statut', [AdministrateurController::class, 'toggleStatut'])
                 ->name('statut');
+            // Attribution rapide du rôle (menu de la liste) : même service
+            // que la page des rôles, confirmation + audit centralisés.
+            Route::patch('{administrateur}/role', [AdministrateurController::class, 'attribuerRole'])
+                ->middleware('throttle:20,1')->name('role.attribuer');
+            // Recherche de comptes pour la modale (page rôles), JSON borné.
+            Route::get('recherche', [AdministrateurController::class, 'rechercher'])
+                ->middleware('throttle:30,1')->name('recherche');
             // Kill-switch AUTH-01 (13/10) : révocation des sessions d'un compte.
             Route::post('{administrateur}/sessions/purger', [AdministrateurController::class, 'purgerSessions'])
                 ->middleware('throttle:5,1')->name('sessions.purger');
@@ -636,6 +669,10 @@ Route::prefix('admin')->name('admin.')->group(function () {
         */
         Route::get('roles', [RoleController::class, 'index'])
             ->middleware('can:roles.view')->name('roles.index');
+        // Attribution depuis la page des rôles : exige roles.manage
+        // (consultation seule ne suffit jamais), même service métier.
+        Route::post('roles/attribuer', [RoleController::class, 'attribuer'])
+            ->middleware(['can:roles.manage', 'throttle:20,1'])->name('roles.attribuer');
 
         /*
         | Configurations SMTP nommées (LOOP J) : super_admin seul, secret
@@ -749,6 +786,28 @@ Route::prefix('admin')->name('admin.')->group(function () {
         */
         Route::get('etudiants', [EtudiantController::class, 'index'])->name('etudiants.index');
         Route::get('etudiants/sans-groupe', [EtudiantController::class, 'sansGroupe'])->name('etudiants.sans-groupe');
+
+        // Module: Création d'étudiants par administrateur. Déclaré AVANT
+        // `etudiants/{etudiant}` pour que « creer » ne soit pas capturé
+        // comme un identifiant de route model binding.
+        Route::get('etudiants/creer', [EtudiantController::class, 'create'])
+            ->middleware(['can:archives.create', 'module:referentiel'])
+            ->name('etudiants.creer');
+        Route::post('etudiants', [EtudiantController::class, 'store'])
+            ->middleware(['can:archives.create', 'module:referentiel', 'throttle:20,1'])
+            ->name('etudiants.store');
+
+        // Module: Modification de la fiche d'un étudiant (identité,
+        // contact, rattachement LMD et inscription courante). Le statut,
+        // le groupe et le mot de passe restent délégués à leurs workflows
+        // dédiés — aucune duplication de règle métier.
+        Route::get('etudiants/{etudiant}/modifier', [EtudiantController::class, 'edit'])
+            ->middleware(['can:archives.update', 'module:referentiel'])
+            ->name('etudiants.modifier');
+        Route::patch('etudiants/{etudiant}', [EtudiantController::class, 'update'])
+            ->middleware(['can:archives.update', 'module:referentiel', 'throttle:20,1'])
+            ->name('etudiants.update');
+
         Route::post('etudiants/bulk-statut', [EtudiantController::class, 'bulkStatut'])
             ->middleware('can:archives.update', 'throttle:10,1')
             ->name('etudiants.bulkStatut');

@@ -35,3 +35,7 @@ Thumbs.db
 *.sql.gz
 
 tmp/
+
+# Contexte local de l'agent PM (usage personnel, non versionné).
+# La config de tracker du dépôt vit dans .ai/agent/pm-instructions.md.
+.ai/local/
