@@ -2,9 +2,10 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
-use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class ParticipationScrutin extends Model
 {
@@ -56,6 +57,7 @@ class ParticipationScrutin extends Model
         if (strlen($this->jeton_unicite) <= 8) {
             return '——-';
         }
+
         return mb_substr($this->jeton_unicite, 0, 4).'****'.mb_substr($this->jeton_unicite, -4);
     }
 }
