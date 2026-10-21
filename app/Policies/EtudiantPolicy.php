@@ -22,6 +22,16 @@ class EtudiantPolicy
         return true; // le périmètre (global/faculté) est scopé dans la requête
     }
 
+    /**
+     * Création administrative : permission d'archivage + périmètre
+     * faculté vérifié dans la requête (la faculté cible n'est pas
+     * connue de la policy avant validation).
+     */
+    public function create(User $user): bool
+    {
+        return $user->hasPermission('archives.create');
+    }
+
     public function view(User $user, Etudiant $etudiant): bool
     {
         return $user->peutAccederFaculte((int) $etudiant->faculte_id);

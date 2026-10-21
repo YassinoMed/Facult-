@@ -749,6 +749,28 @@ Route::prefix('admin')->name('admin.')->group(function () {
         */
         Route::get('etudiants', [EtudiantController::class, 'index'])->name('etudiants.index');
         Route::get('etudiants/sans-groupe', [EtudiantController::class, 'sansGroupe'])->name('etudiants.sans-groupe');
+
+        // Module: Création d'étudiants par administrateur. Déclaré AVANT
+        // `etudiants/{etudiant}` pour que « creer » ne soit pas capturé
+        // comme un identifiant de route model binding.
+        Route::get('etudiants/creer', [EtudiantController::class, 'create'])
+            ->middleware(['can:archives.create', 'module:referentiel'])
+            ->name('etudiants.creer');
+        Route::post('etudiants', [EtudiantController::class, 'store'])
+            ->middleware(['can:archives.create', 'module:referentiel', 'throttle:20,1'])
+            ->name('etudiants.store');
+
+        // Module: Modification de la fiche d'un étudiant (identité,
+        // contact, rattachement LMD et inscription courante). Le statut,
+        // le groupe et le mot de passe restent délégués à leurs workflows
+        // dédiés — aucune duplication de règle métier.
+        Route::get('etudiants/{etudiant}/modifier', [EtudiantController::class, 'edit'])
+            ->middleware(['can:archives.update', 'module:referentiel'])
+            ->name('etudiants.modifier');
+        Route::patch('etudiants/{etudiant}', [EtudiantController::class, 'update'])
+            ->middleware(['can:archives.update', 'module:referentiel', 'throttle:20,1'])
+            ->name('etudiants.update');
+
         Route::post('etudiants/bulk-statut', [EtudiantController::class, 'bulkStatut'])
             ->middleware('can:archives.update', 'throttle:10,1')
             ->name('etudiants.bulkStatut');

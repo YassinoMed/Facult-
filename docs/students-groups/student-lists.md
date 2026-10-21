@@ -44,3 +44,17 @@ Deux mécanismes existants réutilisés, aucun nouveau :
 `x-export-actions` (PDF/Excel/CSV/Imprimer, même query string) sur registre,
 preview, fiche groupe ; liens PDF regroupés (par groupe / par sous-groupe) ;
 `Mes exports` (historique différés) dans preview.
+
+## Action « Modifier » (registre)
+
+Chaque ligne du registre (`admin.etudiants.index`) propose l'action
+« Modifier » (`admin.etudiants.modifier`) ; la fiche
+(`admin.etudiants.show`) expose la même action. Elle ouvre le formulaire de
+correction de la fiche : **identité, contact, rattachement LMD et inscription
+courante** — `archives.update` + périmètre de faculté
+(`EtudiantPolicy::update`), validation serveur, journalisation dans
+`historique_academique` + `situations_etudiant`, motif de modification
+obligatoire.
+
+Hors périmètre de ce formulaire (workflows dédiés, jamais dupliqués) : statut
+du dossier, groupe, mot de passe et année d'inscription.

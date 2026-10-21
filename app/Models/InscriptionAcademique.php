@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Modules\Referentiel\Models\Niveau;
 use App\Modules\Referentiel\Models\Programme;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -27,6 +28,7 @@ class InscriptionAcademique extends Model
         'statut',
         'type', // Phase 2 : premiere, reinscription, transfert…
         'regime', // Phase 2 : initiale, continue, alternance.
+        'paye', // Paiement externe : simple indicateur oui/non.
         'moyenne_annuelle',
         'credits_obtenus',
         'credits_total',
@@ -35,6 +37,7 @@ class InscriptionAcademique extends Model
     ];
 
     protected $casts = [
+        'paye' => 'boolean',
         'moyenne_annuelle' => 'decimal:2',
     ];
 
@@ -89,6 +92,18 @@ class InscriptionAcademique extends Model
     public function semestre(int $numero): ?Semestre
     {
         return $this->semestres->firstWhere('numero', $numero);
+    }
+
+    /**
+     * Inscription courante : année universitaire la plus récente.
+     * Source unique (jointure sur `annees_universitaires.date_debut`).
+     */
+    public function scopeCourante(Builder $query): Builder
+    {
+        return $query
+            ->join('annees_universitaires', 'annees_universitaires.id', '=', 'inscriptions_academiques.annee_universitaire_id')
+            ->orderByDesc('annees_universitaires.date_debut')
+            ->select('inscriptions_academiques.*');
     }
 
     /**

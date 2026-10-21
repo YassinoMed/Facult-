@@ -95,6 +95,7 @@ class ArchiveService
                     'statut' => $donnees['statut'] ?? 'en_cours',
                     'type' => $donnees['type'] ?? 'premiere',
                     'regime' => $donnees['regime'] ?? 'initiale',
+                    'paye' => $donnees['paye'] ?? false,
                     'observation' => $donnees['observation'] ?? null,
                 ]);
             } catch (UniqueConstraintViolationException $e) {
