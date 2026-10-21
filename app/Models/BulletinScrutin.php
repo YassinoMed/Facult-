@@ -2,9 +2,9 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
-use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class BulletinScrutin extends Model
 {
@@ -34,6 +34,7 @@ class BulletinScrutin extends Model
     public function getReponsePourQuestion($questionId)
     {
         $questionId = (string) $questionId;
+
         return data_get($this->contenus_reponses, $questionId);
     }
 
