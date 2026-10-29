@@ -6,6 +6,7 @@ use App\Contracts\EnregistrementPresenceInterface;
 use App\Contracts\PlanificationParcoursInterface;
 use App\Contracts\SimulationParcoursInterface;
 use App\Events\DossierDecisionPrise;
+use App\Events\InscriptionAcademiqueCreee;
 use App\Events\InscriptionValidee;
 use App\Events\PeriodeInscriptionOuverte;
 use App\Events\PopulationChanged;
@@ -20,6 +21,7 @@ use App\Listeners\NotifierPeriodeOuverte;
 use App\Listeners\ProvisionnerDossierInscription;
 use App\Listeners\TenterAffectationAutomatique;
 use App\Models\Etudiant;
+use App\Models\InscriptionAcademique;
 use App\Modules\Announcements\Events\AnnoncePubliee;
 use App\Modules\Announcements\Events\CampagneEnvoyee;
 use App\Modules\Announcements\Listeners\AuditAnnonce;
@@ -28,6 +30,24 @@ use App\Modules\Announcements\Models\Annonce;
 use App\Modules\Announcements\Models\Campagne;
 use App\Modules\Announcements\Policies\AnnoncePolicy;
 use App\Modules\Announcements\Policies\CampagnePolicy;
+use App\Modules\AssistantIa\Commands\SynchroniserSourcesIaCommand;
+use App\Modules\AssistantIa\Contracts\RechercheDocumentaireInterface;
+use App\Modules\AssistantIa\Services\MoteurRechercheDocumentaire;
+use App\Modules\AssistantIa\Services\RegistreOutils;
+use App\Modules\AssistantIa\Tools\Commun\ConsulterActionsDisponiblesTool;
+use App\Modules\AssistantIa\Tools\Commun\ConsulterDocumentationWebTool;
+use App\Modules\AssistantIa\Tools\Developpeur\InspecterFichiersCodeTool;
+use App\Modules\AssistantIa\Tools\Developpeur\InspecterRoutesTool;
+use App\Modules\AssistantIa\Tools\Developpeur\ProposerPatchTool;
+use App\Modules\AssistantIa\Tools\Metier\ConsulterEligibiliteExamenTool;
+use App\Modules\AssistantIa\Tools\Metier\ConsulterProduitDataMeshTool;
+use App\Modules\AssistantIa\Tools\Metier\ConsulterStatutTacheTool;
+use App\Modules\AssistantIa\Tools\Metier\DiagnostiquerBlocageDossierTool;
+use App\Modules\AssistantIa\Tools\Metier\ExpliquerCycleInscriptionTool;
+use App\Modules\AssistantIa\Tools\Metier\ExpliquerReferentielLmdTool;
+use App\Modules\AssistantIa\Tools\Metier\PreparerActionScolariteTool;
+use App\Modules\AssistantIa\Tools\Metier\VerifierPiecesManquantesTool;
+use App\Modules\AssistantIa\Tools\Metier\VerifierReglesEvaluationTool;
 use App\Modules\Attendance\Events\AbsenceJustifiee;
 use App\Modules\Attendance\Events\PresenceEnregistree;
 use App\Modules\Attendance\Events\PresenceSupprimee;
@@ -49,6 +69,8 @@ use App\Modules\Enseignement\Events\EnseignementChanged;
 use App\Modules\Enseignement\Listeners\AuditEnseignement;
 use App\Modules\Enseignement\Models\Enseignement;
 use App\Modules\Enseignement\Policies\EnseignementPolicy;
+use App\Modules\Evaluation\Console\DiagnostiquerSeparationRolesCommand;
+use App\Modules\Evaluation\Console\TestChargeExamensCommand;
 use App\Modules\Evaluation\Events\EvaluationChanged;
 use App\Modules\Evaluation\Listeners\AuditEvaluation;
 use App\Modules\Evaluation\Listeners\GenererRelevesPublication;
@@ -62,11 +84,14 @@ use App\Modules\Finances\Events\FactureEmise;
 use App\Modules\Finances\Events\PaiementConfirme;
 use App\Modules\Finances\Events\RemboursementTraite;
 use App\Modules\Finances\Listeners\AuditFinance;
+use App\Modules\Finances\Models\DossierPaiement;
 use App\Modules\Finances\Models\Facture;
 use App\Modules\Finances\Models\Paiement;
 use App\Modules\Finances\Models\Remboursement;
 use App\Modules\Finances\Models\Tarif;
+use App\Modules\Finances\Policies\DossierPaiementPolicy;
 use App\Modules\Finances\Policies\FinancePolicy;
+use App\Modules\Finances\Services\DossierPaiementService;
 use App\Modules\OnlineRequests\Events\OnlineRequestApproved;
 use App\Modules\OnlineRequests\Events\OnlineRequestCompleted;
 use App\Modules\OnlineRequests\Events\OnlineRequestCreated;
@@ -131,6 +156,7 @@ use App\Modules\StudentDossiers\Contracts\AntivirusScannerInterface;
 use App\Modules\StudentDossiers\Contracts\PdfGeneratorInterface;
 use App\Modules\StudentDossiers\Events\DocumentArchived;
 use App\Modules\StudentDossiers\Events\DocumentDeleted;
+use App\Modules\StudentDossiers\Events\DocumentExpired;
 use App\Modules\StudentDossiers\Events\DocumentRejected;
 use App\Modules\StudentDossiers\Events\DocumentReplaced;
 use App\Modules\StudentDossiers\Events\DocumentUploaded;
@@ -139,6 +165,7 @@ use App\Modules\StudentDossiers\Events\StudentDossierPdfDownloaded;
 use App\Modules\StudentDossiers\Events\StudentDossierPdfGenerated;
 use App\Modules\StudentDossiers\Events\StudentDossierPdfPreviewed;
 use App\Modules\StudentDossiers\Events\StudentDossierPdfPrinted;
+use App\Modules\StudentDossiers\Listeners\AssocierDocumentsInscription;
 use App\Modules\StudentDossiers\Listeners\AuditDocumentArchiving;
 use App\Modules\StudentDossiers\Listeners\AuditDocumentDeletion;
 use App\Modules\StudentDossiers\Listeners\AuditDocumentRejection;
@@ -149,15 +176,20 @@ use App\Modules\StudentDossiers\Listeners\AuditStudentDossierPdf;
 use App\Modules\StudentDossiers\Listeners\LancerExtractionOcr;
 use App\Modules\StudentDossiers\Listeners\NotifyDocumentRejete;
 use App\Modules\StudentDossiers\Listeners\NotifyDocumentValide;
+use App\Modules\StudentDossiers\Listeners\SynchroniserDocumentsAnnuels;
+use App\Modules\StudentDossiers\Models\InscriptionDocument;
 use App\Modules\StudentDossiers\Models\StudentDocument;
 use App\Modules\StudentDossiers\Models\StudentDossier;
+use App\Modules\StudentDossiers\Policies\InscriptionDocumentPolicy;
 use App\Modules\StudentDossiers\Policies\StudentDocumentPolicy;
 use App\Modules\StudentDossiers\Policies\StudentDossierPdfPolicy;
+use App\Modules\StudentDossiers\Services\ClamavAntivirusScanner;
 use App\Modules\StudentDossiers\Services\NullAntivirusScanner;
 use App\Modules\StudentDossiers\Services\Pdf\DompdfPdfGenerator;
 use App\Modules\Tasks\Events\TaskChanged;
 use App\Modules\Tasks\Listeners\AuditTask;
 use App\Modules\Tasks\Listeners\CreerTacheDemande;
+use App\Modules\Tasks\Listeners\CreerTacheInscription;
 use App\Modules\Tasks\Models\Task;
 use App\Modules\Tasks\Policies\TaskPolicy;
 use App\Modules\Versioning\Models\Release;
@@ -169,8 +201,10 @@ use App\Services\Recherche\SearchEngine;
 use App\Support\Modules\ModuleRegistry;
 use Carbon\Carbon;
 use Illuminate\Queue\Events\JobFailed;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\View;
 use Illuminate\Support\ServiceProvider;
@@ -193,19 +227,85 @@ class ModuleServiceProvider extends ServiceProvider
         $this->app->bind(EnregistrementPresenceInterface::class, AttendanceService::class);
         $this->app->bind(PlanificationParcoursInterface::class, PlanParcoursService::class);
         $this->app->bind(SimulationParcoursInterface::class, SimulationParcoursService::class);
-        $this->app->bind(AntivirusScannerInterface::class, NullAntivirusScanner::class);
+        $this->app->bind(AntivirusScannerInterface::class, function ($app) {
+            $driver = (string) config('student-dossiers.antivirus.driver', 'null');
+
+            return $driver === 'clamav'
+                ? $app->make(ClamavAntivirusScanner::class)
+                : $app->make(NullAntivirusScanner::class);
+        });
         $this->app->bind(PdfGeneratorInterface::class, DompdfPdfGenerator::class);
         $this->app->bind(DocumentGenerator::class, DefaultDocumentGenerator::class);
         $this->app->bind(SearchEngine::class, DbSearchEngine::class);
         $this->app->singleton(SentinelRegistry::class);
+        $this->app->bind(
+            RechercheDocumentaireInterface::class,
+            MoteurRechercheDocumentaire::class
+        );
+        $this->app->singleton(RegistreOutils::class, function ($app) {
+            $registre = new RegistreOutils;
+            $registre->enregistrer($app->make(InspecterFichiersCodeTool::class));
+            $registre->enregistrer($app->make(InspecterRoutesTool::class));
+            $registre->enregistrer($app->make(ProposerPatchTool::class));
+            $registre->enregistrer($app->make(ExpliquerCycleInscriptionTool::class));
+            $registre->enregistrer($app->make(DiagnostiquerBlocageDossierTool::class));
+            $registre->enregistrer($app->make(VerifierPiecesManquantesTool::class));
+            $registre->enregistrer($app->make(ConsulterStatutTacheTool::class));
+            $registre->enregistrer($app->make(PreparerActionScolariteTool::class));
+            $registre->enregistrer($app->make(ConsulterDocumentationWebTool::class));
+            $registre->enregistrer($app->make(ExpliquerReferentielLmdTool::class));
+            $registre->enregistrer($app->make(VerifierReglesEvaluationTool::class));
+            $registre->enregistrer($app->make(ConsulterEligibiliteExamenTool::class));
+            $registre->enregistrer($app->make(ConsulterProduitDataMeshTool::class));
+            $registre->enregistrer($app->make(ConsulterActionsDisponiblesTool::class));
+
+            return $registre;
+        });
     }
 
     public function boot(): void
-    {        // CORE → modules : le cœur annonce, les modules réagissent.
+    {
+        if ($this->app->runningInConsole()) {
+            $this->commands([
+                SynchroniserSourcesIaCommand::class,
+                DiagnostiquerSeparationRolesCommand::class,
+                TestChargeExamensCommand::class,
+            ]);
+        }
+
+        // CORE → modules : le cœur annonce, les modules réagissent.
         Event::listen(StudentRegistered::class, JournaliserInscription::class);
         Event::listen(StudentRegistered::class, NotifierDepotRecu::class);
         Event::listen(StudentRegistered::class, ProvisionnerDossierInscription::class);
         Event::listen(StudentRegistered::class, DetecterIncoherencesInscription::class);
+        // LOOP-UNIREGISTRE-DOCUMENTS-REUTILISABLES-01 : nouvelle inscription
+        // annuelle → association automatique des pièces permanentes.
+        Event::listen(InscriptionAcademiqueCreee::class, AssocierDocumentsInscription::class);
+        Event::listen(InscriptionAcademiqueCreee::class, CreerTacheInscription::class);
+
+        // LOOP-UNIREGISTRE-INSCRIPTIONS-PAIEMENTS-01 : chaque inscription
+        // annuelle reçoit son propre dossier de paiement. Observateur sur
+        // le modèle (et non un seul chemin de création) pour couvrir aussi
+        // les créations administratives et les imports. Fail-soft : une
+        // anomalie ne bloque jamais l'inscription ; la commande de
+        // rattrapage `paiements:initialiser-dossiers` comble les manques.
+        InscriptionAcademique::created(function (InscriptionAcademique $inscription): void {
+            if (! config('modules.finances.active', false)
+                || ! config('inscriptions-paiements.actif', true)
+            ) {
+                return;
+            }
+
+            try {
+                app(DossierPaiementService::class)->creerPour($inscription);
+            } catch (\Throwable $e) {
+                report($e);
+                Log::warning('paiement.dossier_creation_echec', [
+                    'inscription_id' => $inscription->id,
+                ]);
+            }
+        });
+
         Event::listen(PopulationChanged::class, AuditPopulation::class);
         Event::listen(InscriptionValidee::class, TenterAffectationAutomatique::class);
         Event::listen(DossierDecisionPrise::class, NotifierDecisionDossier::class);
@@ -225,6 +325,7 @@ class ModuleServiceProvider extends ServiceProvider
         Gate::policy(Paiement::class, FinancePolicy::class);
         Gate::policy(Remboursement::class, FinancePolicy::class);
         Gate::policy(Tarif::class, FinancePolicy::class);
+        Gate::policy(DossierPaiement::class, DossierPaiementPolicy::class);
 
         Event::listen(PresenceEnregistree::class, AuditerPresence::class);
         Event::listen(PresenceSupprimee::class, AuditerSuppressionPresence::class);
@@ -239,6 +340,7 @@ class ModuleServiceProvider extends ServiceProvider
 
         Gate::policy(StudentDossier::class, StudentDossierPdfPolicy::class);
         Gate::policy(StudentDocument::class, StudentDocumentPolicy::class);
+        Gate::policy(InscriptionDocument::class, InscriptionDocumentPolicy::class);
         Gate::policy(OnlineRequest::class, OnlineRequestPolicy::class);
         Gate::policy(Schedule::class, SchedulePolicy::class);
         Gate::policy(ScheduleSlot::class, SchedulePolicy::class);
@@ -299,6 +401,16 @@ class ModuleServiceProvider extends ServiceProvider
         Event::listen(DocumentDeleted::class, AuditDocumentDeletion::class);
         Event::listen(DocumentArchived::class, AuditDocumentArchiving::class);
 
+        // LOOP-UNIREGISTRE-DOCUMENTS-REUTILISABLES-01 : toute évolution
+        // documentaire recalcule la dernière inscription ouverte.
+        Event::listen(DocumentUploaded::class, SynchroniserDocumentsAnnuels::class);
+        Event::listen(DocumentValidated::class, SynchroniserDocumentsAnnuels::class);
+        Event::listen(DocumentRejected::class, SynchroniserDocumentsAnnuels::class);
+        Event::listen(DocumentReplaced::class, SynchroniserDocumentsAnnuels::class);
+        Event::listen(DocumentDeleted::class, SynchroniserDocumentsAnnuels::class);
+        Event::listen(DocumentArchived::class, SynchroniserDocumentsAnnuels::class);
+        Event::listen(DocumentExpired::class, SynchroniserDocumentsAnnuels::class);
+
         Event::listen(StudentDossierPdfGenerated::class, [AuditStudentDossierPdf::class, 'generation']);
         Event::listen(StudentDossierPdfPreviewed::class, [AuditStudentDossierPdf::class, 'preview']);
         Event::listen(StudentDossierPdfDownloaded::class, [AuditStudentDossierPdf::class, 'download']);
@@ -338,6 +450,12 @@ class ModuleServiceProvider extends ServiceProvider
             base_path('app/Modules/Tasks/Routes/web.php')
         );
         Route::middleware('web')->group(
+            base_path('app/Modules/CentreServicesIt/Routes/web.php')
+        );
+        Route::middleware('web')->group(
+            base_path('app/Modules/Alumni/Routes/web.php')
+        );
+        Route::middleware('web')->group(
             base_path('app/Modules/Finances/Routes/web.php')
         );
         Route::middleware('web')->group(
@@ -370,6 +488,30 @@ class ModuleServiceProvider extends ServiceProvider
         Route::middleware('web')->group(
             base_path('app/Modules/Sentinel/Routes/web.php')
         );
+        Route::middleware('web')->group(
+            base_path('app/Modules/AssistantIa/Routes/web.php')
+        );
+        Route::middleware('web')->group(
+            base_path('app/Modules/Aide/Routes/web.php')
+        );
+        Route::middleware('web')->group(
+            base_path('app/Modules/SimulateurScenarios/Routes/web.php')
+        );
+        Route::middleware('web')->group(
+            base_path('app/Modules/PreventionDecrochage/Routes/web.php')
+        );
+        Route::middleware('web')->group(
+            base_path('app/Modules/AssuranceQualite/Routes/web.php')
+        );
+        Route::middleware('web')->group(
+            base_path('app/Modules/HubIntegration/Routes/web.php')
+        );
+        Route::middleware('web')->group(
+            base_path('app/Modules/SimulationTemporelle/Routes/web.php')
+        );
+        Route::middleware('web')->group(
+            base_path('app/Modules/GouvernanceConformite/Routes/web.php')
+        );
 
         // Widgets de dashboard : enregistrés dans tous les cas (comme les
         // routes) — les vues restent filtrées par le registre au rendu,
@@ -389,18 +531,35 @@ class ModuleServiceProvider extends ServiceProvider
         });
 
         View::composer('modules.announcements.widget-admin', function ($vue) {
+            $query = Annonce::where('statut', 'published')
+                ->where(fn ($q) => $q->whereNull('expire_a')->orWhere('expire_a', '>', now()));
+
+            if (auth()->check() && auth()->user()->faculteRestreinteId() !== null) {
+                $faculteId = auth()->user()->faculteRestreinteId();
+                $query->where(fn ($w) => $w->whereNull('faculte_id')->orWhere('faculte_id', $faculteId));
+            }
+
             $vue->with([
-                'annoncesPubliees' => Annonce::where('statut', 'published')
-                    ->where(fn ($q) => $q->whereNull('expire_a')->orWhere('expire_a', '>', now()))
-                    ->count(),
+                'annoncesPubliees' => $query->count(),
             ]);
         });
 
         View::composer('modules.evaluation.widget-admin', function ($vue) {
+            $faculteId = auth()->check() ? auth()->user()->faculteRestreinteId() : null;
+
+            $epreuves = Epreuve::whereNull('salle_id')->where('statut', '!=', 'cancelled')
+                ->when($faculteId !== null, fn ($q) => $q->pourFaculteId($faculteId));
+
+            $notes = NoteEpreuve::where('statut', 'submitted')
+                ->when($faculteId !== null, fn ($q) => $q->whereHas('epreuve', fn ($e) => $e->pourFaculteId($faculteId)));
+
+            $deliberations = Deliberation::whereIn('statut', ['draft', 'prepared', 'in_review'])
+                ->when($faculteId !== null, fn ($q) => $q->pourFaculteId($faculteId));
+
             $vue->with([
-                'epreuvesSansSalle' => Epreuve::whereNull('salle_id')->where('statut', '!=', 'cancelled')->count(),
-                'notesAValider' => NoteEpreuve::where('statut', 'submitted')->count(),
-                'deliberationsEnAttente' => Deliberation::whereIn('statut', ['draft', 'prepared', 'in_review'])->count(),
+                'epreuvesSansSalle' => $epreuves->count(),
+                'notesAValider' => $notes->count(),
+                'deliberationsEnAttente' => $deliberations->count(),
             ]);
         });
 
@@ -422,13 +581,15 @@ class ModuleServiceProvider extends ServiceProvider
                 return;
             }
 
-            $etudiant = Etudiant::find($etudiantId);
+            $donneesVue = $vue->getData();
+            $etudiant = $donneesVue['etudiant'] ?? Etudiant::find($etudiantId);
 
             if ($etudiant === null || $etudiant->groupe_id === null) {
                 return;
             }
 
-            $planning = Schedule::where('groupe_id', $etudiant->groupe_id)
+            $planning = $donneesVue['planning'] ?? Schedule::with('groupe')
+                ->where('groupe_id', $etudiant->groupe_id)
                 ->where('actif', true)
                 // SCHEDULE-09 (correctif 13/10) : le widget est soumis à la
                 // même garde de publication que le portail EDT et la section
@@ -444,13 +605,34 @@ class ModuleServiceProvider extends ServiceProvider
                 return;
             }
 
+            // Réutilisation immédiate des cours du jour s'ils ont déjà été résolus par le tableau de bord
+            if (isset($donneesVue['coursDuJour']) && is_array($donneesVue['coursDuJour'])) {
+                $coursDuJour = $donneesVue['coursDuJour'];
+                $maintenant = now()->format('H:i');
+                $prochain = null;
+                foreach ($coursDuJour as $cours) {
+                    if (($cours['statut'] ?? '') !== 'cancelled' && ($cours['debut'] ?? '') >= $maintenant) {
+                        $prochain = $cours;
+                        break;
+                    }
+                }
+
+                $vue->with([
+                    'coursAujourdhui' => count($coursDuJour),
+                    'groupeCode' => $planning->groupe?->code ?? '',
+                    'prochainCours' => $prochain,
+                ]);
+
+                return;
+            }
+
+            // Fallback si le widget est rendu de façon autonome (hors dashboard étudiant)
+            $slots = self::slotsAujourdhui($planning->id);
+
             $vue->with([
-                'coursAujourdhui' => ScheduleSlot::where('schedule_id', $planning->id)
-                    ->where('day_of_week', strtolower(Carbon::now()->format('l')))
-                    ->where('status', '!=', 'cancelled')
-                    ->count(),
-                'groupeCode' => $planning->groupe->code,
-                'prochainCours' => self::prochainCours($planning->id),
+                'coursAujourdhui' => $slots->count(),
+                'groupeCode' => $planning->groupe?->code ?? '',
+                'prochainCours' => self::extraireProchainCours($slots),
             ]);
         });
 
@@ -515,6 +697,56 @@ class ModuleServiceProvider extends ServiceProvider
             $vue->with(['documentsEnAttente' => $base->count()]);
         });
 
+        /*
+         | LOT 3 : le widget « frais d'inscription » lit UNIQUEMENT le
+         | parcours canonique dossier/reçu. La facturation historique
+         | (Facture/Paiement) reste une page distincte, clairement
+         | étiquetée, et n'alimente jamais ce statut.
+         */
+        View::composer('modules.finances.widget-etudiant', function ($vue) {
+            $etudiantId = session('etudiant_auth_id');
+
+            if ($etudiantId === null) {
+                return;
+            }
+
+            $donneesVue = $vue->getData();
+            $inscription = null;
+
+            if (isset($donneesVue['derniereInscription']) && $donneesVue['derniereInscription'] instanceof InscriptionAcademique) {
+                $inscription = $donneesVue['derniereInscription'];
+                $inscription->loadMissing([
+                    'anneeUniversitaire',
+                    'dossierPaiement.recus' => fn ($q) => $q->orderByDesc('version'),
+                ]);
+            } else {
+                $inscription = InscriptionAcademique::query()
+                    ->where('etudiant_id', $etudiantId)
+                    ->with([
+                        'anneeUniversitaire',
+                        'dossierPaiement.recus' => fn ($q) => $q->orderByDesc('version'),
+                    ])
+                    ->orderByDesc('annee_universitaire_id')
+                    ->orderByDesc('id')
+                    ->first();
+            }
+
+            if ($inscription === null) {
+                return;
+            }
+
+            $montant = $this->app->make(DossierPaiementService::class)
+                ->montantAttendu($inscription);
+
+            $vue->with([
+                'paiementInscription' => $inscription,
+                'paiementDossier' => $inscription->dossierPaiement,
+                'paiementDernierRecu' => $inscription->dossierPaiement?->recus->first(),
+                'paiementMontantCentimes' => $montant['centimes'],
+                'paiementMontantSource' => $montant['source_libelle'],
+            ]);
+        });
+
         View::composer('modules.attendance.widget-taux', function ($vue) {
             $etudiantId = session('etudiant_auth_id');
 
@@ -522,10 +754,11 @@ class ModuleServiceProvider extends ServiceProvider
                 return;
             }
 
-            $service = $this->app->make(EnregistrementPresenceInterface::class);
-            $etudiant = Etudiant::find($etudiantId);
+            $donneesVue = $vue->getData();
+            $etudiant = $donneesVue['etudiant'] ?? Etudiant::find($etudiantId);
 
             if ($etudiant !== null) {
+                $service = $this->app->make(EnregistrementPresenceInterface::class);
                 $vue->with([
                     'tauxWidget' => $service->tauxPresence($etudiant),
                     'seancesWidget' => $service->nombreSeances($etudiant),
@@ -546,23 +779,28 @@ class ModuleServiceProvider extends ServiceProvider
     }
 
     /**
-     * Prochain cours du jour (§10) : premier créneau restant, exception
-     * du jour appliquée (annulé = on passe au suivant).
-     *
-     * @return array{debut: string, fin: string, matiere: string, salle: ?string}|null
+     * @return Collection<int, ScheduleSlot>
      */
-    private static function prochainCours(int $scheduleId): ?array
+    private static function slotsAujourdhui(int $scheduleId): Collection
     {
         $aujourdhui = strtolower(Carbon::now()->format('l'));
-        $maintenant = now()->format('H:i:s');
         $date = Carbon::today()->toDateString();
 
-        $slots = ScheduleSlot::where('schedule_id', $scheduleId)
+        return ScheduleSlot::where('schedule_id', $scheduleId)
             ->where('day_of_week', $aujourdhui)
             ->where('status', '!=', 'cancelled')
             ->with(['matiere', 'room', 'exceptions' => fn ($q) => $q->whereDate('exception_date', $date)->with('nouvelleSalle')])
             ->orderBy('start_time')
             ->get();
+    }
+
+    /**
+     * @param  Collection<int, ScheduleSlot>  $slots
+     * @return array{debut: string, fin: string, matiere: string, salle: ?string}|null
+     */
+    private static function extraireProchainCours(Collection $slots): ?array
+    {
+        $maintenant = now()->format('H:i:s');
 
         foreach ($slots as $slot) {
             $exception = $slot->exceptions->first();
@@ -580,11 +818,22 @@ class ModuleServiceProvider extends ServiceProvider
             return [
                 'debut' => substr((string) $debut, 0, 5),
                 'fin' => substr((string) ($exception?->new_end_time ?? $slot->end_time), 0, 5),
-                'matiere' => $slot->matiere->nom,
+                'matiere' => $slot->matiere?->nom ?? '',
                 'salle' => $exception?->nouvelleSalle?->code ?? $slot->room?->code,
             ];
         }
 
         return null;
+    }
+
+    /**
+     * Prochain cours du jour (§10) : premier créneau restant, exception
+     * du jour appliquée (annulé = on passe au suivant).
+     *
+     * @return array{debut: string, fin: string, matiere: string, salle: ?string}|null
+     */
+    private static function prochainCours(int $scheduleId): ?array
+    {
+        return self::extraireProchainCours(self::slotsAujourdhui($scheduleId));
     }
 }

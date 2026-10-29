@@ -85,6 +85,12 @@ class Examen extends Model
         return $this->hasMany(Epreuve::class, 'examen_id');
     }
 
+    /** Versions successives soumises au circuit de gouvernance (§2.7). */
+    public function validations(): HasMany
+    {
+        return $this->hasMany(PlanningValidation::class, 'examen_id');
+    }
+
     public function peutTransiterVers(string $cible): bool
     {
         return in_array($cible, self::TRANSITIONS[$this->statut] ?? [], true);

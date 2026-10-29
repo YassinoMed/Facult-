@@ -44,7 +44,13 @@ class MaquetteRaceMysqlTest extends TestCase
         config(['database.connections.maquette_race' => array_merge(
             config('database.connections.mysql'), ['database' => 'maquette_race_scratch']
         )]);
-        config(['database.connections.maquette_race_2' => config('database.connections.mysql') + ['database' => 'maquette_race_scratch']]);
+        // `array_merge`, PAS `+` : la connexion mysql porte déjà une clé
+        // `database` (celle du .env) et l'opérateur `+` garderait la valeur
+        // de gauche → la « seconde poignée » viserait une AUTRE base et le
+        // test NOWAIT deviendrait un faux négatif (R-13/2).
+        config(['database.connections.maquette_race_2' => array_merge(
+            config('database.connections.mysql'), ['database' => 'maquette_race_scratch']
+        )]);
         $this->conn = DB::connection('maquette_race');
         $this->assertSame('maquette_race_scratch', $this->conn->getDatabaseName(),
             'Garde-fou : ce test ne doit jamais toucher le dataset dev.');

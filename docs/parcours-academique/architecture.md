@@ -25,7 +25,40 @@ verrouillés + audit.
 - `RisqueAcademiqueService` : score + motifs (faible/moyen/élevé/critique), informatif uniquement.
 - `HistoriqueParcoursService` : chronologie lecture seule (inscriptions, semestres, délibérations, situations, aménagements, simulations).
 - `ComparaisonParcoursService` : étudiants (2-4, scopés) ou scénarios.
-- `AmenagementParcoursService` : 4 workflows `proposer/decider` (`lockForUpdate`, 409 si déjà traité, event `ParcoursDecisionEnregistree` → audit).
+- `AmenagementParcoursService` : 4 workflows `proposer/decider` (`lockForUpdate`, 409 si déjà traité, event `ParcoursDecisionEnregistree` → audit). Transitions décisionnelles formalisées dans la constante `TRANSITIONS` (source unique).
+
+## Machine à états décisionnelle (aménagements)
+
+Source unique : `AmenagementParcoursService::TRANSITIONS` (catégorie →
+champ consommé (`statut` ou `decision`) → cible ⇒ états sources autorisés).
+Le contrôleur `decider()` valide l'entrée avec cette carte (`Rule::in`),
+le service la re-vérifie sous transaction + `lockForUpdate` (422 cible
+inconnue, 409 transition illégale). Codes et messages d'erreur inchangés.
+
+| Catégorie | Champ | Transitions fermées |
+|---|---|---|
+| `equivalences` | `decision` | `accordee` ⇒ `proposee` (statut final `validee`) ; `refusee` ⇒ `proposee` (statut final `rejetee`) ; absence de décision = `refusee` |
+| `dispenses` | `statut` | `validee`/`rejetee` ⇒ `proposee` ; `revoquee` ⇒ `validee` |
+| `reorientations` | `statut` | `validee`/`rejetee` ⇒ `proposee` |
+| `passerelles` | `statut` | `admise`/`refusee` ⇒ `proposee`, `eligible`, `non_eligible` |
+
+États réservés sans chemin d'écriture : `annulee` (réorientations),
+`eligible`/`non_eligible` (passerelles : admissibles comme sources,
+jamais attribués par le service). Anti-dérive : test
+`test_fsm_carte_coherente_avec_constantes_modeles` compare la carte aux
+constantes `STATUTS`/`DECISIONS` des modèles à chaque run.
+
+## Versionnement des règles de simulation
+
+`parcours_regles` versionne les règles configurables (§16) : `versionner()`
+crée `version = max(version)+1` pour le `code`, jamais de mise à jour
+destructive ; les anciennes versions restent en base (décisions rejouables)
+et peuvent être désactivées (`actif=false`, option `desactiverAnciennes`).
+Résolution (`resoudre()`) : règle spécifique (année+programme) > programme >
+globale > socle LMD (`socle()`, jamais caché + averti) ; le plus haut
+`actif=true` gagne. Chaque simulation persiste sa référence `code@version`
+(colonne `regle_reference`) et liste ses règles dans `resultat.regles` :
+les simulations antérieures restent explicables après toute révision.
 
 ## Sécurité
 

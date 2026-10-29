@@ -5,7 +5,7 @@
 --}}
 @php
 $classeLien = 'flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition focus:outline-none';
-$classeActif = 'bg-primary-800 text-white shadow-sm';
+$classeActif = 'bg-primary-800 text-white ';
 $classeInactif = 'text-slate-600 hover:bg-slate-100 hover:text-slate-900';
 @endphp
 
@@ -15,7 +15,7 @@ $classeInactif = 'text-slate-600 hover:bg-slate-100 hover:text-slate-900';
          :data-ouvert="ouvert" @keydown.escape.window="$el.querySelector('button')?.blur()">
         <button type="button" @click="ouvert = !ouvert; localStorage.setItem('admin-nav-pilotage', ouvert ? '1' : '0')"
                 :aria-expanded="ouvert.toString()" aria-controls="nav-pilotage">
-            <span class="px-3 text-[10px] font-black uppercase tracking-widest text-slate-400">Pilotage</span>
+            <span class="px-3 text-[13px] font-semibold text-slate-500">Pilotage</span>
             <svg class="chevron h-3.5 w-3.5 text-slate-400" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" /></svg>
         </button>
         <div id="nav-pilotage" x-show="ouvert" x-cloak class="admin-nav-liens space-y-1">
@@ -39,6 +39,14 @@ $classeInactif = 'text-slate-600 hover:bg-slate-100 hover:text-slate-900';
         Cockpit
     </a>
     @endcan
+    @if(auth()->user()->can('tasks.view') || auth()->user()->can('archives.view'))
+    <a href="{{ route('admin.centre-travail.index') }}"
+       class="{{ $classeLien }} {{ request()->routeIs('admin.centre-travail.*') ? $classeActif.' admin-nav-lien-actif' : $classeInactif }}"
+       @if(request()->routeIs('admin.centre-travail.*')) aria-current="page" @endif>
+        <svg class="h-5 w-5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke-width="1.8" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12h3.75M9 15h3.75M9 18h3.75m3 .75H18a2.25 2.25 0 0 0 2.25-2.25V6.108c0-1.135-.845-2.098-1.976-2.192a48.424 48.424 0 0 0-1.123-.08m-5.801 0c-.065.21-.1.433-.1.664 0 .414.336.75.75.75h4.5a.75.75 0 0 0 .75-.75 2.25 2.25 0 0 0-.1-.664m-5.8 0A2.251 2.251 0 0 1 13.5 2.25H15c1.012 0 1.867.668 2.15 1.586m-5.8 0c-.376.023-.75.05-1.124.08C9.095 4.01 8.25 4.973 8.25 6.108V8.25m0 0H4.875c-.621 0-1.125.504-1.125 1.125v11.25c0 .621.504 1.125 1.125 1.125h9.75c.621 0 1.125-.504 1.125-1.125V9.375c0-.621-.504-1.125-1.125-1.125H8.25ZM6.75 12h.008v.008H6.75V12Zm0 3h.008v.008H6.75V15Zm0 3h.008v.008H6.75V18Z" /></svg>
+        Centre de travail
+    </a>
+    @endif
     @can('statistiques.view')
     <a href="{{ route('admin.bi.index') }}"
        class="{{ $classeLien }} {{ request()->routeIs('admin.bi.*') ? $classeActif.' admin-nav-lien-actif' : $classeInactif }}"
@@ -46,6 +54,20 @@ $classeInactif = 'text-slate-600 hover:bg-slate-100 hover:text-slate-900';
         <svg class="h-5 w-5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke-width="1.8" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 0 1 3 19.875v-6.75ZM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 0 1-1.125-1.125V8.625ZM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 0 1-1.125-1.125V4.125Z" /></svg>
         BI
     </a>
+    <a href="{{ route('admin.datamesh.index') }}"
+       class="{{ $classeLien }} {{ request()->routeIs('admin.datamesh.*') ? $classeActif.' admin-nav-lien-actif' : $classeInactif }}"
+       @if(request()->routeIs('admin.datamesh.*')) aria-current="page" @endif>
+        <svg class="h-5 w-5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke-width="1.8" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M7.5 3.75h9m-9 0a3 3 0 0 0-3 3v9a3 3 0 0 0 3 3h9a3 3 0 0 0 3-3v-9a3 3 0 0 0-3-3m-9 0v15m9-15v15m-9-7.5h9" /></svg>
+        Data Mesh
+    </a>
+    @if(config('modules.simulateur-scenarios.active'))
+    <a href="{{ route('admin.simulateur-scenarios.index') }}"
+       class="{{ $classeLien }} {{ request()->routeIs('admin.simulateur-scenarios.*') ? $classeActif.' admin-nav-lien-actif' : $classeInactif }}"
+       @if(request()->routeIs('admin.simulateur-scenarios.*')) aria-current="page" @endif>
+        <svg class="h-5 w-5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke-width="1.8" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75c0 .621-.504 1.125-1.125 1.125h-2.25A1.125 1.125 0 0 1 3 19.875v-6.75Zm6.75-4.5c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 0 1-1.125-1.125V8.625Zm6.75-4.5c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 0 1-1.125-1.125V4.125Z" /></svg>
+        Simulateur
+    </a>
+    @endif
     @endcan
         </div>
     </div>
@@ -55,7 +77,7 @@ $classeInactif = 'text-slate-600 hover:bg-slate-100 hover:text-slate-900';
          :data-ouvert="ouvert">
         <button type="button" @click="ouvert = !ouvert; localStorage.setItem('admin-nav-scolarite', ouvert ? '1' : '0')"
                 :aria-expanded="ouvert.toString()" aria-controls="nav-scolarite">
-            <span class="px-3 text-[10px] font-black uppercase tracking-widest text-slate-400">Scolarité</span>
+            <span class="px-3 text-[13px] font-semibold text-slate-500">Scolarité</span>
             <svg class="chevron h-3.5 w-3.5 text-slate-400" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" /></svg>
         </button>
         <div id="nav-scolarite" x-show="ouvert" x-cloak class="admin-nav-liens space-y-1">
@@ -82,7 +104,7 @@ $classeInactif = 'text-slate-600 hover:bg-slate-100 hover:text-slate-900';
          :data-ouvert="ouvert">
         <button type="button" @click="ouvert = !ouvert; localStorage.setItem('admin-nav-formation', ouvert ? '1' : '0')"
                 :aria-expanded="ouvert.toString()" aria-controls="nav-formation">
-            <span class="px-3 text-[10px] font-black uppercase tracking-widest text-slate-400">Formation</span>
+            <span class="px-3 text-[13px] font-semibold text-slate-500">Formation</span>
             <svg class="chevron h-3.5 w-3.5 text-slate-400" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" /></svg>
         </button>
         <div id="nav-formation" x-show="ouvert" x-cloak class="admin-nav-liens space-y-1">
@@ -104,7 +126,7 @@ $classeInactif = 'text-slate-600 hover:bg-slate-100 hover:text-slate-900';
          :data-ouvert="ouvert">
         <button type="button" @click="ouvert = !ouvert; localStorage.setItem('admin-nav-modules', ouvert ? '1' : '0')"
                 :aria-expanded="ouvert.toString()" aria-controls="nav-modules">
-            <span class="px-3 text-[10px] font-black uppercase tracking-widest text-slate-400">Planification &amp; services</span>
+            <span class="px-3 text-[13px] font-semibold text-slate-500">Planification &amp; services</span>
             <svg class="chevron h-3.5 w-3.5 text-slate-400" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" /></svg>
         </button>
         <div id="nav-modules" x-show="ouvert" x-cloak class="admin-nav-liens space-y-1">
@@ -113,6 +135,7 @@ $classeInactif = 'text-slate-600 hover:bg-slate-100 hover:text-slate-900';
             @php
                 $motif = match($item['route']) {
                     'admin.evaluations.index' => 'admin.evaluations.index',
+                    'admin.evaluations.examens.index' => 'admin.evaluations.examens.*',
                     'admin.evaluations.epreuves.index' => ['admin.evaluations.epreuves.*', 'admin.evaluations.notes.*', 'admin.notes.*'],
                     'admin.evaluations.affectations', 'admin.evaluations.affectations.index' => 'admin.evaluations.affectations*',
                     'admin.evaluations.surveillances.index' => ['admin.evaluations.surveillances.index', 'admin.evaluations.surveillances.cockpit', 'admin.evaluations.surveillances.mes-gardes', 'admin.evaluations.surveillances.export', 'admin.evaluations.surveillants.*'],
@@ -143,12 +166,47 @@ $classeInactif = 'text-slate-600 hover:bg-slate-100 hover:text-slate-900';
         </div>
     </div>
 
+    @if(config('modules.evaluation.active', true) && (auth()->user()->estSuperAdmin() || auth()->user()->can('evaluations.view') || in_array(auth()->user()->role, ['admin', 'admin_scolarite', 'admin_faculte'], true)))
+    <div class="admin-nav-section" data-ouvert="true"
+         x-data="{ ouvert: (localStorage.getItem('admin-nav-examens-advanced') ?? '1') === '1' }"
+         :data-ouvert="ouvert">
+        <button type="button" @click="ouvert = !ouvert; localStorage.setItem('admin-nav-examens-advanced', ouvert ? '1' : '0')"
+                :aria-expanded="ouvert.toString()" aria-controls="nav-examens-advanced">
+            <span class="px-3 text-[13px] font-semibold text-slate-500">Examens</span>
+            <svg class="chevron h-3.5 w-3.5 text-slate-400" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" /></svg>
+        </button>
+        <div id="nav-examens-advanced" x-show="ouvert" x-cloak class="admin-nav-liens space-y-1">
+            @foreach([
+                ['admin.evaluation.examens.tableau-de-bord', 'admin.evaluation.examens.tableau-de-bord*', 'Tableau de bord', 'M3.75 6A2.25 2.25 0 0 1 6 3.75h2.25A2.25 2.25 0 0 1 10.5 6v2.25a2.25 2.25 0 0 1-2.25 2.25H6a2.25 2.25 0 0 1-2.25-2.25V6ZM3.75 15.75A2.25 2.25 0 0 1 6 13.5h2.25a2.25 2.25 0 0 1 2.25 2.25V18a2.25 2.25 0 0 1-2.25 2.25H6A2.25 2.25 0 0 1 3.75 18v-2.25ZM13.5 6a2.25 2.25 0 0 1 2.25-2.25H18A2.25 2.25 0 0 1 20.25 6v2.25A2.25 2.25 0 0 1 18 10.5h-2.25a2.25 2.25 0 0 1-2.25-2.25V6ZM13.5 15.75a2.25 2.25 0 0 1 2.25-2.25H18a2.25 2.25 0 0 1 2.25 2.25V18A2.25 2.25 0 0 1 18 20.25h-2.25A2.25 2.25 0 0 1 13.5 18v-2.25Z'],
+                ['admin.evaluation.examens.sessions', 'admin.evaluation.examens.sessions*', 'Sessions d’examen', 'M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 0 1 2.25-2.25h13.5A2.25 2.25 0 0 1 21 7.5v11.25m-18 0A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75m-18 0v-7.5A2.25 2.25 0 0 1 5.25 9h13.5A2.25 2.25 0 0 1 21 11.25v7.5'],
+                ['admin.evaluation.examens.configurations', 'admin.evaluation.examens.configurations*', 'Configurations & Modules', 'M10.5 6h9.75M10.5 6a1.5 1.5 0 1 1-3 0m3 0a1.5 1.5 0 1 0-3 0M3.75 6H7.5m3 12h9.75m-9.75 0a1.5 1.5 0 0 1-3 0m3 0a1.5 1.5 0 0 0-3 0m-3.75 0H7.5m9-6h3.75m-3.75 0a1.5 1.5 0 0 1-3 0m3 0a1.5 1.5 0 0 0-3 0m-9 0h6.375'],
+                ['admin.evaluation.examens.eligibilite', 'admin.evaluation.examens.eligibilite*', 'Éligibilité candidats', 'M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z'],
+                ['admin.evaluation.examens.groupes', 'admin.evaluation.examens.groupes*', 'Groupes d’examen', 'M18 18.72a9.094 9.094 0 0 0 3.741-.479 3 3 0 0 0-4.682-2.72m.94 3.198.001.031c0 .225-.012.447-.037.666A11.944 11.944 0 0 1 12 21c-2.17 0-4.207-.576-5.963-1.584A6.062 6.062 0 0 1 6 18.719m12 0a5.971 5.971 0 0 0-.941-3.197m0 0A5.995 5.995 0 0 0 12 12.75a5.995 5.995 0 0 0-5.058 2.772m0 0a3 3 0 0 0-4.681 2.72 8.986 8.986 0 0 0 3.74.477m.94-3.197a5.971 5.971 0 0 0-.94 3.197M15 6.75a3 3 0 1 1-6 0 3 3 0 0 1 6 0Zm6 3a2.25 2.25 0 1 1-4.5 0 2.25 2.25 0 0 1 4.5 0Zm-13.5 0a2.25 2.25 0 1 1-4.5 0 2.25 2.25 0 0 1 4.5 0Z'],
+                ['admin.evaluation.examens.salles', 'admin.evaluation.examens.salles*', 'Salles & Capacités', 'M2.25 21h19.5m-18-18v18m10.5-18v18m6-13.5V21M6.75 6.75h.75m-.75 3h.75m-.75 3h.75m3-6h.75m-.75 3h.75m-.75 3h.75M6.75 21v-3.75a1.5 1.5 0 0 1 1.5-1.5h1.5a1.5 1.5 0 0 1 1.5 1.5V21'],
+                ['admin.evaluation.examens.planification', 'admin.evaluation.examens.planification*', 'Planification auto', 'M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z'],
+                ['admin.evaluation.examens.surveillance', 'admin.evaluation.examens.surveillance*', 'Surveillance', 'M2.036 12.322a1.012 1.012 0 0 1 0-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178Z'],
+                ['admin.evaluation.examens.simulation', 'admin.evaluation.examens.simulation*', 'Simulation & Qualité', 'M9.75 3.104v5.714a2.25 2.25 0 0 1-.659 1.591L5 14.5M9.75 3.104c-.251.023-.501.05-.75.082m.75-.082a24.301 24.301 0 0 1 4.5 0m0 0v5.714c0 .597.237 1.17.659 1.591L19.8 15.3M14.25 3.104c.251.023.501.05.75.082M19.8 15.3l-1.57.942A4.5 4.5 0 0 1 15.9 16.5H8.1a4.5 4.5 0 0 1-2.33-.658L4.2 14.9m15.6.4v4.35a2.25 2.25 0 0 1-2.25 2.25H6.45a2.25 2.25 0 0 1-2.25-2.25V14.9'],
+                ['admin.evaluation.examens.publication', 'admin.evaluation.examens.publication*', 'Validation & Publication', 'M9 12.75 11.25 15 15 9.75m-3-7.036A11.959 11.959 0 0 1 3.598 6 11.99 11.99 0 0 0 3 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285Z'],
+                ['admin.evaluation.examens.convocations', 'admin.evaluation.examens.convocations*', 'Convocations', 'M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z'],
+                ['admin.evaluation.examens.historique', 'admin.evaluation.examens.historique*', 'Historique & Audit', 'M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z'],
+            ] as [$route, $motif, $libelle, $icone])
+                <a href="{{ route($route) }}"
+                   class="{{ $classeLien }} {{ request()->routeIs($motif) ? $classeActif.' admin-nav-lien-actif' : $classeInactif }}"
+                   @if(request()->routeIs($motif)) aria-current="page" @endif>
+                    <svg class="h-5 w-5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke-width="1.8" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="{{ $icone }}" /></svg>
+                    {{ $libelle }}
+                </a>
+            @endforeach
+        </div>
+    </div>
+    @endif
+
     <div class="admin-nav-section" data-ouvert="true"
          x-data="{ ouvert: (localStorage.getItem('admin-nav-donnees') ?? '1') === '1' }"
          :data-ouvert="ouvert">
         <button type="button" @click="ouvert = !ouvert; localStorage.setItem('admin-nav-donnees', ouvert ? '1' : '0')"
                 :aria-expanded="ouvert.toString()" aria-controls="nav-donnees">
-            <span class="px-3 text-[10px] font-black uppercase tracking-wider text-slate-400">Données</span>
+            <span class="px-3 text-[13px] font-semibold text-slate-500">Données</span>
             <svg class="chevron h-3.5 w-3.5 text-slate-400" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" /></svg>
         </button>
         <div id="nav-donnees" x-show="ouvert" x-cloak class="admin-nav-liens space-y-1">
@@ -233,7 +291,7 @@ $classeInactif = 'text-slate-600 hover:bg-slate-100 hover:text-slate-900';
     </div>
 
     @if(auth()->user()->role === 'admin_faculte' || auth()->user()->estSuperAdmin())
-        <p class="px-3 pt-4 text-[10px] font-black uppercase tracking-widest text-slate-400">Administration</p>
+        <p class="px-3 pt-4 text-[13px] font-semibold text-slate-500">Administration</p>
         @if(auth()->user()->role === 'admin_faculte')
             <a href="{{ route('admin.ma-faculte') }}"
                class="{{ $classeLien }} {{ request()->routeIs('admin.ma-faculte') ? $classeActif : $classeInactif }}">
@@ -291,7 +349,7 @@ $classeInactif = 'text-slate-600 hover:bg-slate-100 hover:text-slate-900';
         @endif
     @endif
     @can('history.view')
-        <p class="px-3 pt-4 text-[10px] font-black uppercase tracking-wider text-slate-400">Contrôle</p>
+        <p class="px-3 pt-4 text-[13px] font-semibold text-slate-500">Contrôle</p>
         <a href="{{ route('admin.audit.index') }}"
            class="{{ $classeLien }} {{ request()->routeIs('admin.audit.*') ? $classeActif : $classeInactif }}">
             <svg class="h-5 w-5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke-width="1.8" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" /></svg>
@@ -299,7 +357,7 @@ $classeInactif = 'text-slate-600 hover:bg-slate-100 hover:text-slate-900';
         </a>
     @endcan
 @elseif(session('etudiant_auth_id'))
-    <p class="px-3 pt-1 text-[10px] font-black uppercase tracking-widest text-slate-400">Accueil</p>
+    <p class="px-3 pt-1 text-[13px] font-semibold text-slate-500">Accueil</p>
     <a href="{{ route('etudiant.dashboard') }}"
        class="{{ $classeLien }} {{ request()->routeIs('etudiant.dashboard') ? $classeActif : $classeInactif }}"
        @if(request()->routeIs('etudiant.dashboard')) aria-current="page" @endif>
@@ -307,7 +365,7 @@ $classeInactif = 'text-slate-600 hover:bg-slate-100 hover:text-slate-900';
         Tableau de bord
     </a>
 
-    <p class="px-3 pt-4 text-[10px] font-black uppercase tracking-widest text-slate-400">Mon espace</p>
+    <p class="px-3 pt-4 text-[13px] font-semibold text-slate-500">Mon espace</p>
     @foreach([
         ['etudiant.archives.show', 'etudiant.archives.*', 'Mon dossier'],
         ['etudiant.inscriptions.index', 'etudiant.inscriptions.*', 'Mes inscriptions'],
@@ -315,6 +373,7 @@ $classeInactif = 'text-slate-600 hover:bg-slate-100 hover:text-slate-900';
         ['etudiant.notes.index', 'etudiant.notes.*', 'Mes notes'],
         ['etudiant.documents.index', 'etudiant.documents.*', 'Mes documents'],
         ['etudiant.historique.index', 'etudiant.historique.*', 'Mon historique'],
+        ['etudiant.notifications.index', 'etudiant.notifications.*', 'Notifications'],
         ['etudiant.profil.show', 'etudiant.profil.*', 'Mon profil'],
     ] as [$route, $motif, $libelle])
         <a href="{{ route($route) }}"
@@ -333,7 +392,7 @@ $classeInactif = 'text-slate-600 hover:bg-slate-100 hover:text-slate-900';
         </a>
     @endforeach
 @elseif(session('enseignant_auth_id'))
-    <p class="px-3 pt-1 text-[10px] font-black uppercase tracking-widest text-slate-400">Accueil</p>
+    <p class="px-3 pt-1 text-[13px] font-semibold text-slate-500">Accueil</p>
     <a href="{{ route('enseignant.dashboard') }}"
        class="{{ $classeLien }} {{ request()->routeIs('enseignant.dashboard') ? $classeActif : $classeInactif }}"
        @if(request()->routeIs('enseignant.dashboard')) aria-current="page" @endif>
@@ -341,7 +400,7 @@ $classeInactif = 'text-slate-600 hover:bg-slate-100 hover:text-slate-900';
         Tableau de bord
     </a>
 
-    <p class="px-3 pt-4 text-[10px] font-black uppercase tracking-widest text-slate-400">Mon espace</p>
+    <p class="px-3 pt-4 text-[13px] font-semibold text-slate-500">Mon espace</p>
     {{--
         Entrées propres au cœur du portail. Les pages fournies par les
         modules (emploi du temps, présences, surveillances, annonces) sont
@@ -375,7 +434,7 @@ $classeInactif = 'text-slate-600 hover:bg-slate-100 hover:text-slate-900';
         </a>
     @endforeach
 @else
-    <p class="px-3 pt-1 text-[10px] font-black uppercase tracking-widest text-slate-400">Portail</p>
+    <p class="px-3 pt-1 text-[13px] font-semibold text-slate-500">Portail</p>
     @foreach([
         ['inscription.create', 'Accueil'],
         ['inscription.create#inscription', 'Inscription'],

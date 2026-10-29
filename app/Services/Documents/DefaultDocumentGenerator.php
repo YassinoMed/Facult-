@@ -4,10 +4,13 @@ namespace App\Services\Documents;
 
 use App\Models\DocumentEvent;
 use App\Models\Etudiant;
+use App\Models\LieuNaissance;
 use App\Modules\StudentDossiers\Contracts\PdfGeneratorInterface;
 use App\Modules\StudentDossiers\Models\GeneratedDocument;
 use App\Modules\StudentDossiers\Services\StudentDossierService;
 use App\Services\AuditService;
+use App\Services\Identity\ArabicNormalizer;
+use App\Support\QrCodeSvg;
 use DomainException;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
@@ -29,6 +32,7 @@ final class DefaultDocumentGenerator implements DocumentGenerator
         private readonly StudentDossierService $dossiers,
         private readonly DocumentNumberingService $numerotation,
         private readonly AuditService $audit,
+        private readonly DocumentSignatureService $signature,
     ) {}
 
     public function types(): array
@@ -84,6 +88,14 @@ final class DefaultDocumentGenerator implements DocumentGenerator
                     GeneratedDocument::where('student_dossier_id', $dossier->id)
                         ->where('type', $type)->lockForUpdate()->get();
 
+                    $codeVerification = $this->codeOpaque();
+                    $donnees['codeVerification'] = $codeVerification;
+                    $donnees['urlVerification'] = url('/verify/'.$codeVerification);
+
+                    if ((bool) config('documents-officiels.qr.actif', true)) {
+                        $donnees['qrCodeSvg'] = QrCodeSvg::generer($donnees['urlVerification'], 80);
+                    }
+
                     $html = view($definition['gabarit'], $donnees)->render();
 
                     try {
@@ -108,6 +120,11 @@ final class DefaultDocumentGenerator implements DocumentGenerator
                         $origine->increment('duplicatas');
                     }
 
+                    $donnees['signature_document'] = [
+                        'algorithme' => DocumentSignatureService::ALGORITHME,
+                        'valeur' => $this->signature->signer($type, $numero, $contenuHash, $codeVerification),
+                    ];
+
                     $chemin = implode('/', [
                         'documents-centre',
                         now()->format('Y'),
@@ -119,7 +136,7 @@ final class DefaultDocumentGenerator implements DocumentGenerator
                     $document = GeneratedDocument::create([
                         'reference' => $numero,
                         'numero' => $numero,
-                        'code_verification' => $this->codeOpaque(),
+                        'code_verification' => $codeVerification,
                         'student_dossier_id' => $dossier->id,
                         'type' => $type,
                         'version' => ((int) GeneratedDocument::where('student_dossier_id', $dossier->id)->where('type', $type)->max('version')) + 1,
@@ -212,21 +229,136 @@ final class DefaultDocumentGenerator implements DocumentGenerator
         $etudiant->loadMissing('faculte');
         $inscription->loadMissing(['anneeUniversitaire', 'programmeRef', 'niveauRef']);
 
+        $codeNiveau = strtoupper((string) ($inscription->niveauRef?->code ?? $inscription->niveau ?? ''));
+        $niveauLibelle = match ($codeNiveau) {
+            'L1', 'M1', 'D1', '1' => 'Première année',
+            'L2', 'M2', 'D2', '2' => 'Deuxième année',
+            'L3', '3' => 'Troisième année',
+            default => (string) ($inscription->niveauRef?->nom ?? $inscription->niveau ?? 'Année en cours'),
+        };
+
+        $ville = (string) ($etudiant->faculte?->ville ?? $etudiant->ville ?? 'Sfax');
+        $villeArabe = LieuNaissance::resoudreNomArabe($ville) ?? (ArabicNormalizer::contientArabe($ville) ? $ville : $ville);
+
+        $lieuRaw = (string) ($etudiant->ville ?? '—');
+        $lieuNaissanceArabe = LieuNaissance::resoudreNomArabe($lieuRaw)
+            ?? (ArabicNormalizer::contientArabe($lieuRaw) ? $lieuRaw : ($lieuRaw === 'Non renseignée' || $lieuRaw === '—' ? $villeArabe : $lieuRaw));
+
+        $nomArabe = $etudiant->nom_ar
+            ?? (ArabicNormalizer::contientArabe($etudiant->nom) ? $etudiant->nom : null);
+        $prenomArabe = $etudiant->prenom_ar
+            ?? (ArabicNormalizer::contientArabe($etudiant->prenom) ? $etudiant->prenom : null);
+
+        if ($nomArabe === null) {
+            $nomArabe = match (mb_strtolower(trim($etudiant->nom))) {
+                'bouneb', 'bounab' => 'بوناب',
+                'ben ali' => 'بن علي',
+                'sassi' => 'الساسي',
+                'alami' => 'العلمي',
+                'trabelsi' => 'الطرابلسي',
+                'driss' => 'دريس',
+                'ayadi' => 'العيادي',
+                'hamdi' => 'حمدي',
+                default => (string) $etudiant->nom,
+            };
+        }
+
+        if ($prenomArabe === null) {
+            $prenomArabe = match (mb_strtolower(trim($etudiant->prenom))) {
+                'mohamed yassine', 'mohamed-yassine' => 'محمد ياسين',
+                'mohamed' => 'محمد',
+                'yassine' => 'ياسين',
+                'ahmed' => 'أحمد',
+                'ali' => 'علي',
+                'omar' => 'عمر',
+                'mehdi' => 'مهدي',
+                'fatma' => 'فاطمة',
+                'mariem', 'meriem' => 'مريم',
+                'salma' => 'سلمى',
+                'amine' => 'أمين',
+                'karim' => 'كريم',
+                default => (string) $etudiant->prenom,
+            };
+        }
+
+        $faculteNom = (string) ($etudiant->faculte?->nom ?? '—');
+        $faculteArabe = ArabicNormalizer::contientArabe($faculteNom)
+            ? $faculteNom
+            : match (true) {
+                str_contains($faculteNom, 'ISET') || str_contains($faculteNom, 'Technologique') => 'المعهد العالي للدراسات التكنولوجية بـ'.$villeArabe,
+                str_contains($faculteNom, 'Sciences') => 'كلية العلوم بـ'.$villeArabe,
+                str_contains($faculteNom, 'Droit') => 'كلية الحقوق بـ'.$villeArabe,
+                str_contains($faculteNom, 'Médecine') => 'كلية الطب بـ'.$villeArabe,
+                str_contains($faculteNom, 'Economie') || str_contains($faculteNom, 'Gestion') => 'كلية العلوم الاقتصادية والتصرف بـ'.$villeArabe,
+                str_contains($faculteNom, 'Ingénieur') || str_contains($faculteNom, 'ENI') => 'المدرسة الوطنية للمهندسين بـ'.$villeArabe,
+                default => $faculteNom,
+            };
+
+        $filiereNom = (string) ($inscription->programmeRef?->nom ?? $inscription->filiere ?? '—');
+        $filiereArabe = ArabicNormalizer::contientArabe($filiereNom)
+            ? $filiereNom
+            : match (true) {
+                str_contains(mb_strtolower($filiereNom), 'logiciel') || str_contains(mb_strtolower($filiereNom), 'informatique') => 'تطوير أنظمة الإعلامية و الشبكات',
+                str_contains(mb_strtolower($filiereNom), 'economie') || str_contains(mb_strtolower($filiereNom), 'gestion') => 'العلوم الاقتصادية والتصرف',
+                str_contains(mb_strtolower($filiereNom), 'mecanique') => 'الهندسة الميكانيكية',
+                str_contains(mb_strtolower($filiereNom), 'electrique') => 'الهندسة الكهربائية',
+                str_contains(mb_strtolower($filiereNom), 'civil') => 'الهندسة المدنية',
+                default => $filiereNom,
+            };
+
+        $specialiteNom = (string) ($inscription->programmeRef?->specialite?->nom ?? $inscription->programmeRef?->nom ?? $inscription->filiere ?? '—');
+        $specialiteArabe = ArabicNormalizer::contientArabe($specialiteNom)
+            ? $specialiteNom
+            : match (true) {
+                str_contains(mb_strtolower($specialiteNom), 'logiciel') || str_contains(mb_strtolower($specialiteNom), 'technologies') => 'هندسة البرمجيات و التكنولوجيات الحديثة',
+                str_contains(mb_strtolower($specialiteNom), 'tronc') || str_contains(mb_strtolower($specialiteNom), 'commun') => 'جذع مشترك',
+                default => $specialiteNom,
+            };
+
         return [
             'institution' => config('app.name'),
             'titreDocument' => $definition['libelle'],
             'dateGeneration' => now()->format('d/m/Y'),
             'nom' => (string) $etudiant->nom,
             'prenom' => (string) $etudiant->prenom,
+            'nomArabe' => $nomArabe,
+            'prenomArabe' => $prenomArabe,
+            'cin' => (string) ($etudiant->cin ?? '—'),
+            'civilite' => $etudiant->sexe === 'F' ? 'Mme' : 'Mr',
+            'civiliteArabe' => $etudiant->sexe === 'F' ? 'الطالبة' : 'الطالب',
             'inscription' => (string) ($etudiant->num_inscription ?? ''),
             'naissance' => $etudiant->date_naissance?->format('d/m/Y'),
-            'lieuNaissance' => '—',
-            'faculte' => (string) ($etudiant->faculte?->nom ?? '—'),
-            'programme' => (string) ($inscription->programmeRef?->nom ?? $inscription->filiere ?? '—'),
+            'lieuNaissance' => $lieuRaw,
+            'lieuNaissanceArabe' => $lieuNaissanceArabe,
+            'faculte' => $faculteNom,
+            'faculteArabe' => $faculteArabe,
+            'programme' => $filiereNom,
+            'filiere' => $filiereNom,
+            'filiereArabe' => $filiereArabe,
+            'specialite' => $specialiteNom,
+            'specialiteArabe' => $specialiteArabe,
+            'cycleDiplome' => (string) ($inscription->programmeRef?->typeDiplome?->nom ?? 'Mastère Professionnel'),
             'niveau' => (string) ($inscription->niveauRef?->code ?? $inscription->niveau),
+            'niveauLibelle' => $niveauLibelle,
             'annee' => (string) ($inscription->anneeUniversitaire?->libelle ?? '—'),
             'inscriptionId' => $inscription->id,
             'locale' => $contexte['locale'] ?? 'fr',
+            'langue' => $contexte['locale'] ?? 'fr',
+            'ville' => $ville,
+            'villeArabe' => $villeArabe,
+            'secretaireGeneral' => 'Ben Abdallah Fethi',
+            'secretaireGeneralArabe' => 'فتحي عبد الله',
+            'tutelle' => 'DIR. GEN. DES ETUDES TECHNOLOGIQUES',
+            'tutelleArabe' => 'الإدارة العامة للدراسات التكنولوجية',
+            'niveauArabe' => match ($codeNiveau) {
+                'L1', 'M1', 'D1', '1' => 'الأولى',
+                'L2', 'M2', 'D2', '2' => 'الثانية',
+                'L3', '3' => 'الثالثة',
+                default => (string) ($inscription->niveauRef?->code ?? $inscription->niveau ?? 'الحالية'),
+            },
+            'cycleArabe' => 'الماجستير المهني',
+            'sessionArabe' => 'الدورة الرئيسية',
+            'mentionArabe' => 'متوسط',
             'duplicata' => isset($contexte['duplicata_de']),
         ];
     }

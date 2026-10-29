@@ -50,6 +50,9 @@ class DossierCorrection extends Model
 
     public function estPourInscription(): bool
     {
-        return $this->inscription_academique_id !== null;
+        // Le marqueur métier est le champ, jamais la simple présence d'une
+        // FK : une correction de champ étudiant peut être rattachée à une
+        // inscription pour le contexte et doit rester une correction étudiant.
+        return $this->champ === self::CHAMP_INSCRIPTION;
     }
 }

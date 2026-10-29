@@ -43,13 +43,14 @@ class OnlineRequestPolicy
 
     public function approve(User $user, OnlineRequest $demande): bool
     {
-        return $user->hasPermission('demandes.approve')
+        // LOT 01 : Gate (RBAC + délégation active), isolation inchangée.
+        return $user->can('demandes.approve')
             && $user->peutAccederFaculte($this->perimetre($user, $demande));
     }
 
     public function reject(User $user, OnlineRequest $demande): bool
     {
-        return $user->hasPermission('demandes.reject')
+        return $user->can('demandes.reject')
             && $user->peutAccederFaculte($this->perimetre($user, $demande));
     }
 

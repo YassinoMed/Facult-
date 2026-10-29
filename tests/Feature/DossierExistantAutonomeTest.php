@@ -18,6 +18,7 @@ use Illuminate\Http\Request;
 use Illuminate\Notifications\AnonymousNotifiable;
 use Illuminate\Notifications\ChannelManager;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Route;
 use Mockery;
@@ -388,6 +389,87 @@ class DossierExistantAutonomeTest extends TestCase
         RegistrationPeriod::query()->update(['closed_at' => now()->subDay()]);
 
         $this->demander()->assertSessionMissing('errors');
+
+        Notification::assertNothingSent();
+        $this->assertSame('rejete@example.com', $rejete->fresh()->email);
+    }
+
+    /* ---------------------------------------------------------------
+     | REFUS AVANT ENVOI : NEUTRES POUR LE CLIENT, TRACÉS POUR L'EXPLOITATION
+     * -------------------------------------------------------------- */
+
+    public function test_dossier_introuvable_est_trace_sans_donnee_personnelle(): void
+    {
+        $this->creerEtudiant();
+        Notification::fake();
+        Log::spy();
+
+        // Réponse strictement neutre (aucun oracle d'existence)…
+        $this->demander(['cin' => '87654321', 'date_naissance' => '2001-02-02'])
+            ->assertSessionMissing('errors');
+
+        // …mais l'exploitation reçoit le motif exact, sans aucune donnée
+        // personnelle (ni CIN, ni adresse, ni mot de passe).
+        Log::shouldHaveReceived('info')->withArgs(
+            fn (string $message, array $contexte): bool => $message === 'dossier_existant.refus'
+                && $contexte === ['flux' => 'autonome', 'motif' => 'dossier_introuvable']
+        )->once();
+
+        Notification::assertNothingSent();
+    }
+
+    public function test_mot_de_passe_errone_est_trace_sans_donnee_personnelle(): void
+    {
+        $this->creerEtudiant();
+        Notification::fake();
+        Log::spy();
+
+        $this->demander(['password' => 'FauxMotDePasse9'])->assertSessionMissing('errors');
+
+        Log::shouldHaveReceived('info')->withArgs(
+            fn (string $message, array $contexte): bool => $message === 'dossier_existant.refus'
+                && $contexte === ['flux' => 'autonome', 'motif' => 'mot_de_passe']
+        )->once();
+
+        Notification::assertNothingSent();
+    }
+
+    public function test_refus_des_gardes_tracent_le_motif_exact(): void
+    {
+        $this->creerEtudiant();
+        $this->creerEtudiant([
+            'cin' => '87654321', 'email' => 'autre@example.com',
+            'date_naissance' => '2001-02-02', 'nom' => 'AUTRE', 'prenom' => 'Personne',
+        ]);
+        Notification::fake();
+
+        // Adresse déjà portée par un autre dossier.
+        Log::spy();
+        $this->demander([
+            'cin' => '87654321', 'date_naissance' => '2001-02-02',
+            'ancien_email' => 'autre@example.com',
+            'nouvel_email' => 'mohamed.benali@example.com',
+            'nouvel_email_confirmation' => 'mohamed.benali@example.com',
+        ])->assertSessionMissing('errors');
+        Log::shouldHaveReceived('info')->withArgs(
+            fn (string $message, array $contexte): bool => $message === 'dossier_existant.refus'
+                && $contexte === ['flux' => 'autonome', 'motif' => 'adresse_deja_utilisee']
+        )->once();
+
+        // Statut non modifiable en ligne (dossier rejeté).
+        $rejete = $this->creerEtudiant([
+            'cin' => '22222222', 'email' => 'rejete@example.com',
+            'date_naissance' => '2002-02-02', 'statut' => 'rejete',
+        ]);
+        Log::spy();
+        $this->demander([
+            'cin' => '22222222', 'date_naissance' => '2002-02-02',
+            'ancien_email' => 'rejete@example.com',
+        ])->assertSessionMissing('errors');
+        Log::shouldHaveReceived('info')->withArgs(
+            fn (string $message, array $contexte): bool => $message === 'dossier_existant.refus'
+                && $contexte === ['flux' => 'autonome', 'motif' => 'statut']
+        )->once();
 
         Notification::assertNothingSent();
         $this->assertSame('rejete@example.com', $rejete->fresh()->email);

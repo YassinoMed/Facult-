@@ -6,11 +6,14 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\AdminLoginRequest;
 use App\Models\User;
 use App\Modules\Schedule\Models\Teacher;
+use App\Services\MfaRecoveryCodeService;
 use App\Services\MfaTotpService;
 use App\Services\VerrouillageService;
+use App\Support\MfaPolicy;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Log;
 use Illuminate\View\View;
 
 /**
@@ -76,6 +79,20 @@ class AuthController extends Controller
             }
         }
 
+        // Double facteur OBLIGATOIRE (LOOP-SECURITY-REMEDIATION-01) :
+        // mot de passe valide mais rôle à privilèges sans TOTP enrôlé →
+        // l'enrôlement précède tout accès au back-office. Le mot de passe
+        // est re-exigé pour finaliser l'activation (voir MfaController).
+        if (! $utilisateur->mfa_active && MfaPolicy::exigePour($utilisateur)) {
+            $request->session()->regenerate();
+            $request->session()->put('bo_auth_password', true);
+            app(VerrouillageService::class)->initialiserSession($request, $utilisateur);
+            $request->session()->put('mfa_enrolement_obligatoire', $utilisateur->id);
+
+            return redirect()->route('admin.mfa.configurer')
+                ->with('warning', 'Votre rôle exige la double authentification : activez-la maintenant pour accéder au back-office.');
+        }
+
         // Double facteur : mot de passe valide mais TOTP requis → session
         // en attente (aucun accès back-office avant le défi, LOOP J).
         if ($utilisateur->mfa_active) {
@@ -87,6 +104,7 @@ class AuthController extends Controller
 
         // Régénération de session : protection contre la fixation de session
         $request->session()->regenerate();
+        $request->session()->put('bo_auth_password', true);
         app(VerrouillageService::class)->initialiserSession($request, $utilisateur);
 
         return redirect()->intended(route('admin.dashboard'))
@@ -102,7 +120,7 @@ class AuthController extends Controller
         return view('admin.connexion-defi');
     }
 
-    public function verifierDefi(Request $request, MfaTotpService $totp): RedirectResponse
+    public function verifierDefi(Request $request, MfaTotpService $totp, MfaRecoveryCodeService $codesSecours): RedirectResponse
     {
         $utilisateur = User::find($request->session()->get('mfa_en_attente'));
 
@@ -112,16 +130,31 @@ class AuthController extends Controller
             return redirect()->route('admin.connexion.show');
         }
 
+        // Accepte le code TOTP à 6 chiffres OU un code de secours
+        // (usage unique) — jamais les deux à la fois.
         $request->merge(['code' => preg_replace('/\s+/', '', (string) $request->input('code'))]);
-        $code = (string) $request->validate(['code' => ['required', 'string', 'size:6']])['code'];
+        $code = (string) $request->validate(['code' => ['required', 'string', 'min:6', 'max:24']])['code'];
 
-        if (! $totp->verifier($utilisateur->mfa_secret, $code)) {
+        $valide = $totp->verifier((string) $utilisateur->mfa_secret, $code);
+
+        if (! $valide && $codesSecours->consommer($utilisateur, $code)) {
+            $valide = true;
+
+            Log::channel(config('logging.default'))->notice('admin.mfa_code_secours_utilise', [
+                'acteur_id' => $utilisateur->id,
+                'adresse_ip' => $request->ip(),
+                'codes_restants' => $codesSecours->restants($utilisateur),
+            ]);
+        }
+
+        if (! $valide) {
             return back()->withErrors(['code' => 'Code invalide ou expiré.']);
         }
 
         $request->session()->forget('mfa_en_attente');
         Auth::login($utilisateur, false);
         $request->session()->regenerate();
+        $request->session()->put('bo_auth_password', true);
         app(VerrouillageService::class)->initialiserSession($request, $utilisateur);
 
         return redirect()->intended(route('admin.dashboard'))

@@ -37,6 +37,11 @@ class TaskPolicy
         return $user->hasPermission('tasks.complete') && $this->dansPerimetre($user, $task);
     }
 
+    public function cancel(User $user, Task $task): bool
+    {
+        return $user->hasPermission('tasks.cancel') && $this->dansPerimetre($user, $task);
+    }
+
     private function dansPerimetre(User $user, Task $task): bool
     {
         return $task->faculte_id === null || $user->peutAccederFaculte((int) $task->faculte_id);

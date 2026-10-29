@@ -16,7 +16,7 @@
             @if($epreuves->isNotEmpty())
                 <table class="w-full min-w-[560px] text-left text-xs sm:text-sm">
                     <thead>
-                        <tr class="border-b border-slate-100 dark:border-slate-800 text-[11px] uppercase tracking-wider text-slate-400">
+                        <tr class="border-b border-slate-100 dark:border-slate-800 text-[11px] uppercase tracking-wider text-slate-700 dark:text-slate-300 font-bold">
                             <th scope="col" class="px-5 py-3 font-bold">Épreuve</th>
                             <th scope="col" class="px-5 py-3 font-bold">Date</th>
                             <th scope="col" class="px-5 py-3 font-bold"><span class="sr-only">Télécharger</span></th>

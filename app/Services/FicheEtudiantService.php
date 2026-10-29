@@ -19,7 +19,30 @@ use Illuminate\Support\Collection;
  */
 class FicheEtudiantService
 {
+    /** @var array<int, bool> Mémoïse l'existence d'une inscription active par étudiant (requête unique/fiche). */
+    private array $inscriptionsActives = [];
+
+    /** @var array<int, bool> Mémoïse l'existence d'un dossier documentaire par étudiant. */
+    private array $dossiersDocumentaires = [];
+
     public function __construct(private AcademicCalculationService $calculs) {}
+
+    private function aInscriptionActive(Etudiant $etudiant): bool
+    {
+        return $this->inscriptionsActives[(int) $etudiant->id]
+            ??= $etudiant->inscriptionsAcademiques()
+                ->whereIn('statut', ['en_cours', 'valide'])->exists();
+    }
+
+    private function aDossierDocumentaire(Etudiant $etudiant): bool
+    {
+        if (! class_exists(StudentDossier::class)) {
+            return true;
+        }
+
+        return $this->dossiersDocumentaires[(int) $etudiant->id]
+            ??= StudentDossier::where('etudiant_id', $etudiant->id)->exists();
+    }
 
     /**
      * @return array{moyenne_generale: ?float, credits_obtenus: int, credits_total: int, annees_validees: int, inscriptions_actives: int, demandes_ouvertes: int, absences: int}
@@ -81,13 +104,8 @@ class FicheEtudiantService
      */
     public function completude(Etudiant $etudiant): array
     {
-        $aInscriptionActive = $etudiant->inscriptionsAcademiques()
-            ->whereIn('statut', ['en_cours', 'valide'])->exists();
-
-        $aDossier = true;
-        if (class_exists(StudentDossier::class)) {
-            $aDossier = StudentDossier::where('etudiant_id', $etudiant->id)->exists();
-        }
+        $aInscriptionActive = $this->aInscriptionActive($etudiant);
+        $aDossier = $this->aDossierDocumentaire($etudiant);
 
         $items = [
             ['libelle' => 'Identité (nom, prénom, CIN ou email)', 'ok' => $etudiant->nom !== null && $etudiant->prenom !== null && ($etudiant->cin !== null || $etudiant->email !== null)],
@@ -107,7 +125,7 @@ class FicheEtudiantService
     public function anomalies(Etudiant $etudiant): array
     {
         $anomalies = [];
-        $inscriptionActive = $etudiant->inscriptionsAcademiques()->whereIn('statut', ['en_cours', 'valide'])->exists();
+        $inscriptionActive = $this->aInscriptionActive($etudiant);
 
         if (! $inscriptionActive) {
             $anomalies[] = [

@@ -11,6 +11,7 @@ use App\Modules\Referentiel\Models\Niveau;
 use App\Modules\Referentiel\Models\Programme;
 use App\Modules\Schedule\Models\Group;
 use App\Services\AffectationService;
+use App\Support\DemoData;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
@@ -60,8 +61,8 @@ class FsegsDatasetSeeder extends Seeder
 
     public function run(): void
     {
-        if (! app()->environment('local', 'testing')) {
-            $this->command?->warn('FsegsDatasetSeeder ignoré (environnement non local).');
+        if (! DemoData::autorisee()) {
+            $this->command?->warn('FsegsDatasetSeeder ignoré (SEED_DEMO_DATA non activé).');
 
             return;
         }

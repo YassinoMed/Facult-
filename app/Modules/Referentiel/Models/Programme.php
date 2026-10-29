@@ -2,6 +2,7 @@
 
 namespace App\Modules\Referentiel\Models;
 
+use App\Models\Etudiant;
 use App\Models\Faculte;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
@@ -132,5 +133,10 @@ class Programme extends Model
     public function maquettes(): HasMany
     {
         return $this->hasMany(Maquette::class)->orderByDesc('version');
+    }
+
+    public function etudiants(): HasMany
+    {
+        return $this->hasMany(Etudiant::class, 'programme_id');
     }
 }

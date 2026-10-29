@@ -12,6 +12,7 @@ use App\Modules\Referentiel\Models\Programme;
 use App\Services\DataExchange\Contracts\ExportDefinitionInterface;
 use App\Services\DataExchange\Contracts\ImportDefinitionInterface;
 use App\Services\DataExchange\Contracts\ImportValidationAvancee;
+use App\Services\InscriptionService;
 use App\Services\Io\IoException;
 use App\Services\NormalisationService;
 use App\Support\Recherche;
@@ -145,6 +146,7 @@ class InscriptionAcademiqueDefinition implements ExportDefinitionInterface, Impo
             ];
         }
 
+        $programme = null;
         if (! empty($ligne['filiere'])) {
             $programme = Programme::where('code', trim((string) $ligne['filiere']))->first();
 
@@ -155,6 +157,21 @@ class InscriptionAcademiqueDefinition implements ExportDefinitionInterface, Impo
                     'code' => 'PROGRAMME_ARCHIVE',
                 ];
             }
+        }
+
+        // Cohérence niveau ↔ programme : `niveaux.code` n'est unique que
+        // par programme (plusieurs « L1 » coexistent). Sans ce contrôle,
+        // le niveau d'un autre programme peut être rattaché silencieusement.
+        $programme = $programme ?? $etudiant?->programme;
+        $codeNiveau = trim((string) ($ligne['niveau'] ?? ''));
+
+        if ($programme !== null && $codeNiveau !== ''
+            && Niveau::resoudreDansProgramme($codeNiveau, $programme->id) === null) {
+            $erreurs[] = [
+                'champ' => 'niveau',
+                'message' => "Le niveau « {$codeNiveau} » n'appartient pas au parcours « {$programme->code} ».",
+                'code' => 'NIVEAU_HORS_PROGRAMME',
+            ];
         }
 
         return $erreurs;
@@ -213,7 +230,7 @@ class InscriptionAcademiqueDefinition implements ExportDefinitionInterface, Impo
         };
 
         $programme = ! empty($ligne['filiere']) ? Programme::where('code', trim((string) $ligne['filiere']))->first() : $etudiant->programme;
-        $niveauObj = ! empty($ligne['niveau']) ? Niveau::where('code', trim((string) $ligne['niveau']))->first() : null;
+        $niveauObj = $this->resoudreNiveau($ligne, $programme);
 
         if ($programme !== null && $programme->statut === Programme::STATUT_ARCHIVE) {
             throw IoException::malforme("Parcours « {$programme->code} » archivé (ligne {$ligne['ligne']}).");
@@ -237,10 +254,22 @@ class InscriptionAcademiqueDefinition implements ExportDefinitionInterface, Impo
             return "mise à jour : {$etudiant->nom} {$etudiant->prenom} ({$annee->libelle})";
         }
 
-        $inscription = InscriptionAcademique::create([
-            'etudiant_id' => $etudiant->id,
-            'annee_universitaire_id' => $annee->id,
-        ] + $donnees);
+        try {
+            // Création sous la règle d'unicité annuelle CENTRALISÉE.
+            $inscription = app(InscriptionService::class)->creerInscriptionAnnuelle(
+                (int) $etudiant->id,
+                (int) $annee->id,
+                $donnees,
+            );
+        } catch (\DomainException) {
+            // Course concurrence entre la lecture ci-dessus et l'écriture :
+            // la paire (étudiant, année) a été créée entre-temps. Refus
+            // métier contrôlé (jamais d'écrasement silencieux) — relancer
+            // l'import produira la mise à jour attendue.
+            throw IoException::malforme(
+                "Inscription déjà existante pour cet étudiant et cette année (conflit d'unicité, ligne {$ligne['ligne']}) — relancez l'import pour une mise à jour."
+            );
+        }
 
         // Création des deux semestres S1 et S2 si absents (§117)
         Semestre::firstOrCreate([
@@ -253,6 +282,41 @@ class InscriptionAcademiqueDefinition implements ExportDefinitionInterface, Impo
         ]);
 
         return "créée : {$etudiant->nom_complet} ({$annee->libelle})";
+    }
+
+    /**
+     * Résout le niveau DANS le programme concerné.
+     *
+     * `niveaux.code` n'étant unique que par programme, une résolution par
+     * le seul code retournerait le premier « L1 » venu. Sans programme
+     * résolu, on ne devine jamais : le rattachement n'est posé que si le
+     * code est globalement unique.
+     *
+     * @param  array<string, mixed>  $ligne
+     *
+     * @throws IoException
+     */
+    private function resoudreNiveau(array $ligne, ?Programme $programme): ?Niveau
+    {
+        $code = trim((string) ($ligne['niveau'] ?? ''));
+
+        if ($code === '') {
+            return null;
+        }
+
+        if ($programme !== null) {
+            $niveau = Niveau::resoudreDansProgramme($code, $programme->id);
+
+            if ($niveau === null) {
+                throw IoException::malforme(
+                    "Niveau « {$code} » inexistant pour le parcours « {$programme->code} » (ligne {$ligne['ligne']})."
+                );
+            }
+
+            return $niveau;
+        }
+
+        return Niveau::resoudreCodeUnique($code);
     }
 
     public function modes(): array

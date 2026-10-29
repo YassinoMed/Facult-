@@ -225,9 +225,9 @@ class StudentsImporter
         }
 
         if (! empty($donnees['niveau_ref'])) {
-            $niveau = Niveau::where('code', mb_strtoupper(trim((string) $donnees['niveau_ref'])))
-                ->when(isset($donnees['programme_id']), fn ($q) => $q->where('programme_id', $donnees['programme_id']))
-                ->first();
+            $niveau = isset($donnees['programme_id'])
+                ? Niveau::resoudreDansProgramme($donnees['niveau_ref'], (int) $donnees['programme_id'])
+                : Niveau::resoudreCodeUnique($donnees['niveau_ref']);
 
             if ($niveau === null) {
                 $erreurs[] = ['ligne' => $numero, 'champ' => 'niveau_ref', 'message' => "Le niveau « {$donnees['niveau_ref']} » est introuvable."];

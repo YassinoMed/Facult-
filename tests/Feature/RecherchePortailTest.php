@@ -98,13 +98,41 @@ class RecherchePortailTest extends TestCase
         $planning = Schedule::create([
             'nom' => 'EDT', 'annee_universitaire_id' => $this->annee->id,
             'faculte_id' => $this->faculte->id, 'programme_id' => $this->programme->id,
-            'groupe_id' => $this->groupe->id, 'semestre' => 1, 'statut' => 'published',
+            'groupe_id' => $this->groupe->id, 'semestre' => 1, 'statut' => 'publie',
         ]);
         ScheduleSlot::create([
             'schedule_id' => $planning->id, 'matiere_id' => $this->matiere->id,
             'teacher_id' => $this->enseignant->id, 'room_id' => $salle->id,
             'day_of_week' => 'monday', 'start_time' => '08:00:00', 'end_time' => '10:00:00',
             'type' => 'course', 'status' => 'scheduled',
+        ]);
+
+        // LOT 2 : fixtures de non-fuite — un planning brouillon du même
+        // groupe (semestre 2) et une séance annulée dans le planning publié.
+        $matiereSecrete = Matiere::create([
+            'code' => 'SECRET101', 'nom' => 'Séance secrète', 'ue_id' => $ue->id,
+            'niveau' => 'L1', 'semestre' => 2, 'credits' => 6, 'coefficient' => 2,
+        ]);
+        $planningBrouillon = Schedule::create([
+            'nom' => 'EDT brouillon', 'annee_universitaire_id' => $this->annee->id,
+            'groupe_id' => $this->groupe->id, 'semestre' => 2, 'statut' => 'brouillon',
+        ]);
+        ScheduleSlot::create([
+            'schedule_id' => $planningBrouillon->id, 'matiere_id' => $matiereSecrete->id,
+            'teacher_id' => $this->enseignant->id, 'room_id' => $salle->id,
+            'day_of_week' => 'tuesday', 'start_time' => '08:00:00', 'end_time' => '10:00:00',
+            'type' => 'course', 'status' => 'scheduled',
+        ]);
+
+        $matiereAnnulee = Matiere::create([
+            'code' => 'ANNULE101', 'nom' => 'Séance annulée', 'ue_id' => $ue->id,
+            'niveau' => 'L1', 'semestre' => 1, 'credits' => 6, 'coefficient' => 2,
+        ]);
+        ScheduleSlot::create([
+            'schedule_id' => $planning->id, 'matiere_id' => $matiereAnnulee->id,
+            'teacher_id' => $this->enseignant->id, 'room_id' => $salle->id,
+            'day_of_week' => 'wednesday', 'start_time' => '08:00:00', 'end_time' => '10:00:00',
+            'type' => 'course', 'status' => 'cancelled',
         ]);
 
         $this->etudiant = $this->creerEtudiant('08765432', 'kais@etudiant.test', $this->faculte, $this->groupe->id);
@@ -214,6 +242,29 @@ class RecherchePortailTest extends TestCase
         $reponse->assertDontSee('Zebulon Polycope');
         $reponse->assertDontSee('REQ-ZEB-001');
         $reponse->assertDontSee('Zebulon rentree');
+    }
+
+    public function test_recherche_etudiant_ne_voit_pas_les_seances_non_publiees_ou_annulees(): void
+    {
+        // JSON : le motif n'est pas réaffiché dans le champ de recherche,
+        // l'assertion porte donc réellement sur les résultats.
+        $this->withSession(['etudiant_auth_id' => $this->etudiant->id])
+            ->getJson(route('etudiant.recherche', ['q' => 'ALGO101']))
+            ->assertOk()
+            ->assertJsonCount(1, 'sections.Mes séances')
+            ->assertJsonPath('sections.Mes séances.0.titre', 'ALGO101 · B12');
+
+        // Planning brouillon du même groupe : jamais exposé.
+        $this->withSession(['etudiant_auth_id' => $this->etudiant->id])
+            ->getJson(route('etudiant.recherche', ['q' => 'SECRET101']))
+            ->assertOk()
+            ->assertJsonCount(0, 'sections.Mes séances');
+
+        // Séance annulée dans un planning publié : jamais exposée.
+        $this->withSession(['etudiant_auth_id' => $this->etudiant->id])
+            ->getJson(route('etudiant.recherche', ['q' => 'ANNULE101']))
+            ->assertOk()
+            ->assertJsonCount(0, 'sections.Mes séances');
     }
 
     public function test_motif_trop_court_et_caracteres_speciaux(): void

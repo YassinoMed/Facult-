@@ -90,6 +90,7 @@ class VerificationController extends Controller
      */
     public function verifier(Request $request, Etudiant $etudiant): RedirectResponse|JsonResponse
     {
+        Gate::authorize('update', $etudiant);
         $this->autoriserAccesEtudiant($request, $etudiant);
 
         $resultat = $this->engine->verifier($etudiant);
@@ -345,6 +346,7 @@ class VerificationController extends Controller
      */
     public function bulk(Request $request): JsonResponse|RedirectResponse
     {
+        Gate::authorize('archives.update');
         Gate::authorize('viewAny', Etudiant::class);
 
         $donnees = $request->validate([
@@ -401,14 +403,15 @@ class VerificationController extends Controller
             'verdict' => 'nullable|in:BLOQUANT,A_VERIFIER,CONFORME',
         ])['verdict'] ?? null;
 
-        $query = Etudiant::whereIn('id', function ($q) use ($verdict) {
-            $q->select('etudiant_id')->from('dossier_verifications')
-                ->whereIn('id', function ($qq) {
-                    $qq->selectRaw('MAX(id)')->from('dossier_verifications')->groupBy('etudiant_id');
-                })
-                ->when($verdict !== null, fn ($w) => $w->where('verdict', $verdict))
-                ->when($verdict === null, fn ($w) => $w->whereIn('verdict', ['BLOQUANT', 'A_VERIFIER']));
-        })->with(['faculte', 'inscriptionsAcademiques' => fn ($q) => $q->latest('annee_universitaire_id')->limit(1)])
+        $query = Etudiant::where('statut', 'en_attente')
+            ->whereIn('id', function ($q) use ($verdict) {
+                $q->select('etudiant_id')->from('dossier_verifications')
+                    ->whereIn('id', function ($qq) {
+                        $qq->selectRaw('MAX(id)')->from('dossier_verifications')->groupBy('etudiant_id');
+                    })
+                    ->when($verdict !== null, fn ($w) => $w->where('verdict', $verdict))
+                    ->when($verdict === null, fn ($w) => $w->whereIn('verdict', ['BLOQUANT', 'A_VERIFIER']));
+            })->with(['faculte', 'inscriptionsAcademiques' => fn ($q) => $q->latest('annee_universitaire_id')->limit(1)])
             ->latest('id');
 
         $utilisateur = $request->user();
@@ -472,6 +475,8 @@ class VerificationController extends Controller
         $base = DossierVerification::whereIn('id', function ($q) {
             $q->selectRaw('MAX(id)')->from('dossier_verifications')->groupBy('etudiant_id');
         })->whereHas('etudiant', function ($q) use ($request) {
+            $q->where('statut', 'en_attente');
+
             if ($request->user()->faculteRestreinteId() !== null) {
                 $q->where('faculte_id', $request->user()->faculteRestreinteId());
             }

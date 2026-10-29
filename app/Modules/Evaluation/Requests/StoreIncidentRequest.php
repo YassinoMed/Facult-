@@ -20,6 +20,10 @@ class StoreIncidentRequest extends FormRequest
             'type' => ['required', Rule::in(EvaluationIncident::TYPES)],
             'description' => ['required', 'string', 'max:2000'],
             'etudiant_id' => ['nullable', 'integer', 'exists:etudiants,id'],
+            'gravite' => ['nullable', Rule::in(EvaluationIncident::GRAVITES)],
+            'delai_cible_minutes' => ['nullable', 'integer', 'min:1', 'max:10080'],
+            // Une référence de preuve par ligne dans le formulaire.
+            'preuves' => ['nullable', 'string', 'max:2000'],
         ];
     }
 }

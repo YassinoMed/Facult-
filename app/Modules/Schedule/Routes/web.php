@@ -2,8 +2,11 @@
 
 use App\Modules\Schedule\Controllers\MonEmploiDuTempsController;
 use App\Modules\Schedule\Controllers\MonEmploiEnseignantController;
+use App\Modules\Schedule\Controllers\RemplacementCandidatureController;
+use App\Modules\Schedule\Controllers\ScheduleAvailabilityController;
 use App\Modules\Schedule\Controllers\ScheduleController;
 use App\Modules\Schedule\Controllers\ScheduleExplorerController;
+use App\Modules\Schedule\Controllers\ScheduleGenerationController;
 use App\Modules\Schedule\Controllers\ScheduleImportController;
 use Illuminate\Support\Facades\Route;
 
@@ -42,6 +45,18 @@ Route::middleware(['auth', 'admin', 'secondaire.verrou', 'module:schedule'])->pr
     Route::get('emplois-du-temps/imports/{rapport}', [ScheduleImportController::class, 'rapport'])
         ->middleware('can:schedules.view')
         ->name('emplois-du-temps.imports.show');
+
+    // LOT 09 — candidatures de remplacement pédagogique : registre,
+    // acceptation pour un créneau (remplacement EDT réutilisé), écart.
+    Route::get('remplacement-candidatures', [RemplacementCandidatureController::class, 'index'])
+        ->middleware('can:schedules.view')
+        ->name('remplacement-candidatures.index');
+    Route::post('remplacement-candidatures/{candidature}/accepter', [RemplacementCandidatureController::class, 'accepter'])
+        ->middleware(['can:schedules.manage', 'throttle:20,1'])
+        ->name('remplacement-candidatures.accepter');
+    Route::post('remplacement-candidatures/{candidature}/ecarter', [RemplacementCandidatureController::class, 'ecarter'])
+        ->middleware(['can:schedules.manage', 'throttle:20,1'])
+        ->name('remplacement-candidatures.ecarter');
     Route::get('emplois-du-temps/explorer', [ScheduleExplorerController::class, 'explorer'])
         ->middleware('can:schedules.view')
         ->name('emplois-du-temps.explorer');
@@ -60,6 +75,38 @@ Route::middleware(['auth', 'admin', 'secondaire.verrou', 'module:schedule'])->pr
     Route::get('emplois-du-temps/occupation', [ScheduleExplorerController::class, 'occupation'])
         ->middleware('can:schedules.view')
         ->name('emplois-du-temps.occupation');
+    // PHASE A (Smart Timetables) : disponibilités/indisponibilités déclarées
+    // par ressource. Segments fixes AVANT {planning} pour éviter la capture.
+    Route::get('emplois-du-temps/indisponibilites', [ScheduleAvailabilityController::class, 'index'])
+        ->middleware('can:schedules.view')
+        ->name('emplois-du-temps.indisponibilites.index');
+    Route::get('emplois-du-temps/indisponibilites/creer', [ScheduleAvailabilityController::class, 'create'])
+        ->middleware('can:schedules.view')
+        ->name('emplois-du-temps.indisponibilites.create');
+    Route::post('emplois-du-temps/indisponibilites', [ScheduleAvailabilityController::class, 'store'])
+        ->middleware(['can:schedules.manage', 'throttle:20,1'])
+        ->name('emplois-du-temps.indisponibilites.store');
+    Route::get('emplois-du-temps/indisponibilites/{plage}/modifier', [ScheduleAvailabilityController::class, 'edit'])
+        ->middleware('can:schedules.view')
+        ->name('emplois-du-temps.indisponibilites.edit');
+    Route::patch('emplois-du-temps/indisponibilites/{plage}', [ScheduleAvailabilityController::class, 'update'])
+        ->middleware(['can:schedules.manage', 'throttle:20,1'])
+        ->name('emplois-du-temps.indisponibilites.update');
+    Route::delete('emplois-du-temps/indisponibilites/{plage}', [ScheduleAvailabilityController::class, 'destroy'])
+        ->middleware('can:schedules.manage')
+        ->name('emplois-du-temps.indisponibilites.destroy');
+    // PHASE B (Smart Timetables) : moteur de génération — simulation sans
+    // écriture puis génération d'un BROUILLON. Jamais de publication
+    // automatique ; segments fixes avant {planning} comme les voisins.
+    Route::get('emplois-du-temps/{planning}/generation', [ScheduleGenerationController::class, 'index'])
+        ->middleware('can:schedules.view')
+        ->name('emplois-du-temps.generation.index');
+    Route::post('emplois-du-temps/{planning}/generation/simuler', [ScheduleGenerationController::class, 'simuler'])
+        ->middleware(['can:schedules.manage', 'throttle:10,1'])
+        ->name('emplois-du-temps.generation.simuler');
+    Route::post('emplois-du-temps/{planning}/generation', [ScheduleGenerationController::class, 'generer'])
+        ->middleware(['can:schedules.manage', 'throttle:5,1'])
+        ->name('emplois-du-temps.generation.generer');
     Route::get('emplois-du-temps/{planning}', [ScheduleController::class, 'show'])
         ->middleware('can:schedules.view')
         ->name('emplois-du-temps.show');

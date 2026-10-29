@@ -64,6 +64,8 @@
             Affectation automatique
         </a>
     </div>
+    {{-- Périmètre : les cartes sont des totaux de périmètre, indépendants des filtres ci-dessous. --}}
+    <p class="mb-2 text-[11px] font-medium text-slate-500">Indicateurs de périmètre — non affectés par les filtres de recherche.</p>
     <div class="mb-8 grid grid-cols-2 gap-3 sm:gap-5 lg:grid-cols-4">
         {{-- Total --}}
         <div class="card-hover rounded-3xl border border-slate-200/80 bg-white p-5 shadow-xs relative overflow-hidden">
@@ -148,15 +150,15 @@
             {{-- Search Input --}}
             <div class="lg:col-span-4">
                 <label for="search" class="mb-1.5 block text-xs font-bold uppercase tracking-wider text-slate-500">
-                    Recherche instantanée
+                    Recherche
                 </label>
                 <div class="relative">
                     <svg class="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z" />
                     </svg>
-                    <input type="text" name="search" id="search" value="{{ request('search') }}"
+                    <input type="text" name="search" id="search" value="{{ $filtres['search'] ?? '' }}"
                            class="w-full rounded-xl border border-slate-200 bg-slate-50/70 py-2.5 pl-10 pr-4 text-xs sm:text-sm text-slate-900 placeholder-slate-400 transition-smooth focus:border-primary-600 focus:bg-white focus:ring-4 focus:ring-primary-500/15 focus:outline-none"
-                           placeholder="Nom, CIN, N° inscription, email, ville...">
+                           placeholder="Nom, prénom, CIN, N° inscription, email, téléphone...">
                 </div>
             </div>
 
@@ -169,7 +171,7 @@
                         class="w-full rounded-xl border border-slate-200 bg-slate-50/70 py-2.5 px-3 text-xs sm:text-sm text-slate-900 transition-smooth focus:border-primary-600 focus:bg-white focus:ring-4 focus:ring-primary-500/15 focus:outline-none">
                     <option value="">Toutes les facultés</option>
                     @foreach($facultes as $f)
-                        <option value="{{ $f->id }}" {{ request('faculte_id') == $f->id ? 'selected' : '' }}>
+                        <option value="{{ $f->id }}" {{ ($filtres['faculte_id'] ?? null) == $f->id ? 'selected' : '' }}>
                             {{ $f->code }} — {{ Str::limit($f->nom, 26) }}
                         </option>
                     @endforeach
@@ -184,9 +186,9 @@
                 <select name="statut" id="statut"
                         class="w-full rounded-xl border border-slate-200 bg-slate-50/70 py-2.5 px-3 text-xs sm:text-sm text-slate-900 transition-smooth focus:border-primary-600 focus:bg-white focus:ring-4 focus:ring-primary-500/15 focus:outline-none">
                     <option value="">Tous les statuts</option>
-                    <option value="en_attente" {{ request('statut') == 'en_attente' ? 'selected' : '' }}>En attente</option>
-                    <option value="valide" {{ request('statut') == 'valide' ? 'selected' : '' }}>Validé</option>
-                    <option value="rejete" {{ request('statut') == 'rejete' ? 'selected' : '' }}>Rejeté</option>
+                    <option value="en_attente" {{ ($filtres['statut'] ?? null) == 'en_attente' ? 'selected' : '' }}>En attente</option>
+                    <option value="valide" {{ ($filtres['statut'] ?? null) == 'valide' ? 'selected' : '' }}>Validé</option>
+                    <option value="rejete" {{ ($filtres['statut'] ?? null) == 'rejete' ? 'selected' : '' }}>Rejeté</option>
                 </select>
             </div>
 
@@ -199,7 +201,7 @@
                         class="w-full rounded-xl border border-slate-200 bg-slate-50/70 py-2.5 px-2.5 text-xs sm:text-sm text-slate-900 transition-smooth focus:border-primary-600 focus:bg-white focus:ring-4 focus:ring-primary-500/15 focus:outline-none">
                     <option value="">Tous</option>
                     @foreach($niveaux as $niv)
-                        <option value="{{ $niv }}" {{ request('niveau') == $niv ? 'selected' : '' }}>{{ $niv }}</option>
+                        <option value="{{ $niv }}" {{ ($filtres['niveau'] ?? null) == $niv ? 'selected' : '' }}>{{ $niv }}</option>
                     @endforeach
                 </select>
             </div>
@@ -213,7 +215,7 @@
                         class="w-full rounded-xl border border-slate-200 bg-slate-50/70 py-2.5 px-3 text-xs sm:text-sm text-slate-900 focus:border-primary-600 focus:bg-white focus:outline-none">
                     <option value="">Tous programmes</option>
                     @foreach($programmes as $programme)
-                        <option value="{{ $programme->id }}" {{ (string) request('programme_id') === (string) $programme->id ? 'selected' : '' }}>{{ $programme->code }} — {{ $programme->nom }}</option>
+                        <option value="{{ $programme->id }}" {{ (string) ($filtres['programme_id'] ?? '') === (string) $programme->id ? 'selected' : '' }}>{{ $programme->code }} — {{ $programme->nom }}</option>
                     @endforeach
                 </select>
             </div>
@@ -227,16 +229,16 @@
                         class="w-full rounded-xl border border-slate-200 bg-slate-50/70 py-2.5 px-3 text-xs sm:text-sm text-slate-900 focus:border-primary-600 focus:bg-white focus:outline-none">
                     <option value="">Tous groupes</option>
                     @foreach($groupes as $groupe)
-                        <option value="{{ $groupe->id }}" {{ (string) request('groupe_id') === (string) $groupe->id ? 'selected' : '' }}>{{ $groupe->code }}</option>
+                        <option value="{{ $groupe->id }}" {{ (string) ($filtres['groupe_id'] ?? '') === (string) $groupe->id ? 'selected' : '' }}>{{ $groupe->code }}</option>
                     @endforeach
                 </select>
             </div>
 
             <div class="lg:col-span-3 flex items-end gap-4 pb-2.5">
-                <label class="inline-flex items-center gap-1.5 text-xs font-bold text-slate-600"><input type="checkbox" name="sans_groupe" value="1" @checked(request('sans_groupe')) /> Sans groupe</label>
+                <label class="inline-flex items-center gap-1.5 text-xs font-bold text-slate-600"><input type="checkbox" name="sans_groupe" value="1" @checked(!empty($filtres['sans_groupe'])) /> Sans groupe</label>
                 <label class="inline-flex items-center gap-1.5 text-xs font-bold text-slate-600">
                     Déposé depuis
-                    <input type="number" name="depose_depuis" min="1" max="3650" value="{{ request('depose_depuis') }}" placeholder="jours"
+                    <input type="number" name="depose_depuis" min="1" max="3650" value="{{ $filtres['depose_depuis'] ?? '' }}" placeholder="jours"
                            class="w-20 rounded-lg border border-slate-200 px-2 py-1.5 text-xs" aria-label="Ancienneté minimale en jours" />
                     jours
                 </label>
@@ -248,9 +250,10 @@
                         class="flex-1 rounded-xl bg-slate-900 py-2.5 px-4 text-xs sm:text-sm font-bold text-white shadow-xs hover:bg-slate-800 transition-smooth">
                     Filtrer
                 </button>
-                @if(request()->hasAny(['search', 'faculte_id', 'statut', 'niveau']))
-                    <a href="{{ route('admin.etudiants.index') }}"
+                @if($filtresActifs > 0)
+                    <a href="{{ route('admin.etudiants.index', ['reset' => 1]) }}"
                        title="Réinitialiser les filtres"
+                       aria-label="Réinitialiser les filtres"
                        class="rounded-xl border border-slate-200 bg-white p-2.5 text-slate-500 hover:bg-slate-50 transition-smooth">
                         <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" />
@@ -271,7 +274,7 @@
                 <form method="post" action="{{ route('admin.vues.store') }}" class="mt-1 flex gap-1.5">
                     @csrf
                     <input type="hidden" name="tableau" value="etudiants" />
-                    @foreach(request()->except(['_token', 'page']) as $cle => $valeur)
+                    @foreach($filtres as $cle => $valeur)
                         <input type="hidden" name="filtres[{{ $cle }}]" value="{{ $valeur }}" />
                     @endforeach
                     <input name="nom" maxlength="80" required placeholder="Ma vue M2 DSIR" class="rounded-xl border border-slate-200 px-2.5 py-1.5 text-xs" />
@@ -287,21 +290,21 @@
     <div class="hidden md:block overflow-hidden rounded-3xl border border-slate-200/90 bg-white shadow-xs admin-table-scroll">
         <div class="overflow-x-auto">
             <table class="w-full min-w-[880px] text-left text-sm text-slate-600">
-                <thead class="border-b border-slate-200/80 bg-slate-50/80 text-[11px] font-bold uppercase tracking-wider text-slate-400">
+                <thead class="border-b border-slate-200/80 bg-slate-50/80 text-[11px] font-bold uppercase tracking-wider text-slate-700">
                     <tr>
                         @can('archives.update')
-                            <th class="py-4 pl-5 pr-1 w-10">
+                            <th scope="col" class="py-4 pl-5 pr-1 w-10">
                                 <input type="checkbox" id="bulk-tout" @change="basculerTout($event.target.checked)"
                                        aria-label="Tout sélectionner" class="h-5 w-5 rounded border-slate-300">
                             </th>
                         @endcan
-                        <th class="py-4 px-5">Numéro Inscription</th>
-                        <th class="py-4 px-5">Étudiant & Contact</th>
-                        <th class="py-4 px-5">CIN</th>
-                        <th class="py-4 px-5">Faculté & Niveau</th>
-                        <th class="py-4 px-5">Origine & Bac</th>
-                        <th class="py-4 px-5">Statut Actuel</th>
-                        <th class="py-4 px-5 text-right">Actions</th>
+                        <th scope="col" class="py-4 px-5">Numéro Inscription</th>
+                        <th scope="col" class="py-4 px-5">Étudiant & Contact</th>
+                        <th scope="col" class="py-4 px-5">CIN</th>
+                        <th scope="col" class="py-4 px-5">Faculté & Niveau</th>
+                        <th scope="col" class="py-4 px-5">Origine & Bac</th>
+                        <th scope="col" class="py-4 px-5">Statut Actuel</th>
+                        <th scope="col" class="py-4 px-5 text-right">Actions</th>
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-slate-100">
@@ -332,7 +335,7 @@
                                            class="font-bold text-slate-900 hover:text-primary-600 transition-smooth">
                                             {{ $etudiant->nom_complet }}
                                         </a>
-                                        <span class="block text-xs text-slate-400">{{ $etudiant->email }}</span>
+                                        <span class="block text-xs text-slate-500 font-medium">{{ $etudiant->email }}</span>
                                     </div>
                                 </div>
                             </td>
@@ -360,7 +363,7 @@
                             <td class="py-4 px-5">
                                 <div class="text-xs">
                                     <span class="font-semibold text-slate-800">{{ $etudiant->ville }}</span>
-                                    <span class="block text-[11px] text-slate-400">Bac {{ $etudiant->annee_bac }}</span>
+                                    <span class="block text-[11px] text-slate-500 font-medium">Bac {{ $etudiant->annee_bac }}</span>
                                 </div>
                             </td>
 
@@ -379,17 +382,19 @@
                                             <a href="{{ route('admin.etudiants.modifier', $etudiant) }}" role="menuitem"
                                                class="block px-4 py-2.5 text-xs font-bold text-slate-700 hover:bg-slate-50 min-h-[44px]">Modifier</a>
                                         @endcan
-                                        <button type="button" role="menuitem"
-                                                @click="suppressionUrl = '{{ route('admin.etudiants.destroy', $etudiant) }}'; suppressionNom = @js($etudiant->nom_complet)"
-                                                class="block w-full px-4 py-2.5 text-left text-xs font-bold text-rose-700 hover:bg-slate-50 min-h-[44px]">Supprimer</button>
+                                        @can('delete', $etudiant)
+                                            <button type="button" role="menuitem"
+                                                    @click="suppressionUrl = '{{ route('admin.etudiants.destroy', $etudiant) }}'; suppressionNom = @js($etudiant->nom_complet)"
+                                                    class="block w-full px-4 py-2.5 text-left text-xs font-bold text-rose-700 hover:bg-slate-50 min-h-[44px]">Supprimer</button>
+                                        @endcan
                                     </x-slot:liens>
                                 </x-dropdown>
                             </td>
                         </tr>
                     @empty
                         <tr>
-                            <td colspan="7" class="py-16 text-center text-slate-400">
-                                <svg class="mx-auto h-12 w-12 text-slate-300 mb-3" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                            <td colspan="7" class="py-16 text-center text-slate-600 font-medium">
+                                <svg class="mx-auto h-12 w-12 text-slate-400 mb-3" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
                                     <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 6a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0ZM4.501 20.118a7.5 7.5 0 0 1 14.998 0A17.933 17.933 0 0 1 12 21.75c-2.676 0-5.216-.584-7.499-1.632Z" />
                                 </svg>
                                 Aucun dossier étudiant ne correspond à vos filtres actuels.
@@ -439,11 +444,13 @@
                             Modifier
                         </a>
                     @endcan
-                    <button type="button"
-                            @click="suppressionUrl = '{{ route('admin.etudiants.destroy', $etudiant) }}'; suppressionNom = @js($etudiant->nom_complet)"
-                            class="py-2 px-3 rounded-xl border border-rose-200 text-xs font-bold text-rose-600 min-h-[44px]">
-                        Supprimer
-                    </button>
+                    @can('delete', $etudiant)
+                        <button type="button"
+                                @click="suppressionUrl = '{{ route('admin.etudiants.destroy', $etudiant) }}'; suppressionNom = @js($etudiant->nom_complet)"
+                                class="py-2 px-3 rounded-xl border border-rose-200 text-xs font-bold text-rose-600 min-h-[44px]">
+                            Supprimer
+                        </button>
+                    @endcan
                 </div>
             </div>
         @empty

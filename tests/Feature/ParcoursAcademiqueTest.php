@@ -13,7 +13,10 @@ use App\Models\User;
 use App\Modules\Evaluation\Models\DecisionDeliberation;
 use App\Modules\Evaluation\Models\Deliberation;
 use App\Modules\Evaluation\Models\RegleEvaluation;
+use App\Modules\ParcoursAcademique\Models\ParcoursDispense;
 use App\Modules\ParcoursAcademique\Models\ParcoursEquivalence;
+use App\Modules\ParcoursAcademique\Models\ParcoursPasserelle;
+use App\Modules\ParcoursAcademique\Models\ParcoursReorientation;
 use App\Modules\ParcoursAcademique\Models\ParcoursSimulation;
 use App\Modules\ParcoursAcademique\Services\AmenagementParcoursService;
 use App\Modules\ParcoursAcademique\Services\AnomalieParcoursService;
@@ -32,6 +35,7 @@ use App\Modules\Referentiel\Models\Programme;
 use App\Modules\StudentDossiers\Services\Pdf\OfficialDocumentService;
 use DomainException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Symfony\Component\HttpKernel\Exception\HttpException;
 use Tests\Concerns\ActAsApiClient;
 use Tests\TestCase;
 
@@ -952,6 +956,194 @@ class ParcoursAcademiqueTest extends TestCase
         $decidee = $service->deciderEquivalence($equivalence, 'accordee', null, $this->admin->id);
 
         $this->assertSame('validee', $decidee->statut);
+    }
+
+    public function test_fsm_dispense_transitions_controlees(): void
+    {
+        $etudiant = $this->creerEtudiant('PAR-FSM');
+        $service = app(AmenagementParcoursService::class);
+        $dispense = $service->proposerDispense($etudiant, [
+            'cible_libelle' => 'Anglais L1', 'motif' => 'Certification',
+        ], $this->admin->id);
+
+        // proposee → revoquee : seule une dispense validée peut être révoquée.
+        try {
+            $service->deciderDispense($dispense, 'revoquee', null, $this->admin->id);
+            $this->fail('La transition proposee→revoquee doit être refusée.');
+        } catch (HttpException $exception) {
+            $this->assertSame(409, $exception->getStatusCode());
+            $this->assertStringContainsString('révoquée', $exception->getMessage());
+        }
+        $this->assertSame('proposee', $dispense->fresh()->statut);
+
+        // Statut inconnu : 422, halte avant toute écriture.
+        try {
+            $service->deciderDispense($dispense->fresh(), 'terminee', null, $this->admin->id);
+            $this->fail('Le statut inconnu doit être refusé.');
+        } catch (HttpException $exception) {
+            $this->assertSame(422, $exception->getStatusCode());
+        }
+        $this->assertSame('proposee', $dispense->fresh()->statut);
+
+        // Chemin légal proposee → validee → revoquee, puis revoquee → validee refusé.
+        $service->deciderDispense($dispense->fresh(), 'validee', 'Dispensé.', $this->admin->id);
+        $service->deciderDispense($dispense->fresh(), 'revoquee', 'Révoqué.', $this->admin->id);
+        $this->assertSame('revoquee', $dispense->fresh()->statut);
+
+        try {
+            $service->deciderDispense($dispense->fresh(), 'validee', null, $this->admin->id);
+            $this->fail('La transition revoquee→validee doit être refusée.');
+        } catch (HttpException $exception) {
+            $this->assertSame(409, $exception->getStatusCode());
+        }
+    }
+
+    public function test_fsm_reorientation_annulee_reservee_et_double_409(): void
+    {
+        $etudiant = $this->creerEtudiant('PAR-FSMREO');
+        $service = app(AmenagementParcoursService::class);
+        $reorientation = $service->proposerReorientation($etudiant, [
+            'nouveau_programme_id' => $this->master->id,
+            'annee_universitaire_id' => $this->anneeSuivante->id,
+        ], $this->admin->id);
+
+        // 'annulee' : état réservé du modèle, aucune transition ouverte via decider.
+        try {
+            $service->deciderReorientation($reorientation, 'annulee', null, $this->admin->id);
+            $this->fail('annulee doit être refusée par la FSM.');
+        } catch (HttpException $exception) {
+            $this->assertSame(422, $exception->getStatusCode());
+        }
+        $this->assertSame('proposee', $reorientation->fresh()->statut);
+
+        $service->deciderReorientation($reorientation->fresh(), 'validee', 'OK.', $this->admin->id);
+
+        try {
+            $service->deciderReorientation($reorientation->fresh(), 'rejetee', null, $this->admin->id);
+            $this->fail('La double décision doit être refusée.');
+        } catch (HttpException $exception) {
+            $this->assertSame(409, $exception->getStatusCode());
+            $this->assertStringContainsString('déjà traitée', $exception->getMessage());
+        }
+    }
+
+    public function test_fsm_passerelle_refusee_possible_et_double_409(): void
+    {
+        $etudiant = $this->creerEtudiant('PAR-FSMPAS');
+        $service = app(AmenagementParcoursService::class);
+        $passerelle = $service->proposerPasserelle($etudiant, [
+            'programme_origine_id' => $this->licence->id,
+            'programme_cible_id' => $this->master->id,
+        ], $this->admin->id);
+
+        $refusee = $service->deciderPasserelle($passerelle, 'refusee', 'Capacité indisponible.', $this->admin->id);
+        $this->assertSame('refusee', $refusee->statut);
+
+        // Transition fermée après décision : refusee → admise impossible.
+        try {
+            $service->deciderPasserelle($refusee->fresh(), 'admise', null, $this->admin->id);
+            $this->fail('La double décision doit être refusée.');
+        } catch (HttpException $exception) {
+            $this->assertSame(409, $exception->getStatusCode());
+            $this->assertStringContainsString('déjà décidée', $exception->getMessage());
+        }
+    }
+
+    public function test_fsm_carte_coherente_avec_constantes_modeles(): void
+    {
+        // Anti-dérive : la carte FSM et les enums modèles ne divergent pas.
+        $statutsModeles = [
+            'equivalences' => ParcoursEquivalence::STATUTS,
+            'dispenses' => ParcoursDispense::STATUTS,
+            'reorientations' => ParcoursReorientation::STATUTS,
+            'passerelles' => ParcoursPasserelle::STATUTS,
+        ];
+
+        foreach (AmenagementParcoursService::TRANSITIONS as $categorie => $definition) {
+            $this->assertArrayHasKey($categorie, $statutsModeles, "Catégorie FSM inconnue : $categorie");
+            $this->assertContains($definition['champ'], ['statut', 'decision'], "$categorie : champ invalide");
+            $this->assertNotEmpty($definition['entrees'], "$categorie : aucune transition définie");
+
+            if ($definition['champ'] === 'decision') {
+                // Équivalences : entrées = décisions du modèle ; statut final
+                // dérivé (accordee→validee, refusee→rejetee), hors STATUTS.
+                $this->assertSame(
+                    array_values(ParcoursEquivalence::DECISIONS),
+                    array_keys($definition['entrees']),
+                    'equivalences : decisions et carte divergent'
+                );
+
+                continue;
+            }
+
+            foreach ($definition['entrees'] as $cible => $depuis) {
+                $this->assertContains($cible, $statutsModeles[$categorie], "$categorie : cible $cible hors STATUTS");
+                $this->assertNotEmpty($depuis, "$categorie : $cible doit déclarer ses états sources");
+                foreach ($depuis as $source) {
+                    $this->assertContains($source, $statutsModeles[$categorie], "$categorie : source $source hors STATUTS");
+                }
+            }
+        }
+
+        // 'annulee' (réorientations) : état réservé, aucune transition ouverte.
+        $this->assertArrayNotHasKey('annulee', AmenagementParcoursService::TRANSITIONS['reorientations']['entrees']);
+
+        // Équivalences : entrées = les deux décisions du modèle.
+        $this->assertSame(
+            ['accordee', 'refusee'],
+            array_keys(AmenagementParcoursService::TRANSITIONS['equivalences']['entrees'])
+        );
+
+        // Sources connexes après déduplication (dispenses : proposee via validee/rejetee, validee via revoquee).
+        $sourcesDispenses = collect(AmenagementParcoursService::TRANSITIONS['dispenses']['entrees'])->flatten()->unique()->values()->all();
+        $this->assertSame(['proposee', 'validee'], $sourcesDispenses);
+    }
+
+    public function test_fsm_controleur_rejete_statut_et_decision_externes(): void
+    {
+        $etudiant = $this->creerEtudiant('PAR-FSMHTTP');
+        $service = app(AmenagementParcoursService::class);
+        $dispense = $service->proposerDispense($etudiant, [
+            'cible_libelle' => 'Anglais L1', 'motif' => 'Certification',
+        ], $this->admin->id);
+
+        $reponseStatut = $this->actingAs($this->admin)->post(
+            route('admin.parcours.amenagements.decider', ['categorie' => 'dispenses', 'id' => $dispense->id]),
+            ['statut' => 'statut_bidon', 'decision' => 'x']
+        )->assertRedirect();
+
+        $reponseStatut->assertSessionHasErrors(['statut']);
+        $this->assertSame('proposee', $dispense->fresh()->statut);
+
+        $equivalence = $service->proposerEquivalence($etudiant, [
+            'origine_libelle' => 'X', 'cible_libelle' => 'Y',
+        ], $this->admin->id);
+        $reponseDecision = $this->actingAs($this->admin)->post(
+            route('admin.parcours.amenagements.decider', ['categorie' => 'equivalences', 'id' => $equivalence->id]),
+            ['statut' => 'validee', 'decision' => 'accordee_bis']
+        )->assertRedirect();
+
+        $reponseDecision->assertSessionHasErrors(['decision']);
+        $this->assertSame('proposee', $equivalence->fresh()->statut);
+    }
+
+    public function test_fsm_equivalence_sans_decision_defaut_refusee(): void
+    {
+        $etudiant = $this->creerEtudiant('PAR-FSMDEF');
+        app(AmenagementParcoursService::class)->proposerEquivalence($etudiant, [
+            'origine_libelle' => 'X', 'cible_libelle' => 'Y',
+        ], $this->admin->id);
+        $equivalence = ParcoursEquivalence::where('etudiant_id', $etudiant->id)->firstOrFail();
+
+        // Comportement conservé : pas de décision = refusee (statut dérivé rejetee).
+        $this->actingAs($this->admin)->post(
+            route('admin.parcours.amenagements.decider', ['categorie' => 'equivalences', 'id' => $equivalence->id]),
+            ['statut' => 'validee']
+        )->assertRedirect();
+
+        $fresh = $equivalence->fresh();
+        $this->assertSame('rejetee', $fresh->statut);
+        $this->assertSame('refusee', $fresh->decision);
     }
 
     public function test_api_parcours_lecture_et_bola(): void

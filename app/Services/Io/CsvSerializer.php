@@ -51,4 +51,19 @@ class CsvSerializer implements SerializesExports
 
         return $valeur;
     }
+
+    /**
+     * Neutralise une ligne complète (exports « à la volée » via fputcsv) :
+     * même protection que `serialize()`, pour tous les exports ad hoc.
+     *
+     * @param  array<int, mixed>  $cellules
+     * @return array<int, string>
+     */
+    public function neutraliserLigne(array $cellules): array
+    {
+        return array_map(
+            fn ($valeur) => $this->neutraliserFormule((string) ($valeur ?? '')),
+            $cellules
+        );
+    }
 }

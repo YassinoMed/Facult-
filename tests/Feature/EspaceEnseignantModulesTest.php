@@ -9,6 +9,7 @@ use App\Models\Matiere;
 use App\Models\User;
 use App\Modules\Announcements\Models\Annonce;
 use App\Modules\Attendance\Models\TeacherPresence;
+use App\Modules\Calendar\Models\EvenementCalendrier;
 use App\Modules\Evaluation\Models\Epreuve;
 use App\Modules\Evaluation\Models\EvaluationIncident;
 use App\Modules\Evaluation\Models\Examen;
@@ -60,6 +61,7 @@ class EspaceEnseignantModulesTest extends TestCase
             'modules.schedule.active' => true,
             'modules.attendance.active' => true,
             'modules.announcements.active' => true,
+            'modules.calendar.active' => true,
         ]);
 
         $this->faculte = Faculte::create(['nom' => 'FST', 'code' => 'FST', 'active' => true]);
@@ -357,6 +359,152 @@ class EspaceEnseignantModulesTest extends TestCase
             ->assertNotFound();
     }
 
+    public function test_enseignant_sans_faculte_ne_voit_que_les_elements_globaux(): void
+    {
+        $moi = $this->creerEnseignant($this->faculte, ['departement_id' => null]);
+        $date = Carbon::today()->addDays(3)->toDateString();
+
+        Annonce::create([
+            'titre' => 'Annonce globale', 'contenu' => 'Tous.', 'type' => 'information',
+            'statut' => 'published', 'audience' => 'enseignants',
+        ]);
+        Annonce::create([
+            'titre' => 'Annonce facultaire', 'contenu' => 'FST.', 'type' => 'information',
+            'statut' => 'published', 'audience' => 'enseignants', 'faculte_id' => $this->faculte->id,
+        ]);
+        EvenementCalendrier::create([
+            'annee_universitaire_id' => $this->annee->id,
+            'titre' => 'Événement global', 'type' => 'rentree',
+            'date_debut' => $date, 'audience' => 'enseignants', 'statut' => 'publie',
+        ]);
+        EvenementCalendrier::create([
+            'annee_universitaire_id' => $this->annee->id,
+            'titre' => 'Événement facultaire', 'type' => 'administratif',
+            'date_debut' => $date, 'audience' => 'enseignants',
+            'faculte_id' => $this->faculte->id, 'statut' => 'publie',
+        ]);
+
+        $this->withSession(['enseignant_auth_id' => $moi->id])
+            ->get(route('enseignant.annonces.index'))
+            ->assertOk()
+            ->assertSee('Annonce globale')
+            ->assertDontSee('Annonce facultaire');
+
+        $this->withSession(['enseignant_auth_id' => $moi->id])
+            ->get(route('enseignant.calendrier.agenda', ['debut' => $date, 'fin' => $date]))
+            ->assertOk()
+            ->assertSee('Événement global')
+            ->assertDontSee('Événement facultaire');
+    }
+
+    public function test_tableau_de_bord_enseignant_affiche_calendrier_et_annonces_filtres(): void
+    {
+        $moi = $this->creerEnseignant($this->faculte);
+        $date = Carbon::today()->addDays(5)->toDateString();
+
+        $visible = EvenementCalendrier::create([
+            'annee_universitaire_id' => $this->annee->id,
+            'titre' => 'Réunion de département', 'type' => 'administratif',
+            'date_debut' => $date, 'audience' => 'enseignants',
+            'faculte_id' => $this->faculte->id, 'statut' => 'publie',
+        ]);
+        EvenementCalendrier::create([
+            'annee_universitaire_id' => $this->annee->id,
+            'titre' => 'Brouillon interne', 'type' => 'administratif',
+            'date_debut' => $date, 'audience' => 'enseignants',
+            'faculte_id' => $this->faculte->id, 'statut' => 'brouillon',
+        ]);
+        EvenementCalendrier::create([
+            'annee_universitaire_id' => $this->annee->id,
+            'titre' => 'Événement étudiants', 'type' => 'examen',
+            'date_debut' => $date, 'audience' => 'etudiants',
+            'faculte_id' => $this->faculte->id, 'statut' => 'publie',
+        ]);
+        EvenementCalendrier::create([
+            'annee_universitaire_id' => $this->annee->id,
+            'titre' => 'Événement autre faculté', 'type' => 'administratif',
+            'date_debut' => $date, 'audience' => 'enseignants',
+            'faculte_id' => $this->faculteB->id, 'statut' => 'publie',
+        ]);
+
+        $annonceVisible = Annonce::create([
+            'titre' => 'Annonce visible', 'contenu' => 'Information.', 'type' => 'information',
+            'statut' => 'published', 'audience' => 'enseignants', 'faculte_id' => $this->faculte->id,
+            'publiee_a' => now()->subHour(),
+        ]);
+        Annonce::create([
+            'titre' => 'Annonce brouillon', 'contenu' => 'Brouillon.', 'type' => 'information',
+            'statut' => 'draft', 'audience' => 'enseignants', 'faculte_id' => $this->faculte->id,
+        ]);
+        Annonce::create([
+            'titre' => 'Annonce étudiante', 'contenu' => 'Étudiants.', 'type' => 'information',
+            'statut' => 'published', 'audience' => 'etudiants', 'faculte_id' => $this->faculte->id,
+            'publiee_a' => now()->subHour(),
+        ]);
+        Annonce::create([
+            'titre' => 'Annonce autre faculté', 'contenu' => 'Ailleurs.', 'type' => 'information',
+            'statut' => 'published', 'audience' => 'enseignants', 'faculte_id' => $this->faculteB->id,
+            'publiee_a' => now()->subHour(),
+        ]);
+
+        $this->withSession(['enseignant_auth_id' => $moi->id])
+            ->get(route('enseignant.dashboard'))
+            ->assertOk()
+            ->assertSee('Réunion de département')
+            ->assertSee('Annonce visible')
+            ->assertSee(route('enseignant.calendrier.agenda'), false)
+            ->assertDontSee('Brouillon interne')
+            ->assertDontSee('Événement étudiants')
+            ->assertDontSee('Événement autre faculté')
+            ->assertDontSee('Annonce brouillon')
+            ->assertDontSee('Annonce étudiante')
+            ->assertDontSee('Annonce autre faculté');
+    }
+
+    public function test_agenda_enseignant_exclut_brouillons_et_autres_facultes(): void
+    {
+        $moi = $this->creerEnseignant($this->faculte);
+        $date = Carbon::today()->addDays(4)->toDateString();
+
+        EvenementCalendrier::create([
+            'annee_universitaire_id' => $this->annee->id,
+            'titre' => 'Événement global', 'type' => 'rentree',
+            'date_debut' => $date, 'audience' => 'tous', 'statut' => 'publie',
+        ]);
+        EvenementCalendrier::create([
+            'annee_universitaire_id' => $this->annee->id,
+            'titre' => 'Événement facultaire', 'type' => 'administratif',
+            'date_debut' => $date, 'audience' => 'enseignants',
+            'faculte_id' => $this->faculte->id, 'statut' => 'publie',
+        ]);
+        EvenementCalendrier::create([
+            'annee_universitaire_id' => $this->annee->id,
+            'titre' => 'Événement annulé', 'type' => 'administratif',
+            'date_debut' => $date, 'audience' => 'enseignants',
+            'faculte_id' => $this->faculte->id, 'statut' => 'annule',
+        ]);
+
+        $this->withSession(['enseignant_auth_id' => $moi->id])
+            ->get(route('enseignant.calendrier.agenda', ['debut' => $date, 'fin' => $date]))
+            ->assertOk()
+            ->assertSee('Événement global')
+            ->assertSee('Événement facultaire')
+            ->assertDontSee('Événement annulé');
+    }
+
+    public function test_agenda_enseignant_valide_les_bornes_de_dates(): void
+    {
+        $moi = $this->creerEnseignant($this->faculte);
+
+        $this->withSession(['enseignant_auth_id' => $moi->id])
+            ->get(route('enseignant.calendrier.agenda', ['debut' => '2026-12-31', 'fin' => '2026-01-01']))
+            ->assertSessionHasErrors('fin');
+
+        $this->withSession(['enseignant_auth_id' => $moi->id])
+            ->get(route('enseignant.calendrier.agenda', ['debut' => 'date-invalide']))
+            ->assertSessionHasErrors('debut');
+    }
+
     // ---------- Documents ----------
 
     public function test_documents_telechargements_autorises_scopes(): void
@@ -479,8 +627,15 @@ class EspaceEnseignantModulesTest extends TestCase
         $this->withSession(['enseignant_auth_id' => $moi->id])->get(route('enseignant.surveillances.index'))->assertOk();
         $this->withSession(['enseignant_auth_id' => $moi->id])->get(route('enseignant.emploi-du-temps.semaine'))->assertOk();
         $requetes = count(\DB::getQueryLog());
+
+        // Budget isolé du tableau de bord : les widgets agenda/annonces
+        // ne doivent pas introduire de N+1 (3 éléments max par widget).
+        \DB::flushQueryLog();
+        $this->withSession(['enseignant_auth_id' => $moi->id])->get(route('enseignant.dashboard'))->assertOk();
+        $requetesDashboard = count(\DB::getQueryLog());
         \DB::disableQueryLog();
 
         $this->assertLessThan(60, $requetes, "Portail 3 pages : {$requetes} requêtes.");
+        $this->assertLessThanOrEqual(24, $requetesDashboard, "Tableau de bord : {$requetesDashboard} requêtes.");
     }
 }

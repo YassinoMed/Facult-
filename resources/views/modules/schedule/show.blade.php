@@ -37,7 +37,10 @@ $creneauxParJour = $planning->slots->groupBy('day_of_week');
             </p>
             </div>
             @can('schedules.manage')
-                <x-btn href="{{ route('admin.emplois-du-temps.tableau', $planning) }}" variant="secondary">Tableau déplaçable</x-btn>
+                <div class="flex flex-wrap gap-2">
+                    <x-btn href="{{ route('admin.emplois-du-temps.generation.index', $planning) }}" variant="secondary">Génération automatique</x-btn>
+                    <x-btn href="{{ route('admin.emplois-du-temps.tableau', $planning) }}" variant="secondary">Tableau déplaçable</x-btn>
+                </div>
             @endcan
         </div>
 
@@ -130,46 +133,46 @@ $creneauxParJour = $planning->slots->groupBy('day_of_week');
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-slate-100">
-                    @forelse($planning->slots as $slot)
-                        <tr class="hover:bg-slate-50/60 {{ $slot->status === 'cancelled' ? 'opacity-60' : '' }}">
-                            <td class="px-4 py-3 font-bold text-slate-800">{{ $joursFr[$slot->day_of_week] }}</td>
-                            <td class="px-4 py-3 tabular-nums text-slate-700">{{ substr($slot->start_time, 0, 5) }}–{{ substr($slot->end_time, 0, 5) }}</td>
-                            <td class="px-4 py-3 font-bold text-slate-900">{{ $slot->matiere->nom }}</td>
-                            <td class="px-4 py-3 text-slate-600">{{ $slot->teacher?->nomComplet() ?? '—' }}</td>
-                            <td class="px-4 py-3 font-mono text-slate-700">{{ $slot->room?->code ?? '—' }}</td>
-                            <td class="px-4 py-3 text-slate-600">{{ $typesFr[$slot->type] }}</td>
+                    @forelse($planning->slots as $creneau)
+                        <tr class="hover:bg-slate-50/60 {{ $creneau->status === 'cancelled' ? 'opacity-60' : '' }}">
+                            <td class="px-4 py-3 font-bold text-slate-800">{{ $joursFr[$creneau->day_of_week] }}</td>
+                            <td class="px-4 py-3 tabular-nums text-slate-700">{{ substr($creneau->start_time, 0, 5) }}–{{ substr($creneau->end_time, 0, 5) }}</td>
+                            <td class="px-4 py-3 font-bold text-slate-900">{{ $creneau->matiere->nom }}</td>
+                            <td class="px-4 py-3 text-slate-600">{{ $creneau->teacher?->nomComplet() ?? '—' }}</td>
+                            <td class="px-4 py-3 font-mono text-slate-700">{{ $creneau->room?->code ?? '—' }}</td>
+                            <td class="px-4 py-3 text-slate-600">{{ $typesFr[$creneau->type] }}</td>
                             <td class="px-4 py-3">
                                 <span class="inline-flex items-center gap-1.5 rounded-full border border-slate-200 px-2.5 py-0.5 text-[11px] font-bold">
-                                    @if($slot->status === 'cancelled') ❌ Annulé
-                                    @elseif($slot->status === 'modified') ⚠ Modifié
-                                    @elseif($slot->status === 'completed') ✓ Terminé
+                                    @if($creneau->status === 'cancelled') ❌ Annulé
+                                    @elseif($creneau->status === 'modified') ⚠ Modifié
+                                    @elseif($creneau->status === 'completed') ✓ Terminé
                                     @else ● Planifié
                                     @endif
                                 </span>
-                                @if($slot->exceptions->isNotEmpty())
-                                    <span class="block text-[10px] text-amber-700 font-bold mt-0.5">{{ $slot->exceptions->count() }} exception(s) à venir</span>
+                                @if($creneau->exceptions->isNotEmpty())
+                                    <span class="block text-[10px] text-amber-700 font-bold mt-0.5">{{ $creneau->exceptions->count() }} exception(s) à venir</span>
                                 @endif
                             </td>
                             <td class="px-4 py-3 text-right">
-                                <x-dropdown :etiquette="'Actions pour ' . $slot->matiere->nom">
+                                <x-dropdown :etiquette="'Actions pour ' . $creneau->matiere->nom">
                                     <x-slot:liens>
-                                        <a href="{{ route('admin.emplois-du-temps.slots.edit', $slot) }}" role="menuitem"
+                                        <a href="{{ route('admin.emplois-du-temps.slots.edit', $creneau) }}" role="menuitem"
                                            class="block px-4 py-2.5 text-xs font-bold text-slate-700 hover:bg-slate-50 min-h-[44px]">Modifier</a>
-                                        @if($slot->status === 'cancelled')
-                                            <form method="POST" action="{{ route('admin.emplois-du-temps.slots.restore', $slot) }}">
+                                        @if($creneau->status === 'cancelled')
+                                            <form method="POST" action="{{ route('admin.emplois-du-temps.slots.restore', $creneau) }}">
                                                 @csrf
                                                 <button type="submit" role="menuitem"
                                                         class="block w-full px-4 py-2.5 text-left text-xs font-bold text-emerald-700 hover:bg-slate-50 min-h-[44px]">Restaurer</button>
                                             </form>
                                         @else
-                                            <form method="POST" action="{{ route('admin.emplois-du-temps.slots.cancel', $slot) }}">
+                                            <form method="POST" action="{{ route('admin.emplois-du-temps.slots.cancel', $creneau) }}">
                                                 @csrf
                                                 <button type="submit" role="menuitem"
                                                         class="block w-full px-4 py-2.5 text-left text-xs font-bold text-amber-700 hover:bg-slate-50 min-h-[44px]">Annuler</button>
                                             </form>
                                         @endif
                                         <button type="button" role="menuitem"
-                                                @click="suppressionUrl = '{{ route('admin.emplois-du-temps.slots.destroy', $slot) }}'; suppressionNom = @js($slot->matiere->nom)"
+                                                @click="suppressionUrl = '{{ route('admin.emplois-du-temps.slots.destroy', $creneau) }}'; suppressionNom = @js($creneau->matiere->nom)"
                                                 class="block w-full px-4 py-2.5 text-left text-xs font-bold text-rose-700 hover:bg-slate-50 min-h-[44px]">Supprimer</button>
                                     </x-slot:liens>
                                 </x-dropdown>
@@ -265,8 +268,8 @@ $creneauxParJour = $planning->slots->groupBy('day_of_week');
                         <label for="slot-exception" class="mb-1 block text-[11px] font-bold uppercase text-slate-500">Créneau *</label>
                         <select id="slot-exception" x-model="slotId" required class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm">
                             <option value="">— Choisir —</option>
-                            @foreach($planning->slots as $slot)
-                                <option value="{{ $slot->id }}">{{ $joursFr[$slot->day_of_week] }} {{ substr($slot->start_time, 0, 5) }} — {{ $slot->matiere->nom }}</option>
+                            @foreach($planning->slots as $creneau)
+                                <option value="{{ $creneau->id }}">{{ $joursFr[$creneau->day_of_week] }} {{ substr($creneau->start_time, 0, 5) }} — {{ $creneau->matiere->nom }}</option>
                             @endforeach
                         </select>
                     </div>

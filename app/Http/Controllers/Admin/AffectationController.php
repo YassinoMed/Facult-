@@ -19,7 +19,9 @@ use App\Services\Affectations\AssignmentConstraintEngine;
 use App\Services\Affectations\MassAssignmentService;
 use App\Services\AffectationService;
 use App\Services\ChangementGroupeService;
+use App\Services\DisponibiliteWorkerService;
 use App\Services\InscriptionService;
+use App\Services\Io\CsvSerializer;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -312,8 +314,9 @@ class AffectationController extends Controller
 
         // LOOP P2 : au-delà du seuil mesuré, exécution différée par
         // lot (tranches + progression + reprise) plutôt qu'HTTP long.
+        // Détection dynamique (§52) : repli synchrone si aucun worker actif.
         $seuilSync = max(1, (int) config('affectations.lots.seuil_sync', 1000));
-        if (count($selections) > $seuilSync) {
+        if (app(DisponibiliteWorkerService::class)->doitBasculerEnFile(count($selections), $seuilSync)) {
             $lot = $this->massAssignment->creerLot(
                 $selections,
                 (int) $donnees['annee_universitaire_id'],
@@ -533,27 +536,28 @@ class AffectationController extends Controller
         $lignesBloquees = $analyse['anomalies'];
 
         return response()->streamDownload(function () use ($lignesProposees, $lignesBloquees) {
+            $csv = app(CsvSerializer::class);
             $sortie = fopen('php://output', 'w');
             fwrite($sortie, "\xEF\xBB\xBF");
-            fputcsv($sortie, [
+            fputcsv($sortie, $csv->neutraliserLigne([
                 'num_inscription', 'nom', 'prenom', 'cin', 'niveau', 'programme',
                 'groupe_actuel', 'groupe_propose', 'score', 'certitude', 'statut', 'motif',
-            ], ';');
+            ]), ';');
 
             foreach ($lignesProposees as $p) {
-                fputcsv($sortie, [
+                fputcsv($sortie, $csv->neutraliserLigne([
                     $p['student_numero'], $p['student_nom'], $p['student_prenom'], $p['student_cin'],
                     $p['niveau'], $p['programme'], $p['current_group'] ?? '',
                     $p['proposed_group_code'], $p['score'], $p['certitude'], 'propose',
                     implode(' | ', $p['warnings']),
-                ], ';');
+                ]), ';');
             }
 
             foreach ($lignesBloquees as $a) {
-                fputcsv($sortie, [
+                fputcsv($sortie, $csv->neutraliserLigne([
                     '', $a['student_nom'], '', '', '', '', '', '', '', '', 'bloque',
                     "[{$a['code']}] {$a['message']}",
-                ], ';');
+                ]), ';');
             }
 
             fclose($sortie);
@@ -689,7 +693,9 @@ class AffectationController extends Controller
     /**
      * Application par TRANCHES (500/requête) : sans worker, chaque
      * requête reste sous les timeouts ; le reliquat est réaffiché
-     * pour confirmation explicite de la suite.
+     * pour confirmation explicite de la suite. Au-delà du seuil
+     * `affectations.lots.seuil_sync` (et donc du premier passage
+     * synchrone), bascule sur le lot en arrière-plan.
      */
     public function appliquerAuto(Request $request): RedirectResponse|View
     {
@@ -713,6 +719,28 @@ class AffectationController extends Controller
         abort_if($repartition === [], 422, 'Répartition vide ou illisible.');
 
         $annee = AnneeUniversitaire::findOrFail($donnees['annee_universitaire_id']);
+
+        // LOOP GROS VOLUMES : au-delà du seuil synchrone, l'écran auto
+        // bascule sur le mécanisme de lot existant (tranches +
+        // progression + reprise + annulation), comme `confirmerMasse`
+        // — plutôt qu'un reliquat à reconfirmer toutes les 500 lignes.
+        // Détection dynamique (§52) : repli synchrone si aucun worker actif.
+        $seuilSync = max(1, (int) config('affectations.lots.seuil_sync', 1000));
+        $total = (int) array_sum(array_map('count', $repartition));
+
+        if (app(DisponibiliteWorkerService::class)->doitBasculerEnFile($total, $seuilSync)) {
+            $lot = $this->massAssignment->creerLot(
+                $this->selectionsDansPerimetre($repartition, $request->user()),
+                (int) $annee->id,
+                (int) $request->user()->id,
+                $donnees['motif'],
+            );
+
+            ExecuterAffectationMasseLot::dispatch($lot->id);
+
+            return redirect()->route('admin.affectations.masse.lots.show', $lot)
+                ->with('info', "Volume important ({$lot->total}) : exécution en arrière-plan, progression suivie ici.");
+        }
 
         $appliques = $this->appliquerTranches($repartition, $annee, $request->user(), $donnees['motif']);
 
@@ -766,6 +794,34 @@ class AffectationController extends Controller
         }
 
         return ['total' => $total, 'ignorees' => $ignorees, 'resteParGroupe' => $resteParGroupe];
+    }
+
+    /**
+     * Répartition (groupe → ids) convertie en sélections {student_id,
+     * groupe_id} re-cloisonnées au périmètre : mêmes gardes que
+     * `appliquerTranches` (404 si un groupe sort du périmètre,
+     * étudiants hors périmètre écartés) pour la bascule en
+     * arrière-plan — `creerLot` refusant une liste vide.
+     *
+     * @param  array<int, array<int>>  $repartition
+     * @return array<int, array{student_id: int, groupe_id: int}>
+     */
+    private function selectionsDansPerimetre(array $repartition, User $auteur): array
+    {
+        $selections = [];
+
+        foreach ($repartition as $groupeId => $etudiantIds) {
+            $groupe = Group::findOrFail((int) $groupeId);
+            abort_unless($auteur->peutAccederFaculte((int) $groupe->faculte_id), 404);
+
+            foreach ($this->idsDansPerimetre($etudiantIds, $auteur) as $etudiantId) {
+                $selections[] = ['student_id' => (int) $etudiantId, 'groupe_id' => (int) $groupe->id];
+            }
+        }
+
+        abort_if($selections === [], 422, 'Répartition vide ou illisible.');
+
+        return $selections;
     }
 
     /**

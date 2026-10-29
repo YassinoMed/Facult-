@@ -7,6 +7,11 @@
 {{-- Étape initiale : la page canonique fournit toujours `$etapeErreur`
      (erreurs serveur) ; en modal (fetch, erreurs clientes), défaut 1. --}}
 @php($etapeErreur = $etapeErreur ?? 1)
+{{-- En modal (largeur max-w-3xl), la barre de 6 étapes sur une seule
+     ligne dépasse et provoque un défilement horizontal : le panneau
+     s'ouvre alors décalé vers la gauche. On la replie en grille 3 × 2
+     uniquement dans ce contexte ; la page canonique garde sa ligne. --}}
+@php($dansModale = ! empty($embarque))
             <form action="{{ route('inscription.store') }}" method="POST"
                   x-data="inscriptionForm(@js(old('sexe', '')), @js($checklistsDocuments ?? []), {{ ! empty($embarque) ? 'true' : 'false' }}, @js($prefixe ?? ''))"
                   x-init="etape = {{ $etapeErreur }}; if (etape === 6) preparerRecap(); @if($errors->any()) $nextTick(() => { document.getElementById('erreurs-globales')?.scrollIntoView({ behavior: 'smooth', block: 'center' }); }); @else if (!periode.interactif && etape < 4) etape = 4; @endif"
@@ -20,9 +25,9 @@
 
                 {{-- Barre de progression (§5/§9) : texte + état, jamais la couleur seule --}}
                 <nav aria-label="Progression de l'inscription">
-                    <ol class="flex flex-col sm:flex-row sm:items-center gap-2 text-xs font-semibold">
+                    <ol class="{{ $dansModale ? 'grid grid-cols-1 sm:grid-cols-3 gap-2' : 'flex flex-col sm:flex-row sm:items-center gap-2' }} text-xs font-semibold">
                         @foreach([1 => 'Identification', 2 => 'Identité', 3 => 'Coordonnées', 4 => 'Formation', 5 => 'Documents', 6 => 'Confirmation'] as $numero => $libelle)
-                            <li class="flex items-center gap-2 flex-1">
+                            <li class="flex items-center gap-2 {{ $dansModale ? 'min-w-0' : 'flex-1' }}">
                                 <button type="button" @click="if ({{ $numero }} < etape) allerEtape({{ $numero }})"
                                         :aria-current="etape === {{ $numero }} ? 'step' : null"
                                         :disabled="{{ $numero }} > etape"
@@ -42,7 +47,7 @@
                                         <span x-show="etape > {{ $numero }}">(étape terminée)</span>
                                     </span>
                                 </button>
-                                @if($numero < 6)
+                                @if($numero < 6 && ! $dansModale)
                                     <span class="hidden sm:block h-px w-4 bg-slate-300" aria-hidden="true"></span>
                                 @endif
                             </li>

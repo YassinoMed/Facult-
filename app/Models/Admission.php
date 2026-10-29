@@ -19,7 +19,7 @@ class Admission extends Model
     protected $fillable = [
         'etudiant_id', 'programme_id', 'niveau_id', 'annee_universitaire_id',
         'decision', 'motif', 'decided_by', 'decided_at',
-        'consumed_at', 'consumed_inscription_id',
+        'consumed_at', 'consumed_inscription_id', 'verrou_actif',
     ];
 
     protected function casts(): array

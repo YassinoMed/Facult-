@@ -255,9 +255,12 @@ class SaisieIdentificationStricteTest extends TestCase
         $this->assertStringContainsString('Le CIN doit contenir exactement 8 chiffres.', $html);
         $this->assertStringContainsString('Format obligatoire : JJ/MM/AAAA', $html);
 
-        // Les DEUX formulaires de la page (recherche + autonome).
-        $this->assertSame(2, substr_count($html, 'formaterDateNaissance(this)'));
-        $this->assertSame(2, substr_count($html, 'pattern="[0-9]{8}"'));
+        // Les formulaires historiques (recherche + autonome) appliquent
+        // le filtre de date et le pattern CIN stricts. Le wizard embarqué
+        // peut ajouter des champs CIN supplémentaires selon le contexte :
+        // le contrat exige au minimum les deux formulaires historiques.
+        $this->assertGreaterThanOrEqual(2, substr_count($html, 'formaterDateNaissance(this)'));
+        $this->assertGreaterThanOrEqual(2, substr_count($html, 'pattern="[0-9]{8}"'));
     }
 
     public function test_le_wizard_embarque_le_controle_strict_et_les_pre_controles(): void

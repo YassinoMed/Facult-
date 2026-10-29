@@ -4,16 +4,20 @@ namespace App\Modules\OnlineRequests\Controllers;
 
 use App\Http\Controllers\Controller;
 use App\Models\HistoriqueAcademique;
+use App\Models\User;
 use App\Modules\OnlineRequests\Models\OnlineRequest;
 use App\Modules\OnlineRequests\Models\RequestAttachment;
+use App\Modules\OnlineRequests\Models\RequestDelegation;
 use App\Modules\OnlineRequests\Requests\RejectOnlineRequestRequest;
 use App\Modules\OnlineRequests\Requests\RequestPieceRequest;
+use App\Modules\OnlineRequests\Services\DelegationDemandeService;
 use App\Modules\OnlineRequests\Services\DemandesStatsService;
 use App\Modules\OnlineRequests\Services\OnlineRequestService;
 use App\Modules\OnlineRequests\Services\RequestDocumentService;
 use App\Services\AuditService;
 use App\Services\Interface\RecentsService;
 use App\Support\Recherche;
+use Carbon\Carbon;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
@@ -25,6 +29,10 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 /**
  * Back-office des demandes (§6-7) : registre scopé faculté, fiche,
  * transitions serveur, pièces, PDF. Contrôleur fin.
+ *
+ * LOT 01 : les transitions passent l'acteur au service (permissions +
+ * quatre yeux vérifiés sous verrou, en plus de la policy) et
+ * l'autorité de validation se délègue (fenêtre bornée, révocable).
  */
 class OnlineRequestController extends Controller
 {
@@ -32,6 +40,7 @@ class OnlineRequestController extends Controller
         private readonly OnlineRequestService $demandes,
         private readonly RequestDocumentService $documents,
         private readonly AuditService $audit,
+        private readonly DelegationDemandeService $delegations,
     ) {}
 
     public function index(Request $request): View
@@ -127,12 +136,14 @@ class OnlineRequestController extends Controller
 
     public function recevoir(Request $request, OnlineRequest $demande): RedirectResponse
     {
-        return $this->transition($request, $demande, 'process', fn () => $this->demandes->recevoir($demande, $request->user()->id));
+        return $this->transition($request, $demande, 'process',
+            fn () => $this->demandes->recevoir($demande, $request->user()->id, $request->user()));
     }
 
     public function examiner(Request $request, OnlineRequest $demande): RedirectResponse
     {
-        return $this->transition($request, $demande, 'process', fn () => $this->demandes->examiner($demande));
+        return $this->transition($request, $demande, 'process',
+            fn () => $this->demandes->examiner($demande, $request->user()));
     }
 
     public function assigner(Request $request, OnlineRequest $demande): RedirectResponse
@@ -140,7 +151,7 @@ class OnlineRequestController extends Controller
         $request->validate(['responsable_id' => 'required|exists:users,id']);
 
         return $this->transition($request, $demande, 'assign', function () use ($demande, $request) {
-            $this->demandes->recevoir($demande, (int) $request->input('responsable_id'));
+            $this->demandes->recevoir($demande, (int) $request->input('responsable_id'), $request->user());
 
             return $demande;
         });
@@ -148,13 +159,14 @@ class OnlineRequestController extends Controller
 
     public function demanderPiece(RequestPieceRequest $request, OnlineRequest $demande): RedirectResponse
     {
-        return $this->transition($request, $demande, 'process', fn () => $this->demandes->demanderPiece($demande, $request->validated('commentaire')));
+        return $this->transition($request, $demande, 'process',
+            fn () => $this->demandes->demanderPiece($demande, $request->validated('commentaire'), $request->user()));
     }
 
     public function approuver(Request $request, OnlineRequest $demande): RedirectResponse
     {
         return $this->transition($request, $demande, 'approve', function () use ($demande, $request) {
-            $demande = $this->demandes->approuver($demande);
+            $demande = $this->demandes->approuver($demande, $request->user());
 
             // Document généré d'office si le type le prévoit (§12).
             if ($demande->type->generates_document) {
@@ -167,12 +179,50 @@ class OnlineRequestController extends Controller
 
     public function rejeter(RejectOnlineRequestRequest $request, OnlineRequest $demande): RedirectResponse
     {
-        return $this->transition($request, $demande, 'reject', fn () => $this->demandes->rejeter($demande, $request->validated('motif')));
+        return $this->transition($request, $demande, 'reject',
+            fn () => $this->demandes->rejeter($demande, $request->validated('motif'), $request->user()));
     }
 
     public function terminer(Request $request, OnlineRequest $demande): RedirectResponse
     {
-        return $this->transition($request, $demande, 'process', fn () => $this->demandes->terminer($demande));
+        return $this->transition($request, $demande, 'process',
+            fn () => $this->demandes->terminer($demande, $request->user()));
+    }
+
+    /**
+     * Délégation de l'autorité de validation (LOT 01) : le titulaire
+     * de `demandes.approve` accorde approbation/rejet à un collègue
+     * pour une fenêtre bornée. Aucune UI dédiée pour l'instant : les
+     * endpoints servent l'administration assistée et les tests.
+     */
+    public function deleguer(Request $request): RedirectResponse
+    {
+        $valides = $request->validate([
+            'delegue_a' => ['required', 'integer', 'exists:users,id'],
+            'valide_depuis' => ['nullable', 'date'],
+            'valide_jusqua' => ['required', 'date', 'after:valide_depuis'],
+            'motif' => ['required', 'string', 'max:500'],
+        ]);
+
+        $delegataire = User::findOrFail((int) $valides['delegue_a']);
+        $depuis = isset($valides['valide_depuis']) ? Carbon::parse($valides['valide_depuis']) : null;
+
+        $this->delegations->deleguer($request->user(), $delegataire, [
+            'motif' => $valides['motif'],
+            'valide_depuis' => $depuis,
+            'valide_jusqua' => Carbon::parse($valides['valide_jusqua']),
+        ]);
+
+        return redirect()->route('admin.demandes.index')
+            ->with('success', 'Délégation de validation enregistrée.');
+    }
+
+    public function revoquerDelegation(Request $request, RequestDelegation $delegation): RedirectResponse
+    {
+        $this->delegations->revoquer($delegation, $request->user());
+
+        return redirect()->route('admin.demandes.index')
+            ->with('success', 'Délégation révoquée.');
     }
 
     public function downloadPiece(Request $request, OnlineRequest $demande, RequestAttachment $piece): StreamedResponse

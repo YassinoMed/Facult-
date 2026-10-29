@@ -66,9 +66,19 @@ class Facture extends Model
         return max(0, (int) $this->total_centimes - (int) $this->remise_centimes);
     }
 
-    /** Confirmés uniquement — jamais de reçu avant confirmation réelle. */
+    /**
+     * Montant réglé : totalité si la facture est marquée payée
+     * (paiement externe), sinon somme des paiements confirmés.
+     */
     public function payeCentimes(): int
     {
+        // Une facture marquée payée correspond à un règlement externe
+        // (site de paiement) : elle est considérée réglée en totalité,
+        // même sans ligne `paiements` locale.
+        if ($this->statut === 'paid') {
+            return $this->netCentimes();
+        }
+
         return (int) $this->paiements()->where('statut', 'confirmed')->sum('montant_centimes');
     }
 

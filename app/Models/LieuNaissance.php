@@ -61,4 +61,21 @@ class LieuNaissance extends Model
             ->where('arabic_name_key', $cle)
             ->value('official_name');
     }
+
+    /**
+     * Résout un lieu latin (ex: Sfax, Tunis, Sousse) vers son nom arabe officiel.
+     */
+    public static function resoudreNomArabe(string $latin): ?string
+    {
+        $latin = trim(mb_strtolower($latin));
+
+        if ($latin === '') {
+            return null;
+        }
+
+        return static::query()
+            ->whereRaw('LOWER(latin_name) = ?', [$latin])
+            ->orWhereRaw('LOWER(official_name) = ?', [$latin])
+            ->value('arabic_name');
+    }
 }

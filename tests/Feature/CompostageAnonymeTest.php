@@ -372,6 +372,26 @@ class CompostageAnonymeTest extends TestCase
         $this->assertLessThan(25, $requetes, "Saisie 10 candidats : {$requetes} requêtes (N+1 interdit).");
     }
 
+    public function test_saisie_expose_autosave_local_et_collage_sans_pii(): void
+    {
+        $epreuve = $this->creerEpreuve();
+        $etudiant = $this->creerEtudiant('CMPAUTO01');
+        Candidat::create(['epreuve_id' => $epreuve->id, 'etudiant_id' => $etudiant->id, 'statut' => 'present']);
+        app(CompostageService::class)->getOrCreate($epreuve, $etudiant);
+
+        $reponse = $this->actingAs($this->admin)
+            ->get(route('admin.evaluations.notes.saisie', $epreuve));
+
+        $reponse->assertOk();
+        $reponse->assertSee('Brouillon local', false);
+        $reponse->assertSee('localStorage', false);
+        $reponse->assertSee('data-numero', false);
+        $reponse->assertSee('Restaurer', false);
+        $reponse->assertSee('notes-eval:'.$this->admin->id.':'.$epreuve->id, false);
+        $reponse->assertDontSee($etudiant->cin, false);
+        $reponse->assertDontSee($etudiant->email, false);
+    }
+
     public function test_correspondance_hors_perimetre_404(): void
     {
         $autreFaculte = Faculte::create(['nom' => 'FLSH', 'code' => 'FLSH', 'description' => 'T', 'active' => true]);

@@ -19,7 +19,7 @@ $actionsRapides = auth()->check()
             @foreach($actionsRapides as $action)
                 <a href="{{ $action['url'] }}" role="menuitem"
                    class="block rounded-xl px-3 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-100">
-                    <span aria-hidden="true">{{ $action['icon'] }}</span> {{ $action['label'] }}
+                    @if(! empty($action['icon']))<span aria-hidden="true">{{ $action['icon'] }}</span> @endif{{ $action['label'] }}
                 </a>
             @endforeach
         </x-slot:liens>

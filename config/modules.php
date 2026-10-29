@@ -42,6 +42,34 @@ return [
     // notes → UE/semestre → délibérations. Désactivé par défaut.
     'evaluation' => [
         'active' => (bool) env('MODULE_EVALUATION', false),
+        // Date de gel institutionnelle du planning d'examens (§2.8).
+        // null = aucun gel configuré. Après cette date, toute modification
+        // exige une dérogation motivée portée par un acteur habilité
+        // (`evaluations.publish`) et reste tracée dans l'audit.
+        'date_gel' => env('EVALUATION_DATE_GEL'),
+        // §2.7 — séparation des pouvoirs PAR RÔLE (et non seulement par
+        // personne). ACTIVE par défaut : la matrice livrée comporte des
+        // rôles dédiés à chaque étape (`certificateur_qualite`,
+        // `direction_etudes`, `autorite_publication`). `php artisan
+        // examens:separation-roles` vérifie la faisabilité et propose
+        // l'attribution ; le compte `super_admin` reste une voie de secours.
+        'separation_pouvoirs_par_role' => (bool) env('EXAM_SEPARATION_POUVOIRS_PAR_ROLE', true),
+
+        // Décision D-04 V2 — capacité utile et permutations de salles.
+        'capacite' => [
+            // Ratio d'espacement anti-fraude (capacité utile = floor(nominal × ratio)).
+            'ratio_espacement' => (float) env('EXAM_CAPACITE_RATIO', 0.50),
+            // Nombre maximal de variantes de propositions générées.
+            'max_propositions' => (int) env('EXAM_CAPACITE_MAX_PROPOSITIONS', 12),
+            // Nombre maximal de salles par épreuve en répartition multi-salles.
+            'max_salles_par_epreuve' => (int) env('EXAM_CAPACITE_MAX_SALLES', 3),
+            // Nombre maximal d'épreuves chargées par analyse de périmètre.
+            'max_epreuves' => (int) env('EXAM_CAPACITE_MAX_EPREUVES', 60),
+            // Durée de vie (minutes) des propositions en cache éphémère.
+            'ttl_propositions_minutes' => (int) env('EXAM_CAPACITE_TTL_MINUTES', 120),
+            // Autoriser la répartition d'une épreuve sur plusieurs salles.
+            'autoriser_repartition_multi_salles' => (bool) env('EXAM_CAPACITE_AUTORISER_MULTI_SALLES', true),
+        ],
     ],
 
     // Annonces ciblées (Phase 5) : publication + diffusion notifications.
@@ -57,6 +85,32 @@ return [
     // Tâches & cockpit (Phases 7-9) : centre transverse idempotent.
     'tasks' => [
         'active' => (bool) env('MODULE_TASKS', false),
+    ],
+
+    // Lot 11 — Centre de services IT : vue métier AU-DESSUS du pipeline
+    // Tasks (aucune FSM dupliquée). DÉSACTIVÉ par défaut. Dépend de
+    // MODULE_TASKS=1 : sans pipeline de suivi, aucune création de ticket.
+    'centre-services-it' => [
+        'active' => (bool) env('MODULE_CENTRE_SERVICES_IT', false),
+    ],
+
+    // Lot 17 — Portail alumni : registre officiel de diplomation alimenté
+    // UNIQUEMENT par import (aucun calcul depuis les notes/crédits),
+    // consentement opt-in par lien signé, annuaire et agrégats k-anonymes.
+    // DÉSACTIVÉ par défaut.
+    'alumni' => [
+        'active' => (bool) env('MODULE_ALUMNI', false),
+        'seuil_k' => (int) env('MODULE_ALUMNI_SEUIL_K', 5),
+        'lien_jours' => (int) env('MODULE_ALUMNI_LIEN_JOURS', 30),
+        'lignes_max' => (int) env('MODULE_ALUMNI_LIGNES_MAX', 5000),
+    ],
+
+    // Assistant IA hybride (développeur + métier) — LOOP-UNIREGISTRE-AI-
+    // ASSISTANT-FOUNDATION-01. DÉSACTIVÉ par défaut : activation explicite
+    // via env MODULE_AI_ASSISTANT=1 (jamais modifié par ce LOOP ; voir
+    // docs/engineering/LOOP-UNIREGISTRE-AI-ASSISTANT-FOUNDATION-AUTO-PASS-01.md).
+    'ai-assistant' => [
+        'active' => (bool) env('MODULE_AI_ASSISTANT', false),
     ],
 
     // Finances universitaires (Phase 23) : tarifs, factures, paiements.
@@ -85,6 +139,51 @@ return [
     // d'intégrité et incidents. Désactivé par défaut.
     'sentinel' => [
         'active' => (bool) env('MODULE_SENTINEL', false),
+    ],
+
+    // Assistant IA (UniRegistre AI) : assistant hybride développeur et métier.
+    'assistant-ia' => [
+        'active' => (bool) env('MODULE_ASSISTANT_IA', true),
+    ],
+
+    // Centre d'aide utilisateur : rendu public (candidats inclus) de la KB
+    // « docs/utilisateur/ ». Contenu statique en lecture seule — noyau
+    // documentaire, ACTIF par défaut (désactivation : MODULE_AIDE=0).
+    'aide' => [
+        'active' => (bool) env('MODULE_AIDE', true),
+    ],
+
+    // Simulateur de scénarios institutionnels (LOOP Lot 14) : lecture des
+    // sources confirmées (inscriptions validées, salles, charges) pour
+    // comparer des hypothèses SANS écriture officielle. DÉSACTIVÉ par
+    // défaut — activation serveur : MODULE_SIMULATEUR_SCENARIOS=1.
+    'simulateur-scenarios' => [
+        'active' => (bool) env('MODULE_SIMULATEUR_SCENARIOS', false),
+    ],
+
+    // Lot 15 — Prévention du décrochage : accompagnement humain (désactivé par défaut).
+    'prevention-decrochage' => [
+        'active' => (bool) env('MODULE_PREVENTION_DECROCHAGE', false),
+    ],
+
+    // Lot 16 — Assurance qualité et accréditation (désactivé par défaut).
+    'assurance-qualite' => [
+        'active' => (bool) env('MODULE_ASSURANCE_QUALITE', false),
+    ],
+
+    // Lot 18 — Hub d'intégration (désactivé par défaut).
+    'hub-integration' => [
+        'active' => (bool) env('MODULE_HUB_INTEGRATION', false),
+    ],
+
+    // Simulateur temporel multi-domaines (désactivé par défaut).
+    'simulation-temporelle' => [
+        'active' => (bool) env('MODULE_SIMULATION_TEMPORELLE', false),
+    ],
+
+    // Lot 19 — Gouvernance et conformité (désactivé par défaut).
+    'gouvernance-conformite' => [
+        'active' => (bool) env('MODULE_GOUVERNANCE_CONFORMITE', false),
     ],
 
     /*
@@ -130,6 +229,12 @@ return [
                 'permission' => 'referentiel.view',
             ],
             [
+                'module' => 'referentiel',
+                'label' => 'Compétences',
+                'route' => 'admin.referentiel.competences.index',
+                'permission' => 'referentiel.view',
+            ],
+            [
                 'module' => 'enseignement',
                 'label' => 'Enseignements',
                 'route' => 'admin.enseignements.tableau-bord',
@@ -140,6 +245,13 @@ return [
                 'label' => 'Évaluations',
                 'route' => 'admin.evaluations.index',
                 'permission' => 'evaluations.view',
+            ],
+            [
+                'module' => 'evaluation',
+                'label' => 'Examens',
+                'route' => 'admin.evaluations.examens.index',
+                'permission' => 'evaluations.view',
+                'icone' => 'M9 12h3.75M9 15h3.75M9 18h3.75m3 .75H18a2.25 2.25 0 0 0 2.25-2.25V6.108c0-1.135-.845-2.098-1.976-2.192a48.424 48.424 0 0 0-1.123-.08m-5.801 0c-.065.21-.1.433-.1.664 0 .414.336.75.75.75h4.5a.75.75 0 0 0 .75-.75 2.25 2.25 0 0 0-.1-.664m-5.8 0A2.251 2.251 0 0 1 13.5 2.25H15c1.012 0 1.867.668 2.15 1.586m-5.8 0c-.376.023-.75.05-1.124.08C9.095 4.01 8.25 4.973 8.25 6.108V8.25m0 0H4.875c-.621 0-1.125.504-1.125 1.125v11.25c0 .621.504 1.125 1.125 1.125h9.75c.621 0 1.125-.504 1.125-1.125V9.375c0-.621-.504-1.125-1.125-1.125H8.25ZM6.75 12h.008v.008H6.75V12Zm0 3h.008v.008H6.75V15Zm0 3h.008v.008H6.75V18Z',
             ],
             [
                 'module' => 'evaluation',
@@ -200,9 +312,21 @@ return [
                 'permission' => 'tasks.view',
             ],
             [
+                'module' => 'ai-assistant',
+                'label' => 'Assistant IA',
+                'route' => 'admin.ai.index',
+                'permission' => 'ai.acceder',
+            ],
+            [
                 'module' => 'finances',
                 'label' => 'Finances',
                 'route' => 'admin.finances.index',
+                'permission' => 'finances.view',
+            ],
+            [
+                'module' => 'finances',
+                'label' => 'Reçus d’inscription',
+                'route' => 'admin.finances.paiements.index',
                 'permission' => 'finances.view',
             ],
             [
@@ -223,6 +347,18 @@ return [
                 'route' => 'admin.sentinel.index',
                 'permission' => 'sentinel.view',
             ],
+            [
+                'module' => 'assistant-ia',
+                'label' => 'Assistant IA',
+                'route' => 'admin.assistant-ia.index',
+                'permission' => 'assistant_ia.view',
+            ],
+            [
+                'module' => 'simulation-temporelle',
+                'label' => 'Simulateur temporel',
+                'route' => 'admin.simulation-temporelle.index',
+                'permission' => 'statistiques.view',
+            ],
         ],
         'etudiant' => [
             [
@@ -241,6 +377,18 @@ return [
                 'module' => 'student-dossiers',
                 'label' => 'Mon dossier',
                 'route' => 'etudiant.dossier.show',
+                'permission' => null,
+            ],
+            [
+                'module' => 'parcours-academique',
+                'label' => 'Mes simulations',
+                'route' => 'etudiant.parcours.simulations.index',
+                'permission' => null, // espace personnel : session-scopé, sans permission back-office
+            ],
+            [
+                'module' => 'finances',
+                'label' => 'Mes paiements',
+                'route' => 'etudiant.paiements.index',
                 'permission' => null,
             ],
             [
@@ -309,6 +457,12 @@ return [
                 'permission' => null,
             ],
             [
+                'module' => 'calendar',
+                'label' => 'Mon agenda',
+                'route' => 'enseignant.calendrier.agenda',
+                'permission' => null,
+            ],
+            [
                 'module' => 'enseignement',
                 'label' => 'Mes supports',
                 'route' => 'enseignant.ressources.index',
@@ -337,6 +491,9 @@ return [
             ['module' => 'student-dossiers', 'view' => 'modules.student-dossiers.widget-dossier'],
             ['module' => 'online-requests', 'view' => 'modules.online-requests.widget-etudiant'],
             ['module' => 'schedule', 'view' => 'modules.schedule.widget-etudiant'],
+            // LOT 3/4 : statut canonique des frais d'inscription (reçus),
+            // distinct de la facturation historique.
+            ['module' => 'finances', 'view' => 'modules.finances.widget-etudiant'],
         ],
     ],
 ];

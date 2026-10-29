@@ -367,15 +367,19 @@ class VersioningTest extends TestCase
     {
         $response = $this->getJson(route('api.v1.version'));
 
+        // LOOP-SECURITY-REMEDIATION-01 : le public n'obtient que l'état
+        // (`status`, `timestamp`). Versions applicative/BDD, build et
+        // environnement sont réservés aux IP de supervision (couvert par
+        // tests/Feature/Security/SondesEtEntetesSecuriteTest.php) et aux
+        // appels authentifiés Sanctum.
         $response->assertOk()
-            ->assertJsonStructure([
-                'status',
-                'app_version',
-                'db_version',
-                'build',
-                'environnement',
-                'timestamp',
-            ]);
+            ->assertJsonStructure(['status', 'timestamp']);
+
+        $donnees = $response->json();
+        $this->assertArrayNotHasKey('app_version', $donnees);
+        $this->assertArrayNotHasKey('db_version', $donnees);
+        $this->assertArrayNotHasKey('build', $donnees);
+        $this->assertArrayNotHasKey('environnement', $donnees);
     }
 
     public function test_api_v1_version_status_avec_authentification_sanctum(): void

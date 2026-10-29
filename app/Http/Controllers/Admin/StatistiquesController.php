@@ -12,6 +12,7 @@ use App\Models\Note;
 use App\Modules\OnlineRequests\Models\OnlineRequest;
 use App\Modules\Schedule\Models\Teacher;
 use App\Services\ExperienceInscriptionService;
+use App\Services\Io\CsvSerializer;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\View\View;
@@ -77,12 +78,13 @@ class StatistiquesController extends Controller
         $indicateurs = $this->indicateursPourExport($request, $experienceService);
 
         return response()->streamDownload(function () use ($indicateurs) {
+            $csv = app(CsvSerializer::class);
             $sortie = fopen('php://output', 'w');
             fwrite($sortie, "\xEF\xBB\xBF");
-            fputcsv($sortie, ['indicateur', 'valeur'], ';');
+            fputcsv($sortie, $csv->neutraliserLigne(['indicateur', 'valeur']), ';');
 
             foreach ($indicateurs as $libelle => $valeur) {
-                fputcsv($sortie, [$libelle, $valeur], ';');
+                fputcsv($sortie, $csv->neutraliserLigne([$libelle, $valeur]), ';');
             }
 
             fclose($sortie);

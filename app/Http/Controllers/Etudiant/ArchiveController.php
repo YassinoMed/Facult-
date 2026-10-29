@@ -52,7 +52,18 @@ class ArchiveController extends Controller
             ->orderByDesc('annee_universitaire_id')
             ->get();
 
-        $synthese = $this->calculs->synthese($inscriptions);
+        // D-01 : seuls les résultats couverts par une décision publiée
+        // alimentent la synthèse et sont rendus à la vue.
+        $resultatsPublies = DecisionDeliberation::inscriptionsPublieesPour($etudiant->id);
+
+        $inscriptionsPubliees = $inscriptions
+            ->filter(fn (InscriptionAcademique $inscription) => in_array((int) $inscription->id, $resultatsPublies, true))
+            ->values();
+
+        $synthese = $this->calculs->synthese($inscriptionsPubliees);
+
+        $inscriptions = $inscriptions
+            ->each(fn (InscriptionAcademique $inscription) => $this->masquerResultatsNonPublies($inscription, $resultatsPublies));
 
         $documents = $etudiant->documentsAcademiques()
             ->with('anneeUniversitaire')
@@ -63,6 +74,7 @@ class ArchiveController extends Controller
             'etudiant' => $etudiant,
             'dossier' => $dossier,
             'inscriptions' => $inscriptions,
+            'resultatsPublies' => $resultatsPublies,
             'synthese' => $synthese,
             'documents' => $documents,
         ]);
@@ -77,13 +89,22 @@ class ArchiveController extends Controller
         $etudiant = $this->etudiantConnecte($request);
 
         $inscriptions = InscriptionAcademique::where('etudiant_id', $etudiant->id)
-            ->with(['anneeUniversitaire', 'semestres'])
+            ->with(['anneeUniversitaire', 'semestres', 'dossierPaiement'])
             ->orderByDesc('annee_universitaire_id')
             ->get();
+
+        // D-01 : les métadonnées d'inscription restent visibles, mais
+        // aucun résultat (moyenne, crédits, décision, semestres) n'est
+        // rendu tant que la délibération n'est pas publiée.
+        $resultatsPublies = DecisionDeliberation::inscriptionsPublieesPour($etudiant->id);
+
+        $inscriptions = $inscriptions
+            ->each(fn (InscriptionAcademique $inscription) => $this->masquerResultatsNonPublies($inscription, $resultatsPublies, false));
 
         return view('etudiant.inscriptions', [
             'etudiant' => $etudiant,
             'inscriptions' => $inscriptions,
+            'resultatsPublies' => $resultatsPublies,
         ]);
     }
 
@@ -96,9 +117,7 @@ class ArchiveController extends Controller
     {
         $etudiant = $this->etudiantConnecte($request);
 
-        $publiees = DecisionDeliberation::where('etudiant_id', $etudiant->id)
-            ->where('publie', true)
-            ->pluck('inscription_academique_id')->all();
+        $publiees = DecisionDeliberation::inscriptionsPublieesPour($etudiant->id);
 
         $inscriptions = InscriptionAcademique::where('etudiant_id', $etudiant->id)
             ->whereIn('id', $publiees)
@@ -161,6 +180,18 @@ class ArchiveController extends Controller
         // Anti-IDOR : appartenance stricte au dossier de l'étudiant connecté
         abort_if($document->etudiant_id !== $etudiant->id, 404);
 
+        // Lot A (§9) : les relevés étudiants ne peuvent être téléchargés que si les résultats sont publiés
+        if (in_array($document->type_document, ['releve_notes', 'releve_semestriel', 'releve_cursus'], true)) {
+            $publiees = DecisionDeliberation::inscriptionsPublieesPour($etudiant->id);
+            $inscriptionsConcernees = InscriptionAcademique::where('etudiant_id', $etudiant->id)
+                ->when($document->annee_universitaire_id, fn ($q) => $q->where('annee_universitaire_id', $document->annee_universitaire_id))
+                ->pluck('id')
+                ->all();
+
+            $estPublie = ! empty(array_intersect($inscriptionsConcernees, $publiees));
+            abort_unless($estPublie, 403, 'Le relevé de notes n’est pas encore publié.');
+        }
+
         $this->audit->tracer(
             $etudiant,
             HistoriqueAcademique::ACTION_TELECHARGEMENT_DOCUMENT,
@@ -219,6 +250,34 @@ class ArchiveController extends Controller
             'X-Content-Type-Options' => 'nosniff',
             'Cache-Control' => 'private, no-cache, no-store, must-revalidate',
         ]);
+    }
+
+    /**
+     * D-01 : une inscription sans décision de délibération publiée ne
+     * doit exposer aucun résultat. Les colonnes persistées de
+     * l'inscription (moyenne_annuelle, crédits, decision) sont
+     * recalculées dès la saisie d'une note — elles ne valent donc pas
+     * publication. Les métadonnées (niveau, statut, année, paiement)
+     * ne sont pas des résultats et restent visibles.
+     *
+     * @param  array<int, int>  $resultatsPublies
+     */
+    private function masquerResultatsNonPublies(InscriptionAcademique $inscription, array $resultatsPublies, bool $masquerSemestres = true): InscriptionAcademique
+    {
+        if (in_array((int) $inscription->id, $resultatsPublies, true)) {
+            return $inscription;
+        }
+
+        $inscription->moyenne_annuelle = null;
+        $inscription->credits_obtenus = 0;
+        $inscription->credits_total = 0;
+        $inscription->decision = null;
+
+        if ($masquerSemestres) {
+            $inscription->setRelation('semestres', collect());
+        }
+
+        return $inscription;
     }
 
     /**

@@ -31,6 +31,7 @@ final class AffectationAutomatiqueService
         private readonly AffectationService $affectations,
         private readonly AuditService $audit,
         private readonly NotificationService $notifications,
+        private readonly InscriptionService $inscriptions,
     ) {}
 
     /**
@@ -406,22 +407,31 @@ final class AffectationAutomatiqueService
             ];
         }
 
-        $inscription = InscriptionAcademique::where('etudiant_id', $etudiant->id)
-            ->where('annee_universitaire_id', $annee->id)
-            ->first();
+        // Règle d'unicité annuelle centralisée (InscriptionService) :
+        // lecture via la même source, création sous garde — une création
+        // concurrente (double clic, double listener) fait retomber sur la
+        // ligne gagnante, jamais de doublon ni d'erreur technique.
+        $inscription = $this->inscriptions->inscriptionAnnuelle($etudiant->id, $annee->id);
 
         if ($inscription === null && $etudiant->statut === 'valide') {
-            $inscription = InscriptionAcademique::create([
-                'etudiant_id' => $etudiant->id,
-                'annee_universitaire_id' => $annee->id,
-                'programme_id' => $etudiant->programme_id,
-                'niveau_id' => $etudiant->niveau_id,
-                'niveau' => $etudiant->niveau ?? 'L1',
-                'statut' => 'valide',
-                'type' => 'premiere',
-                'regime' => 'initiale',
-                'date_inscription' => now()->toDateString(),
-            ]);
+            try {
+                $inscription = $this->inscriptions->creerInscriptionAnnuelle(
+                    (int) $etudiant->id,
+                    (int) $annee->id,
+                    [
+                        'programme_id' => $etudiant->programme_id,
+                        'niveau_id' => $etudiant->niveau_id,
+                        'niveau' => $etudiant->niveau ?? 'L1',
+                        'statut' => 'valide',
+                        'type' => 'premiere',
+                        'regime' => 'initiale',
+                    ],
+                );
+            } catch (\DomainException) {
+                // Course concurrence : l'autre requête a créé la ligne —
+                // idempotence, on poursuit avec l'inscription existante.
+                $inscription = $this->inscriptions->inscriptionAnnuelle($etudiant->id, $annee->id);
+            }
         } elseif ($inscription !== null && $etudiant->statut === 'valide' && $inscription->statut === 'en_cours') {
             $inscription->update(['statut' => 'valide']);
         }

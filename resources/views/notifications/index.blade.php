@@ -12,6 +12,9 @@
                         <x-btn variant="secondary" type="submit">Tout marquer comme lu</x-btn>
                     </form>
                 @endif
+                @if(request()->routeIs('etudiant.*'))
+                    <x-btn variant="secondary" size="sm" href="{{ route('etudiant.notifications.preferences') }}">Préférences</x-btn>
+                @endif
             </x-slot:actions>
         </x-page-header>
 
@@ -40,12 +43,12 @@
                                     <p class="mt-1 text-[11px] text-slate-400 tabular-nums">{{ $notification->created_at->format('d/m/Y H:i') }}</p>
                                 </div>
                                 @if($notification->lien !== null)
-                                    <form method="POST" action="{{ request()->routeIs('admin.*') ? route('admin.notifications.lire', $notification) : route('etudiant.notifications.lire', $notification) }}" class="flex-shrink-0">
+                                    <form method="POST" action="{{ request()->routeIs('admin.*') ? route('admin.notifications.lire', $notification) : (request()->routeIs('enseignant.*') ? route('enseignant.notifications.lire', $notification) : route('etudiant.notifications.lire', $notification)) }}" class="flex-shrink-0">
                                         @csrf @method('PATCH')
                                         <button type="submit" class="text-xs font-bold text-primary-800 underline underline-offset-2">Ouvrir</button>
                                     </form>
                                 @elseif($notification->read_at === null)
-                                    <form method="POST" action="{{ request()->routeIs('admin.*') ? route('admin.notifications.lire', $notification) : route('etudiant.notifications.lire', $notification) }}" class="flex-shrink-0">
+                                    <form method="POST" action="{{ request()->routeIs('admin.*') ? route('admin.notifications.lire', $notification) : (request()->routeIs('enseignant.*') ? route('enseignant.notifications.lire', $notification) : route('etudiant.notifications.lire', $notification)) }}" class="flex-shrink-0">
                                         @csrf @method('PATCH')
                                         <button type="submit" class="text-xs font-bold text-primary-800 underline underline-offset-2">Marquer lue</button>
                                     </form>

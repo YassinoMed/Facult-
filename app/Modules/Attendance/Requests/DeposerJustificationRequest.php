@@ -2,6 +2,7 @@
 
 namespace App\Modules\Attendance\Requests;
 
+use App\Modules\Attendance\Models\Presence;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Validator;
 
@@ -27,7 +28,19 @@ class DeposerJustificationRequest extends FormRequest
 
     public function authorize(): bool
     {
-        return $this->session()->has('etudiant_auth_id');
+        if (! $this->session()->has('etudiant_auth_id')) {
+            return false;
+        }
+
+        $presence = $this->route('presence');
+        if ($presence instanceof Presence) {
+            abort_if((int) $presence->etudiant_id !== (int) $this->session()->get('etudiant_auth_id'), 404);
+        } elseif ($presence !== null) {
+            $etudiantId = Presence::whereKey($presence)->value('etudiant_id');
+            abort_if($etudiantId === null || (int) $etudiantId !== (int) $this->session()->get('etudiant_auth_id'), 404);
+        }
+
+        return true;
     }
 
     /**

@@ -22,8 +22,21 @@ return [
         'webhooks' => (int) env('INTEGRATION_THROTTLE_WEBHOOKS', 30), // webhooks/min
     ],
 
+    /*
+    | Lot 18 — Hub d'intégration : séparation des environnements
+    |--------------------------------------------------------------------------
+    | Un contrat de connecteur d'ENVIRONNEMENT `sandbox` n'est activable QUE si
+    | l'établissement a explicitement autorisé le bac à sable ici (défaut :
+    | false — la production n'accepte jamais un contrat de test par accident).
+    | Aucune valeur n'est inventée : c'est une décision institutionnelle.
+    */
+    'sandbox_autorise' => (bool) env('INTEGRATION_SANDBOX_AUTORISE', false),
+
+    // Plafond de rejeus par échange en échec (bornage anti-boucle du cahier).
+    'plafond_rejeux' => (int) env('INTEGRATION_PLAFOND_REJEUX', 3),
+
     // Taille maximale des fichiers d'import (octets) — 10 Mo
-    'upload_max' => (int) env('INTEGRATION_UPLOAD_MAX', 10485760),
+    'upload_max' => (int) env('INTEGRATION_UPLOAD_MAX_OCTETS', env('INTEGRATION_UPLOAD_MAX', 10 * 1024 * 1024)),
 
     // Au-delà de ce nombre de lignes, l'import/export est dispatché en job (§52)
     'queue_threshold' => (int) env('INTEGRATION_QUEUE_THRESHOLD', 500),

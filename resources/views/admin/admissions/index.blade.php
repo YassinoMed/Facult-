@@ -20,57 +20,59 @@
             @if($admissions->isEmpty())
                 <x-empty-state :message="'Aucune admission enregistrée — un acte d’admission actif permet la progression vers un programme cible explicite.'" />
             @else
-                <table class="w-full text-sm">
-                    <thead class="bg-slate-50 text-left text-[11px] uppercase tracking-wider text-slate-500">
-                        <tr>
-                            <th class="px-4 py-2">Étudiant</th>
-                            <th class="px-4 py-2">Programme cible</th>
-                            <th class="px-4 py-2">Niveau</th>
-                            <th class="px-4 py-2">Année</th>
-                            <th class="px-4 py-2">Décision</th>
-                            <th class="px-4 py-2">Statut</th>
-                            <th class="px-4 py-2"></th>
-                        </tr>
-                    </thead>
-                    <tbody class="divide-y divide-slate-100">
-                        @foreach($admissions as $admission)
+                <div class="overflow-x-auto">
+                    <table class="w-full text-sm min-w-[720px]">
+                        <thead class="bg-slate-50 text-left text-[11px] uppercase tracking-wider text-slate-700 font-bold">
                             <tr>
-                                <td class="px-4 py-2 font-bold">{{ $admission->etudiant->nom }} {{ $admission->etudiant->prenom }}</td>
-                                <td class="px-4 py-2">{{ $admission->programme->nom }}</td>
-                                <td class="px-4 py-2">{{ $admission->niveau?->code ?? '—' }}</td>
-                                <td class="px-4 py-2 tabular-nums">{{ $admission->anneeUniversitaire->libelle }}</td>
-                                <td class="px-4 py-2">{{ $admission->decision === 'refuse' ? 'Refusée' : ($admission->decision === 'admis_conditionnel' ? 'Admis (conditionnel)' : 'Admis') }}</td>
-                                <td class="px-4 py-2">
-                                    @if($admission->consumed_at !== null)
-                                        <span class="inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-0.5 text-[11px] font-bold text-emerald-700">
-                                            <span class="h-1.5 w-1.5 rounded-full bg-emerald-500" aria-hidden="true"></span>Consommée
-                                        </span>
-                                    @elseif($admission->decision === 'refuse')
-                                        <span class="inline-flex items-center gap-1.5 rounded-full border border-rose-200 bg-rose-50 px-2.5 py-0.5 text-[11px] font-bold text-rose-700">
-                                            <span class="h-1.5 w-1.5 rounded-full bg-rose-500" aria-hidden="true"></span>Refusée
-                                        </span>
-                                    @else
-                                        <span class="inline-flex items-center gap-1.5 rounded-full border border-sky-200 bg-sky-50 px-2.5 py-0.5 text-[11px] font-bold text-sky-700">
-                                            <span class="h-1.5 w-1.5 rounded-full bg-sky-500" aria-hidden="true"></span>Active
-                                        </span>
-                                    @endif
-                                </td>
-                                <td class="px-4 py-2 text-right">
-                                    @can('admissions.manage')
-                                        @if($admission->consumed_at === null)
-                                            <form method="post" action="{{ route('admin.admissions.destroy', $admission) }}" class="inline"
-                                                  onsubmit="return confirm('Supprimer cette admission (non consommée) ?');">
-                                                @method('delete')
-                                                @csrf
-                                                <button type="submit" class="text-xs font-bold text-rose-600 hover:underline">Supprimer</button>
-                                            </form>
-                                        @endif
-                                    @endcan
-                                </td>
+                                <th scope="col" class="px-4 py-2">Étudiant</th>
+                                <th scope="col" class="px-4 py-2">Programme cible</th>
+                                <th scope="col" class="px-4 py-2">Niveau</th>
+                                <th scope="col" class="px-4 py-2">Année</th>
+                                <th scope="col" class="px-4 py-2">Décision</th>
+                                <th scope="col" class="px-4 py-2">Statut</th>
+                                <th scope="col" class="px-4 py-2 text-right"><span class="sr-only">Actions</span></th>
                             </tr>
-                        @endforeach
-                    </tbody>
-                </table>
+                        </thead>
+                        <tbody class="divide-y divide-slate-100">
+                            @foreach($admissions as $admission)
+                                <tr>
+                                    <td class="px-4 py-2 font-bold">{{ $admission->etudiant->nom }} {{ $admission->etudiant->prenom }}</td>
+                                    <td class="px-4 py-2">{{ $admission->programme->nom }}</td>
+                                    <td class="px-4 py-2">{{ $admission->niveau?->code ?? '—' }}</td>
+                                    <td class="px-4 py-2 tabular-nums">{{ $admission->anneeUniversitaire->libelle }}</td>
+                                    <td class="px-4 py-2">{{ $admission->decision === 'refuse' ? 'Refusée' : ($admission->decision === 'admis_conditionnel' ? 'Admis (conditionnel)' : 'Admis') }}</td>
+                                    <td class="px-4 py-2">
+                                        @if($admission->consumed_at !== null)
+                                            <span class="inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-0.5 text-[11px] font-bold text-emerald-700">
+                                                <span class="h-1.5 w-1.5 rounded-full bg-emerald-500" aria-hidden="true"></span>Consommée
+                                            </span>
+                                        @elseif($admission->decision === 'refuse')
+                                            <span class="inline-flex items-center gap-1.5 rounded-full border border-rose-200 bg-rose-50 px-2.5 py-0.5 text-[11px] font-bold text-rose-700">
+                                                <span class="h-1.5 w-1.5 rounded-full bg-rose-500" aria-hidden="true"></span>Refusée
+                                            </span>
+                                        @else
+                                            <span class="inline-flex items-center gap-1.5 rounded-full border border-sky-200 bg-sky-50 px-2.5 py-0.5 text-[11px] font-bold text-sky-700">
+                                                <span class="h-1.5 w-1.5 rounded-full bg-sky-500" aria-hidden="true"></span>Active
+                                            </span>
+                                        @endif
+                                    </td>
+                                    <td class="px-4 py-2 text-right">
+                                        @can('admissions.manage')
+                                            @if($admission->consumed_at === null)
+                                                <form method="post" action="{{ route('admin.admissions.destroy', $admission) }}" class="inline"
+                                                      onsubmit="return confirm('Supprimer cette admission (non consommée) ?');">
+                                                    @method('delete')
+                                                    @csrf
+                                                    <button type="submit" class="text-xs font-bold text-rose-600 hover:underline">Supprimer</button>
+                                                </form>
+                                            @endif
+                                        @endcan
+                                    </td>
+                                </tr>
+                            @endforeach
+                        </tbody>
+                    </table>
+                </div>
                 <div class="px-4 py-3">{{ $admissions->links() }}</div>
             @endif
         </div>

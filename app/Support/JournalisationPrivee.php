@@ -40,6 +40,12 @@ class JournalisationPrivee
         'session',
         'datenaissance',
         'lieunaissance',
+        'pin',
+        'otp',
+        'codeverification',
+        'codevalidation',
+        'jeton',
+        'codereinitialisation',
     ];
 
     public const MASQUE = '[MASQUÉ]';

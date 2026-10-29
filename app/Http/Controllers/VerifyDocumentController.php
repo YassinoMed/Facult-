@@ -30,6 +30,7 @@ class VerifyDocumentController extends Controller
             'date' => $resultat['date'],
             'statut' => $resultat['statut'],
             'nomMasque' => $resultat['nom_masque'],
+            'signatureValide' => $resultat['signature_valide'],
             'trouve' => $resultat['trouve'],
             'etablissement' => config('app.name'),
         ]);

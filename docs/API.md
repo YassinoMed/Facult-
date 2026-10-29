@@ -83,6 +83,22 @@ Scope : `grades:read`
 **Métadonnées uniquement** — le `chemin` interne n'est JAMAIS exposé.
 Scope : `documents:read`
 
+### `GET /api/v1/student-dossiers`
+Dossiers administratifs permanents du module `StudentDossiers` (lecture seule).
+Filtres whitelistés (`search`, `status`, `niveau`, `faculty`), pagination bornée
+(100 max). Un token `admin_faculte` ne voit que sa faculté — un `faculty` contraire
+est ignoré. Scope : `archives:read` · module `student-dossiers` requis (404 sinon).
+
+### `GET /api/v1/student-dossiers/{dossier}`
+Détail d'un dossier (`documents_count`, identité minimale). Aucun document n'est
+inclus : leur consultation exige le scope dédié. Hors périmètre faculté → **404**
+(jamais 403, pour ne pas confirmer l'existence). Scope : `archives:read`
+
+### `GET /api/v1/student-dossiers/{dossier}/documents`
+Métadonnées paginées des documents (`status`, `category`, `document_type`,
+`search`). `storage_path`, le contenu binaire et les versions ne sont jamais
+exposés. Scope : `documents:read`
+
 ---
 
 ## 4. Imports — workflow deux phases (§37-40)

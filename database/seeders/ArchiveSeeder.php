@@ -13,6 +13,7 @@ use App\Models\Matiere;
 use App\Models\Note;
 use App\Models\User;
 use App\Services\AcademicCalculationService;
+use App\Support\DemoData;
 use Illuminate\Database\Seeder;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\Hash;
@@ -30,17 +31,21 @@ class ArchiveSeeder extends Seeder
     public function run(): void
     {
         /*
-         | Verrou de sécurité (audit §P0-1) : ce seeder crée des comptes avec
-         | des mots de passe de démonstration CONNUS (Admin@2026, etc.).
-         | Il est strictement réservé aux environnements de développement et
-         | de test — jamais exécutable en staging/production.
+         | Verrou de sécurité (audit §P0-1, LOOP-SECURITY-REMEDIATION-01) :
+         | ce seeder crée des comptes avec des mots de passe de démonstration
+         | CONNUS (Admin@2026, etc.). Il est strictement réservé aux
+         | environnements de développement et de test, ou à un staging de
+         | démonstration sur opt-in explicite SEED_DEMO_DATA=true.
          */
-        if (! app()->environment('local', 'testing')) {
-            throw new \RuntimeException(
-                'ArchiveSeeder est interdit hors environnement local/testing : '.
-                'il seed des comptes de démonstration avec des mots de passe connus. '.
+        if (! DemoData::autorisee()) {
+            DemoData::verrou(
+                self::class,
                 'Créez les comptes de production via une procédure dédiée (mots de passe forts et uniques).'
             );
+        }
+
+        if (! app()->environment('local', 'testing')) {
+            $this->command?->warn('SEED_DEMO_DATA=true : comptes de démonstration à mots de passe connus créés — jamais pour une production réelle.');
         }
 
         /* ── 1. Comptes du personnel de scolarité (RBAC) ── */

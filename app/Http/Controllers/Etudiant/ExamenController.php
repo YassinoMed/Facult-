@@ -43,7 +43,11 @@ class ExamenController extends Controller
         // L'épreuve doit être publiée ou ultérieure
         abort_if(in_array($candidat->epreuve?->statut, ['draft', 'cancelled'], true), 404);
 
-        return $convocations->convocation($candidat);
+        try {
+            return $convocations->convocation($candidat);
+        } catch (\DomainException $e) {
+            abort(403, $e->getMessage());
+        }
     }
 
     private function etudiantConnecte(Request $request): Etudiant

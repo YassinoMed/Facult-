@@ -8,6 +8,7 @@ use App\Modules\Attendance\Models\TeacherPresence;
 use App\Modules\Attendance\Services\AppelPresenceService;
 use App\Modules\Attendance\Services\PresenceEmploiDuTempsService;
 use App\Modules\Schedule\Models\Teacher;
+use App\Services\Io\CsvSerializer;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
@@ -135,18 +136,19 @@ class MesPresencesController extends Controller
         $nomFichier = 'mes-presences-'.now()->format('Y-m-d-His').'.csv';
 
         return response()->streamDownload(function () use ($presences) {
+            $csv = app(CsvSerializer::class);
             $sortie = fopen('php://output', 'w');
             fwrite($sortie, "\xEF\xBB\xBF");
-            fputcsv($sortie, ['Date', 'Séance', 'Horaire', 'Salle', 'Statut effectif'], ';');
+            fputcsv($sortie, $csv->neutraliserLigne(['Date', 'Séance', 'Horaire', 'Salle', 'Statut effectif']), ';');
 
             foreach ($presences as $presence) {
-                fputcsv($sortie, [
+                fputcsv($sortie, $csv->neutraliserLigne([
                     $presence->date->format('d/m/Y'),
                     $presence->slot?->matiere?->nom ?? '—',
                     substr((string) $presence->slot?->start_time, 0, 5).' - '.substr((string) $presence->slot?->end_time, 0, 5),
                     $presence->slot?->room?->code ?? '—',
                     $presence->statut_effectif,
-                ], ';');
+                ]), ';');
             }
 
             fclose($sortie);

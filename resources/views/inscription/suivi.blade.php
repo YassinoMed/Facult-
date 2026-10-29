@@ -7,20 +7,20 @@
 <div class="mx-auto max-w-4xl px-4 sm:px-6 py-8 sm:py-12 space-y-8">
 
     {{-- En-tête de page --}}
-    <div class="text-center space-y-2">
-        <span class="inline-flex items-center gap-1.5 rounded-full bg-primary-100 border border-primary-300 px-3 py-0.5 text-xs font-bold text-primary-900">
+    <div class="text-center space-y-2" data-motion-hero>
+        <span class="inline-flex items-center gap-1.5 rounded-full bg-primary-100 border border-primary-300 px-3 py-0.5 text-xs font-bold text-primary-900" data-motion-hero-item>
             Consultation sécurisée
         </span>
-        <h1 class="text-2xl sm:text-4xl font-black tracking-tight text-slate-900">
+        <h1 class="text-2xl sm:text-4xl font-black tracking-tight text-slate-900" data-motion-hero-item>
             Suivi de votre dossier d'inscription
         </h1>
-        <p class="text-xs sm:text-sm text-slate-500 max-w-xl mx-auto">
+        <p class="text-xs sm:text-sm text-slate-500 max-w-xl mx-auto" data-motion-hero-item>
             Renseignez votre numéro d'inscription officiel (remis lors de votre dépôt) ainsi que votre CIN ou date de naissance pour consulter l'état d'instruction.
         </p>
     </div>
 
     {{-- Formulaire de recherche sécurisé --}}
-    <div class="rounded-3xl border border-slate-200/90 bg-white p-6 sm:p-8 shadow-sm">
+    <div class="rounded-3xl border border-slate-200/90 bg-white p-6 sm:p-8 shadow-sm" data-reveal="fade-up">
         <form action="{{ route('inscription.suivi.rechercher') }}" method="POST" class="space-y-4">
             @csrf
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -90,7 +90,7 @@
 
     {{-- Résultat de consultation réussi --}}
     @if($suivi !== null)
-        <div class="space-y-6 pt-2">
+        <div class="space-y-6 pt-2" data-reveal="fade-up">
             <div class="rounded-3xl border border-slate-200/90 bg-white p-6 sm:p-8 shadow-sm space-y-6">
                 <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pb-4 border-b border-slate-100">
                     <div>

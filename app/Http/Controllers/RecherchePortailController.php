@@ -246,7 +246,14 @@ class RecherchePortailController extends Controller
         $like = $this->like($motif);
 
         return ScheduleSlot::query()
-            ->whereHas('schedule', fn ($q) => $q->where('groupe_id', $etudiant->groupe_id))
+            // LOT 2 : même règle de visibilité que l'emploi du temps et
+            // le tableau de bord — seuls les plannings publiés/verrouillés
+            // et actifs sont exposés ; une séance annulée ne remonte pas.
+            ->whereHas('schedule', fn ($q) => $q
+                ->where('groupe_id', $etudiant->groupe_id)
+                ->where('actif', true)
+                ->whereIn('statut', ['publie', 'verrouille']))
+            ->where('status', '!=', 'cancelled')
             ->where(fn ($q) => $q
                 ->whereHas('matiere', fn ($m) => $m->where('code', 'like', $like)->orWhere('nom', 'like', $like)))
             ->with(['matiere:id,code,nom', 'room:id,code'])

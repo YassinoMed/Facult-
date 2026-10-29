@@ -463,7 +463,8 @@ class PresenceController extends Controller
     {
         $etudiant = Etudiant::findOrFail($request->session()->get('etudiant_auth_id'));
 
-        $presences = Presence::where('etudiant_id', $etudiant->id)
+        $presences = Presence::with('derniereJustification')
+            ->where('etudiant_id', $etudiant->id)
             ->orderByDesc('date')
             ->paginate(12);
 

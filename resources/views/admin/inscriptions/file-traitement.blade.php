@@ -32,13 +32,25 @@
     @endif
 
     {{-- ── Indicateurs de file (Volumes, Délais, Souffrance) ── --}}
-    <div class="mt-6 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-7" role="region" aria-label="Indicateurs de la file de traitement">
+    @php
+        // Un compteur ne doit ouvrir une liste que si le lien ne remplace pas
+        // un filtre contradictoire (sinon le compteur affiché et la liste
+        // cible ne décriraient pas la même population).
+        $statutFiltre = $filtres['statut'] ?? null;
+        $actionFiltre = $filtres['action_attendue'] ?? null;
+        $lienEnAttente = $statutFiltre === null || $statutFiltre === 'en_attente';
+        $lienAction = fn (string $action): bool => $actionFiltre === null || $actionFiltre === $action;
+    @endphp
+    <p class="mt-6 mb-2 text-[11px] font-medium text-slate-500">Indicateurs calculés sur les filtres actifs — les compteurs d’action ouvrent la liste correspondante.</p>
+    <div class="mt-2 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-7" role="region" aria-label="Indicateurs de la file de traitement">
         {{-- Total en attente --}}
-        <div class="rounded-2xl border border-slate-200 bg-white p-4 shadow-xs">
+        <a @if($lienEnAttente) href="{{ route('admin.inscriptions.file-traitement', array_merge($filtres, ['statut' => 'en_attente'])) }}" @else aria-disabled="true" @endif
+           class="block rounded-2xl border border-slate-200 bg-white p-4 shadow-xs {{ $lienEnAttente ? 'transition hover:border-primary-300 hover:bg-primary-50/40 focus:outline-hidden focus:ring-2 focus:ring-primary-500' : 'cursor-default' }}"
+           title="{{ $lienEnAttente ? 'Voir les dossiers en attente dans le périmètre filtré' : 'Filtre de statut actif : lien désactivé pour rester cohérent avec le compteur' }}">
             <p class="text-[11px] font-black uppercase tracking-wider text-slate-500">En attente</p>
             <p class="mt-1.5 text-2xl font-black tabular-nums text-slate-900">{{ $kpis['en_attente'] }}</p>
             <p class="mt-0.5 text-[11px] text-slate-500">sur {{ $kpis['total'] }} dossiers</p>
-        </div>
+        </a>
 
         {{-- En souffrance > 48h --}}
         <div class="rounded-2xl border p-4 shadow-xs {{ $kpis['souffrance_48h'] > 0 ? 'border-rose-300 bg-rose-50/70 text-rose-900' : 'border-slate-200 bg-white text-slate-900' }}"
@@ -68,11 +80,13 @@
         </div>
 
         {{-- À instruire --}}
-        <div class="rounded-2xl border border-slate-200 bg-white p-4 shadow-xs">
+        <a @if($lienAction('A_INSTRUIRE')) href="{{ route('admin.inscriptions.file-traitement', array_merge($filtres, ['action_attendue' => 'A_INSTRUIRE'])) }}" @else aria-disabled="true" @endif
+           class="block rounded-2xl border border-slate-200 bg-white p-4 shadow-xs {{ $lienAction('A_INSTRUIRE') ? 'transition hover:border-primary-300 hover:bg-primary-50/40 focus:outline-hidden focus:ring-2 focus:ring-primary-500' : 'cursor-default' }}"
+           title="{{ $lienAction('A_INSTRUIRE') ? 'Voir les dossiers à instruire dans le périmètre filtré' : 'Filtre d’action actif : lien désactivé pour rester cohérent avec le compteur' }}">
             <p class="text-[11px] font-black uppercase tracking-wider text-slate-500">À instruire</p>
             <p class="mt-1.5 text-2xl font-black tabular-nums text-primary-600">{{ $kpis['actions']['A_INSTRUIRE'] ?? 0 }}</p>
             <p class="mt-0.5 text-[11px] text-slate-500">prêts pour contrôle</p>
-        </div>
+        </a>
 
         {{-- Complément ou anomalie --}}
         <div class="rounded-2xl border border-slate-200 bg-white p-4 shadow-xs">
@@ -81,7 +95,11 @@
                 {{ ($kpis['actions']['COMPLEMENT_ATTENDU'] ?? 0) + ($kpis['actions']['ANOMALIE_DETECTEE'] ?? 0) }}
             </p>
             <p class="mt-0.5 text-[11px] text-slate-500">
-                {{ $kpis['actions']['COMPLEMENT_ATTENDU'] ?? 0 }} att. / {{ $kpis['actions']['ANOMALIE_DETECTEE'] ?? 0 }} ano.
+                <a @if($lienAction('COMPLEMENT_ATTENDU')) href="{{ route('admin.inscriptions.file-traitement', array_merge($filtres, ['action_attendue' => 'COMPLEMENT_ATTENDU'])) }}" @else aria-disabled="true" @endif
+                   class="{{ $lienAction('COMPLEMENT_ATTENDU') ? 'underline decoration-amber-300 underline-offset-2 hover:text-amber-800' : 'cursor-default' }}">{{ $kpis['actions']['COMPLEMENT_ATTENDU'] ?? 0 }} att.</a>
+                /
+                <a @if($lienAction('ANOMALIE_DETECTEE')) href="{{ route('admin.inscriptions.file-traitement', array_merge($filtres, ['action_attendue' => 'ANOMALIE_DETECTEE'])) }}" @else aria-disabled="true" @endif
+                   class="{{ $lienAction('ANOMALIE_DETECTEE') ? 'underline decoration-amber-300 underline-offset-2 hover:text-amber-800' : 'cursor-default' }}">{{ $kpis['actions']['ANOMALIE_DETECTEE'] ?? 0 }} ano.</a>
             </p>
         </div>
 
@@ -115,8 +133,41 @@
             <div class="lg:col-span-2">
                 <label for="filtre-search" class="mb-1 block text-xs font-bold uppercase tracking-wider text-slate-500">Recherche</label>
                 <input type="text" name="search" id="filtre-search" value="{{ $filtres['search'] ?? '' }}"
-                       placeholder="Nom, prénom, CIN, matricule..."
+                       placeholder="Nom, prénom, CIN, matricule, email, téléphone..."
                        class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-hidden">
+            </div>
+
+            {{-- Faculté (référentiel strictement scopé côté serveur) --}}
+            <div>
+                <label for="filtre-faculte" class="mb-1 block text-xs font-bold uppercase tracking-wider text-slate-500">Faculté</label>
+                <select name="faculte_id" id="filtre-faculte" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-hidden">
+                    <option value="">Toutes les facultés</option>
+                    @foreach($facultes as $faculte)
+                        <option value="{{ $faculte->id }}" @selected((int) ($filtres['faculte_id'] ?? 0) === (int) $faculte->id)>{{ $faculte->nom }}</option>
+                    @endforeach
+                </select>
+            </div>
+
+            {{-- Programme (actifs uniquement, jamais un brouillon/archivé) --}}
+            <div>
+                <label for="filtre-programme" class="mb-1 block text-xs font-bold uppercase tracking-wider text-slate-500">Programme</label>
+                <select name="programme_id" id="filtre-programme" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-hidden">
+                    <option value="">Tous les programmes</option>
+                    @foreach($programmes as $programme)
+                        <option value="{{ $programme->id }}" @selected((int) ($filtres['programme_id'] ?? 0) === (int) $programme->id)>{{ $programme->code }} — {{ $programme->nom }}</option>
+                    @endforeach
+                </select>
+            </div>
+
+            {{-- Niveau --}}
+            <div>
+                <label for="filtre-niveau" class="mb-1 block text-xs font-bold uppercase tracking-wider text-slate-500">Niveau</label>
+                <select name="niveau" id="filtre-niveau" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-hidden">
+                    <option value="">Tous les niveaux</option>
+                    @foreach(['L1', 'L2', 'L3', 'M1', 'M2', 'D1', 'D2', 'D3'] as $niveau)
+                        <option value="{{ $niveau }}" @selected(($filtres['niveau'] ?? '') === $niveau)>{{ $niveau }}</option>
+                    @endforeach
+                </select>
             </div>
 
             {{-- Statut --}}
@@ -216,15 +267,15 @@
             </div>
         @else
             <div class="overflow-x-auto">
-                <table class="min-w-full text-sm">
+                <table class="min-w-full text-sm min-w-[760px]">
                     <thead>
-                        <tr class="border-b border-slate-200 bg-slate-50/70 text-left text-xs uppercase tracking-wider text-slate-500">
-                            <th class="px-4 py-3">Étudiant &amp; Matricule</th>
-                            <th class="px-4 py-3">Faculté &amp; Parcours</th>
-                            <th class="px-4 py-3">Ancienneté</th>
-                            <th class="px-4 py-3">Statut</th>
-                            <th class="px-4 py-3">Action attendue</th>
-                            <th class="px-4 py-3 text-right">Actions</th>
+                        <tr class="border-b border-slate-200 bg-slate-50/70 text-left text-xs uppercase tracking-wider text-slate-700 font-bold">
+                            <th scope="col" class="px-4 py-3">Étudiant &amp; Matricule</th>
+                            <th scope="col" class="px-4 py-3">Faculté &amp; Parcours</th>
+                            <th scope="col" class="px-4 py-3">Ancienneté</th>
+                            <th scope="col" class="px-4 py-3">Statut</th>
+                            <th scope="col" class="px-4 py-3">Action attendue</th>
+                            <th scope="col" class="px-4 py-3 text-right">Actions</th>
                         </tr>
                     </thead>
                     <tbody class="divide-y divide-slate-100">
@@ -266,7 +317,7 @@
                                             @endif
                                         </span>
                                     </div>
-                                    <div class="text-[10px] text-slate-400">
+                                    <div class="text-[10px] text-slate-500 font-medium">
                                         Déposé le {{ $etudiant->created_at?->format('d/m/Y H:i') }}
                                     </div>
                                 </td>
@@ -325,18 +376,30 @@
                                             @endif
                                         </div>
                                     @endif
+                                    @if(($etudiant->corrections_ouvertes ?? collect())->isNotEmpty())
+                                        <div class="mt-1.5 flex flex-wrap gap-1">
+                                            @foreach($etudiant->corrections_ouvertes as $correction)
+                                                <span class="inline-flex items-center rounded-md border px-1.5 py-0.5 text-[10px] font-bold {{ $correction->statut === 'approuvee' ? 'border-indigo-200 bg-indigo-50 text-indigo-700' : 'border-amber-200 bg-amber-50 text-amber-800' }}"
+                                                      title="{{ $correction->statut === 'approuvee' ? 'Correction approuvée en attente d’application' : 'Complément demandé au candidat' }}">
+                                                    {{ $correction->statut === 'approuvee' ? 'À appliquer' : 'Demandé' }} : {{ $correction->champ }}
+                                                </span>
+                                            @endforeach
+                                        </div>
+                                    @endif
                                 </td>
 
                                 {{-- Actions --}}
                                 <td class="px-4 py-3.5 text-right">
                                     <div class="inline-flex items-center gap-1.5">
                                         {{-- Note d'instruction rapide --}}
-                                        <button type="button"
-                                                @click="noteModalOpen = true; envoiNote = false; etudiantId = {{ $etudiant->id }}; etudiantNom = '{{ addslashes($etudiant->nom_complet) }}'; actionUrl = '{{ route('admin.inscriptions.file-traitement.commenter', $etudiant) }}'"
-                                                class="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-50 transition-colors"
-                                                title="Ajouter une note d'instruction">
-                                            Note
-                                        </button>
+                                        @can('archives.update')
+                                            <button type="button"
+                                                    @click="noteModalOpen = true; envoiNote = false; etudiantId = {{ $etudiant->id }}; etudiantNom = '{{ addslashes($etudiant->nom_complet) }}'; actionUrl = '{{ route('admin.inscriptions.file-traitement.commenter', $etudiant) }}'"
+                                                    class="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-50 transition-colors"
+                                                    title="Ajouter une note d'instruction">
+                                                Note
+                                            </button>
+                                        @endcan
 
                                         {{-- Examiner le dossier (contrôle intelligent) --}}
                                         <a href="{{ route('admin.verification.show', $etudiant) }}"

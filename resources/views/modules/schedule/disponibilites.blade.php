@@ -49,6 +49,8 @@
                             <span class="font-bold text-slate-800">{{ $enseignant['nom'] }}</span>
                             @if($enseignant['libre'])
                                 <span class="text-xs font-bold text-emerald-700">✓ Disponible</span>
+                            @elseif($enseignant['indisponible'] ?? false)
+                                <span class="text-xs font-bold text-amber-700" title="Indisponibilité déclarée">✕ Indisponible <span class="font-normal text-slate-500">({{ $enseignant['indisponible_par'] }})</span></span>
                             @else
                                 <span class="text-xs font-bold text-rose-700" title="{{ $enseignant['occupe_par'] }}">✕ Occupé <span class="font-normal text-slate-500">({{ $enseignant['occupe_par'] }})</span></span>
                             @endif
@@ -65,6 +67,8 @@
                                 <span class="font-normal text-slate-500 tabular-nums">· {{ $salle['capacite'] ?? '—' }} places</span></span>
                             @if($salle['libre'])
                                 <span class="text-xs font-bold text-emerald-700">✓ Libre</span>
+                            @elseif($salle['indisponible'] ?? false)
+                                <span class="text-xs font-bold text-amber-700" title="Indisponibilité déclarée">✕ Indisponible <span class="font-normal text-slate-500">({{ $salle['indisponible_par'] }})</span></span>
                             @else
                                 <span class="text-xs font-bold text-rose-700" title="{{ $salle['occupe_par'] }}">✕ Occupée</span>
                             @endif

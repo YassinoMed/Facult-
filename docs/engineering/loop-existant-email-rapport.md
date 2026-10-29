@@ -503,3 +503,16 @@ Justification : le critère de réussite de la loop est **atteint et prouvé en 
 **Sur `/inscription/nouvelle` (session fraîche n°2) :** déclencheur → popup « Comment souhaitez-vous vous inscrire ? » visible, URL inchangée ; choix B → même page `#inscription` ; choix A → `/inscription/existant` (**seule** navigation du scénario, légitime) ; capture `verify03/03-popup-ouverte.png` revue (titre, 2 choix, Fermer, fond assombri). URL consignées (headless sans chrome navigateur : pas de barre d'URL capturable — paires URL/capture jointes).
 **Conclusion :** défaut non reproductible (déclencheur bouton prouvé, destinations prouvées) — **aucune modification effectuée**, conformément à la consigne.
 **Verdict §25 : `PASS`** — périmètre strict de cette loop (comportement navigateur du déclencheur et des deux choix, démontré en sessions fraîches avec captures) ; ne couvre pas les réserves transverses (réception boîte, N+1), rappelées pour mémoire.
+
+## 26. LOOP-EMAIL-DESTINATAIRE-01 (2026-10-21) — Adresse d'envoi masquée à l'étape code
+
+**Demande :** dans le popup d'accueil, afficher l'adresse destinataire du code juste après le texte « Saisissez le code à 6 chiffres reçu par e-mail… ».
+
+**DEV :**
+- `DossierExistantController::rechercher` : la réponse JSON embarquée ajoute `email_masque` (valeur `null` si aucun dossier ou adresse exploitable). Le message et l'étape restent inchangés.
+- `resources/js/app.js` (`parcoursAccueil`) : état `emailDestinataire`, renseigné depuis `corps.email_masque`, remis à zéro à l'ouverture, à la fermeture et à chaque nouvelle recherche.
+- `resources/views/inscription/existant/accueil.blade.php` : ligne « Code envoyé à … » dans l'état `existant-code`, masquée si l'adresse est absente.
+
+**Sécurité :** le parcours canonique par redirection reste strictement neutre et identique (anti-énumération). Le popup accepte désormais un **oracle d'existence partiel** : l'email MASQUÉ n'est renvoyé que si le dossier existe. Aucune adresse complète, aucun nom, aucune autre PII ; throttling IP + identité inchangé. Décision produit assumée et tracée dans le docblock du contrôleur.
+
+**Preuves :** `ParcoursAccueilEmbarqueTest` (JSON + email masqué, adresse complète absente), `LoopPopupHomeOnly04Test` (email masqué présent/absent, dossier sans email, binding Blade et JS), **21/21 tests ciblés**, Pint propre, `npm run build` OK, HTML rendu de `/` vérifié (ligne présente). **Verdict : `PASS` (périmètre ciblé)** — réserve unique : oracle d'existence partiel assumé.

@@ -7,6 +7,8 @@ use App\Models\Faculte;
 use App\Models\User;
 use App\Modules\Referentiel\Models\Programme;
 use App\Modules\Schedule\Models\Group;
+use App\Modules\Schedule\Models\Teacher;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
@@ -52,5 +54,33 @@ class EvenementCalendrier extends Model
     public function auteur(): BelongsTo
     {
         return $this->belongsTo(User::class, 'created_by');
+    }
+
+    /**
+     * Événements publiés uniquement : brouillons et annulés ne doivent
+     * jamais apparaître dans un agenda.
+     */
+    public function scopePublies(Builder $query): Builder
+    {
+        return $query->where('statut', 'publie');
+    }
+
+    /**
+     * Portée enseignant : audiences `tous`/`enseignants` + faculté
+     * stricte (un enseignant sans faculté ne voit que le global).
+     */
+    public function scopeVisiblesPourEnseignant(Builder $query, Teacher $enseignant): Builder
+    {
+        $faculteId = $enseignant->faculteId();
+
+        return $query->publies()
+            ->whereIn('audience', ['tous', 'enseignants'])
+            ->where(function (Builder $q) use ($faculteId): void {
+                $q->whereNull('faculte_id');
+
+                if ($faculteId !== null) {
+                    $q->orWhere('faculte_id', $faculteId);
+                }
+            });
     }
 }

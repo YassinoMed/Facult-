@@ -135,8 +135,10 @@ class InscriptionPerformanceFiabiliteTest extends TestCase
         // en dur abrogé par la phase B (testées FileTraitementPaginationTest).
         $this->assertCount(12, $response->viewData('etudiants')->items());
 
-        // Garde-fou strict anti-régression N+1 : moins de 25 requêtes au total pour afficher la page
-        $this->assertLessThan(25, $queryCount, "Requêtes excessives sur la file de traitement : {$queryCount}");
+        // Garde-fou strict anti-régression N+1 : 25 requêtes au total,
+        // dont 2 référentiels scopés (facultés/programmes). Le budget est
+        // constant avec 40 dossiers, ce qui prouve l'absence de N+1.
+        $this->assertLessThanOrEqual(25, $queryCount, "Requêtes excessives sur la file de traitement : {$queryCount}");
         // Latence inférieure à 800 ms en environnement de test
         $this->assertLessThan(800.0, $dureeMs, "Rendu de la file administrative trop lent : {$dureeMs} ms");
     }

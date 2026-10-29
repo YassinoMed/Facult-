@@ -4,6 +4,7 @@ namespace App\Modules\Evaluation\Services;
 
 use App\Modules\Evaluation\Events\EvaluationChanged;
 use App\Modules\Evaluation\Models\Examen;
+use App\Modules\Schedule\Services\ExamScheduleEngineService;
 use DomainException;
 use Illuminate\Support\Facades\DB;
 
@@ -24,6 +25,13 @@ class ExamenService
 
             if (! $examen->peutTransiterVers($cible)) {
                 throw new DomainException("Transition {$examen->statut} → {$cible} interdite.");
+            }
+
+            if ($cible === 'published') {
+                $audit = app(ExamScheduleEngineService::class)->auditerSessionExamens($examen);
+                if (! $audit['conforme']) {
+                    throw new DomainException('Publication impossible : contraintes dures violées ('.implode(', ', $audit['conflits_bloquants']).').');
+                }
             }
 
             $examen->update([

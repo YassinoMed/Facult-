@@ -428,7 +428,7 @@ par git** — `??` : `DossierExistantController.php`, `DossierExistantService.ph
 
 | Composant | Fichier relu | Constat |
 |---|---|---|
-| Recherche neutre | `DossierExistantController::rechercher` + `DossierExistantService::rechercher` | Réponse strictement identique existe/non-existe (anti-énumération) ; code 6 chiffres hashé SHA-256, TTL 600 s, 5 essais max, cooldown renvoi 60 s, throttling IP (routes 5,1/10,1) + identité (`MAX_RECHERCHES` 5/15 min, clé hashée sans PII) — CONFORME, non touché |
+| Recherche neutre | `DossierExistantController::rechercher` + `DossierExistantService::rechercher` | Réponse strictement identique existe/non-existe (anti-énumération) ; code 6 chiffres hashé SHA-256, TTL 600 s, 5 essais max, cooldown renvoi 60 s, throttling IP (routes 5,1/10,1) + identité (`MAX_RECHERCHES` 5/15 min, clé hashée sans PII) — CONFORME, non touché. **Amendement 2026-10-21 :** voir `loop-existant-email-rapport.md` §26 — email masqué ajouté à la réponse JSON du popup (oracle d'existence partiel assumé) ; le parcours canonique par redirection reste inchangé |
 | Autorisation temporaire | `emettreAutorisation` / `autorisationValide` / `consommerAutorisation` (Cache::pull) | Opaque, liée au dossier, TTL 900 s, usage unique, jamais de session authentifiée (`assertGuest` testé) — CONFORME, non touché |
 | Anti-IDOR structurel | `enregistrer()` : dossier rechargé depuis le jeton, `etudiant_id`/`id` de la requête ignorés (testé) | CONFORME, non touché |
 | Formulaire prérempli | `donneesFormulaire()` (whitelist, CIN masquée, jamais password/hash) + `formulaire.blade.php` | CONFORME, non touché (hors §11.2-C) |

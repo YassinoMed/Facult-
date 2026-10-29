@@ -34,6 +34,7 @@ use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Str;
 use Illuminate\View\View;
 
@@ -49,7 +50,7 @@ class EtudiantController extends Controller
 
         $faculteRestreinteId = $request->user()->faculteRestreinteId();
 
-        $valide = $request->validate([
+        $regles = [
             'search' => ['nullable', 'string', 'max:120'],
             'faculte_id' => ['nullable', 'integer', 'exists:facultes,id'],
             'programme_id' => ['nullable', 'integer', 'exists:programmes,id'],
@@ -62,11 +63,9 @@ class EtudiantController extends Controller
             'depose_depuis' => ['nullable', 'integer', 'min:1', 'max:3650'],
             'tri' => ['nullable', 'in:'.implode(',', ListeEtudiantsService::TRIS)],
             'sens' => ['nullable', 'in:asc,desc'],
-        ]);
+        ];
 
-        if ($faculteRestreinteId !== null) {
-            $valide['faculte_id'] = $faculteRestreinteId;
-        }
+        $valide = $request->validate($regles);
 
         // Phase 7 §7.4 : vue sauvegardée par défaut (filtres pré-remplis
         // seulement si l'URL n'en porte aucun) + lignes par page perso.
@@ -77,10 +76,22 @@ class EtudiantController extends Controller
                 ->where('tableau', 'etudiants')->where('par_defaut', true)->first();
 
             if ($defaut !== null) {
-                $valide = array_merge($valide, array_intersect_key(
-                    $defaut->filtres ?? [], array_flip(['search', 'faculte_id', 'programme_id', 'niveau', 'groupe_id', 'statut', 'tri', 'sens'])
-                ));
+                // Chaque valeur sauvegardée est revérifiée isolément : une
+                // vue ancienne ou incomplète ne peut ni casser la page ni
+                // injecter un filtre hors des règles du registre.
+                foreach (array_intersect_key($defaut->filtres ?? [], $regles) as $cle => $valeur) {
+                    $verif = Validator::make([$cle => $valeur], [$cle => $regles[$cle]]);
+                    if ($verif->passes()) {
+                        $valide[$cle] = $verif->validated()[$cle];
+                    }
+                }
             }
+        }
+
+        // Le périmètre faculté est appliqué APRÈS la vue par défaut : une
+        // vue sauvegardée ne peut jamais élargir l'accès d'un admin_faculte.
+        if ($faculteRestreinteId !== null) {
+            $valide['faculte_id'] = $faculteRestreinteId;
         }
 
         $query = $listes->requete($valide, $request->user());
@@ -114,8 +125,32 @@ class EtudiantController extends Controller
         $groupes = Group::orderBy('code')
             ->when($faculteRestreinteId !== null, fn ($q) => $q->where('faculte_id', $faculteRestreinteId))->get();
 
+        // Filtres réellement actifs (hors périmètre faculté forcé) : pilote
+        // l'affichage du bouton de réinitialisation, y compris lorsqu'une
+        // vue sauvegardée par défaut a pré-rempli la liste.
+        $filtresActifs = 0;
+        foreach (['search', 'programme_id', 'niveau', 'groupe_id', 'sous_groupe_id', 'annee_universitaire_id', 'statut', 'depose_depuis'] as $cle) {
+            if (filled($valide[$cle] ?? null)) {
+                $filtresActifs++;
+            }
+        }
+        if (! empty($valide['sans_groupe'])) {
+            $filtresActifs++;
+        }
+        if (($valide['tri'] ?? 'nom') !== 'nom') {
+            $filtresActifs++;
+        }
+        if (($valide['sens'] ?? 'asc') !== 'asc') {
+            $filtresActifs++;
+        }
+        if ($faculteRestreinteId === null && filled($valide['faculte_id'] ?? null)) {
+            $filtresActifs++;
+        }
+
         return view('admin.etudiants.index', [
             'etudiants' => $etudiants,
+            'filtres' => $valide,
+            'filtresActifs' => $filtresActifs,
             'facultes' => $facultes,
             'niveaux' => $niveaux,
             'stats' => $stats,

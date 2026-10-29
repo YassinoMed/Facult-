@@ -169,7 +169,23 @@ class OnlineRequestTest extends TestCase
 
         $this->actingAs($this->admin)->patch(route('admin.demandes.recevoir', $demande))->assertRedirect();
         $this->actingAs($this->admin)->patch(route('admin.demandes.examiner', $demande))->assertRedirect();
-        $this->actingAs($this->admin)->patch(route('admin.demandes.approuver', $demande))->assertRedirect();
+
+        // LOT 01 — quatre yeux sur l'approbation : l'agent assigné à
+        // l'examination (reçu ici par l'admin) ne peut pas approuver
+        // sa propre évaluation.
+        $this->actingAs($this->admin)
+            ->patch(route('admin.demandes.approuver', $demande))
+            ->assertSessionHasErrors('status');
+        $this->assertSame('in_review', $demande->fresh()->status);
+
+        // Un second agent portant le pouvoir de validation approuve.
+        $secondApprobateur = User::creerCompteBackOffice([
+            'name' => 'Second Approbateur',
+            'email' => 'second.approbateur@universite.test',
+            'password' => 'Motdepasse@123',
+        ], 'admin_scolarite');
+
+        $this->actingAs($secondApprobateur)->patch(route('admin.demandes.approuver', $demande))->assertRedirect();
 
         $demande->refresh();
         $this->assertSame('approved', $demande->status);

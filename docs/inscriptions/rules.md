@@ -1,10 +1,23 @@
 # Inscriptions — règles (Phase 3)
 
-Unicité : UQ (etudiant, année) — même étudiant + même année + même
-formation + même niveau = une seule inscription active ; garde interne
-service + garde contrôleur + `catch UniqueConstraintViolationException`
-→ 422. Cas légitimes (transfert, réorientation, reprise) = nouvelle
-année ou nouveau programme, jamais deux lignes identiques actives.
+Unicité ANNUELLE : au plus UNE inscription académique par couple
+(`etudiant`, `année universitaire`) — quel que soit le programme, le
+niveau ou le statut (`en_cours`, `valide`, `ajourne`, `abandon`), et sans
+suppression logique sur cette table (une suppression est physique et
+libère la paire). Règle **centralisée** dans `InscriptionService`
+(constante `MESSAGE_INSCRIPTION_ANNUELLE_EXISTANTE`, `inscriptionAnnuelle`,
+`verifierUniciteAnnuelle`, `creerInscriptionAnnuelle`) et appliquée par
+TOUS les chemins de création : formulaire admin, réinscription,
+régularisation en masse, affectation automatique, import Io legacy et
+définitions DataExchange. Filet final en base : index UNIQUE
+`uniq_inscription_etudiant_annee` (migration
+`2026_09_24_100005_create_inscriptions_academiques_table` + migration de
+garde `2026_10_18_100000_verifier_unicite_inscription_annuelle`). Course
+entre deux créations simultanées = erreur métier contrôlée
+(`DomainException` → message utilisateur sans donnée personnelle), jamais
+une erreur technique ni un écrasement silencieux. Cas légitimes : même
+étudiant l'année suivante (réinscription), autres étudiants de la même
+année (la clé est la PAIRE).
 
 Immuabilité : `UpdateInscriptionAcademiqueRequest` n'expose que
 niveau/filiere/groupe/statut/observation. `type/regime/programme_id/

@@ -20,13 +20,14 @@ class AuditVersioningService
         ?array $ancienne = null,
         ?array $nouvelle = null,
         ?string $environnement = null,
+        ?int $utilisateurId = null,
     ): AuditVersioning {
         /** @var Request|null $request */
         $request = request();
         $utilisateur = auth()->user();
 
         return AuditVersioning::create([
-            'utilisateur_id' => $utilisateur?->id,
+            'utilisateur_id' => $utilisateurId ?? $utilisateur?->id,
             'action' => $action,
             'entite' => $entite,
             'entite_id' => $entiteId,

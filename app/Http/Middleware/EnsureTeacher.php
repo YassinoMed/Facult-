@@ -26,8 +26,22 @@ class EnsureTeacher
         $enseignantId = $request->session()->get('enseignant_auth_id');
         $enseignant = $enseignantId ? Teacher::where('id', $enseignantId)->where('actif', true)->first() : null;
 
+        // LOOP-UNIREGISTRE-PORTAILS-ENTERPRISE-01 — LOT 1 : la version du
+        // mot de passe est re-vérifiée à chaque requête. Une session
+        // antérieure à la colonne (version absente = 0) reste valide tant
+        // que la version en base vaut 0.
+        if ($enseignant !== null
+            && (int) $request->session()->get('enseignant_mdp_version', 0) !== (int) $enseignant->mot_de_passe_version) {
+            $enseignant = null;
+        }
+
         if (! $enseignant) {
-            $request->session()->forget(['enseignant_auth_id', 'enseignant_auth_prenom', 'enseignant_auth_nom']);
+            $request->session()->forget([
+                'enseignant_auth_id',
+                'enseignant_auth_prenom',
+                'enseignant_auth_nom',
+                'enseignant_mdp_version',
+            ]);
 
             return redirect()->route('enseignant.connexion.show')
                 ->with('error', 'Votre session a expiré. Veuillez vous reconnecter pour accéder à votre espace.');

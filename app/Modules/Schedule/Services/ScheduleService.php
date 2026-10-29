@@ -2,6 +2,7 @@
 
 namespace App\Modules\Schedule\Services;
 
+use App\Modules\Enseignement\Models\Enseignement;
 use App\Modules\Schedule\Events\ScheduleChanged;
 use App\Modules\Schedule\Models\Room;
 use App\Modules\Schedule\Models\Schedule;
@@ -9,6 +10,7 @@ use App\Modules\Schedule\Models\ScheduleChange;
 use App\Modules\Schedule\Models\ScheduleException;
 use App\Modules\Schedule\Models\ScheduleSlot;
 use App\Modules\Schedule\Models\Teacher;
+use App\Modules\Schedule\Models\TimetableGeneration;
 use DomainException;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
@@ -23,6 +25,7 @@ class ScheduleService
     public function __construct(
         private readonly ScheduleConflictService $conflits,
         private readonly ScheduleNotificationService $notifications,
+        private readonly ?ScheduleConstraintChecker $checker = null,
     ) {}
 
     /**
@@ -45,7 +48,14 @@ class ScheduleService
             $slot->teacher_id,
             $salleId ?? $slot->room_id,
             $slot->id,
-            $slot->schedule->groupe->etudiants()->count(),
+            null,
+            $slot->schedule,
+            $slot->semaine_parite ?? 'toutes',
+            $slot->semaines_specifiques,
+            $slot->sous_groupe_id,
+            $slot->equipements_requis,
+            $slot->teachersPivot()->pluck('teacher_id')->all(),
+            $slot->matiere_id,
         );
     }
 
@@ -56,6 +66,13 @@ class ScheduleService
     public function creerCreneau(Schedule $schedule, array $donnees, ?int $auteur = null, ?string $motif = null): array
     {
         $schedule->loadMissing('groupe');
+
+        if (! isset($donnees['matiere_id']) && isset($donnees['enseignement_id'])) {
+            $ens = Enseignement::find($donnees['enseignement_id']);
+            if ($ens !== null) {
+                $donnees['matiere_id'] = $ens->matiere_id;
+            }
+        }
 
         /** @var array{slot?: ScheduleSlot, erreurs?: array<int, string>} $resultat */
         $resultat = DB::transaction(function () use ($schedule, $donnees, $auteur, $motif) {
@@ -77,7 +94,14 @@ class ScheduleService
                 $donnees['teacher_id'] ?? null,
                 $donnees['room_id'] ?? null,
                 null,
-                $verrouille->groupe->etudiants()->count(),
+                null,
+                $verrouille,
+                $donnees['semaine_parite'] ?? 'toutes',
+                $donnees['semaines_specifiques'] ?? null,
+                $donnees['sous_groupe_id'] ?? null,
+                $donnees['equipements_requis'] ?? null,
+                $donnees['co_enseignants'] ?? null,
+                $donnees['matiere_id'] ?? null,
             );
 
             if ($erreurs !== []) {
@@ -87,9 +111,19 @@ class ScheduleService
             /** @var ScheduleSlot $slot */
             $slot = $verrouille->slots()->create($donnees);
 
+            if (isset($donnees['co_enseignants']) && is_array($donnees['co_enseignants'])) {
+                foreach ($donnees['co_enseignants'] as $coId) {
+                    $slot->teachersPivot()->create([
+                        'teacher_id' => is_array($coId) ? $coId['teacher_id'] : $coId,
+                        'role' => is_array($coId) ? ($coId['role'] ?? 'coenseignant') : 'coenseignant',
+                        'volume_heures' => is_array($coId) ? ($coId['volume_heures'] ?? null) : null,
+                    ]);
+                }
+            }
+
             $this->historiser($slot, 'created', null, $slot->only([
-                'matiere_id', 'teacher_id', 'room_id', 'day_of_week',
-                'start_time', 'end_time', 'type', 'status',
+                'matiere_id', 'enseignement_id', 'teacher_id', 'room_id', 'sous_groupe_id',
+                'day_of_week', 'semaine_parite', 'start_time', 'end_time', 'type', 'status',
             ]), $auteur, $motif);
 
             return ['slot' => $slot];
@@ -113,16 +147,32 @@ class ScheduleService
         $fin = $donnees['end_time'] ?? $slot->end_time;
         $teacherId = array_key_exists('teacher_id', $donnees) ? $donnees['teacher_id'] : $slot->teacher_id;
         $roomId = array_key_exists('room_id', $donnees) ? $donnees['room_id'] : $slot->room_id;
+        $parite = $donnees['semaine_parite'] ?? $slot->semaine_parite ?? 'toutes';
+        $semaines = array_key_exists('semaines_specifiques', $donnees) ? $donnees['semaines_specifiques'] : $slot->semaines_specifiques;
+        $sousGroupeId = array_key_exists('sous_groupe_id', $donnees) ? $donnees['sous_groupe_id'] : $slot->sous_groupe_id;
+        $equipements = array_key_exists('equipements_requis', $donnees) ? $donnees['equipements_requis'] : $slot->equipements_requis;
+        $matiereId = $donnees['matiere_id'] ?? $slot->matiere_id;
+        $coEnseignants = $donnees['co_enseignants'] ?? null;
 
         /** @var array{slot?: ScheduleSlot, erreurs?: array<int, string>} $resultat */
-        $resultat = DB::transaction(function () use ($slot, $donnees, $auteur, $motif, $jour, $debut, $fin, $teacherId, $roomId) {
+        $resultat = DB::transaction(function () use (
+            $slot, $donnees, $auteur, $motif, $jour, $debut, $fin, $teacherId, $roomId,
+            $parite, $semaines, $sousGroupeId, $equipements, $matiereId, $coEnseignants
+        ) {
             // Re-vérification du verrouillage + conflits sous verrous ordonnés.
             $verrouille = $this->sousVerrous($slot->schedule, $teacherId, $roomId);
 
             $erreurs = $this->conflits->verifier(
                 $slot->schedule_id, $jour, $debut, $fin, $teacherId, $roomId,
                 $slot->id,
-                $verrouille->groupe->etudiants()->count(),
+                null,
+                $verrouille,
+                $parite,
+                $semaines,
+                $sousGroupeId,
+                $equipements,
+                $coEnseignants,
+                $matiereId,
             );
 
             if ($erreurs !== []) {
@@ -134,9 +184,24 @@ class ScheduleService
                 $donnees['status'] = 'modified';
             }
 
-            $avant = $slot->only(['teacher_id', 'room_id', 'day_of_week', 'start_time', 'end_time', 'type', 'status', 'matiere_id', 'notes']);
+            $avant = $slot->only([
+                'teacher_id', 'room_id', 'day_of_week', 'start_time', 'end_time',
+                'type', 'status', 'matiere_id', 'enseignement_id', 'sous_groupe_id',
+                'semaine_parite', 'notes',
+            ]);
 
             $slot->update($donnees);
+
+            if (isset($donnees['co_enseignants']) && is_array($donnees['co_enseignants'])) {
+                $slot->teachersPivot()->delete();
+                foreach ($donnees['co_enseignants'] as $coId) {
+                    $slot->teachersPivot()->create([
+                        'teacher_id' => is_array($coId) ? $coId['teacher_id'] : $coId,
+                        'role' => is_array($coId) ? ($coId['role'] ?? 'coenseignant') : 'coenseignant',
+                        'volume_heures' => is_array($coId) ? ($coId['volume_heures'] ?? null) : null,
+                    ]);
+                }
+            }
 
             $this->historiser($slot->fresh(), $this->qualifier($avant, $slot->fresh()->toArray()), $avant, $donnees, $auteur, $motif);
 
@@ -320,6 +385,9 @@ class ScheduleService
      */
     public function controlePublication(Schedule $schedule): array
     {
+        $checker = $this->checker ?? app(ScheduleConstraintChecker::class);
+        $rapportAudit = $checker->auditerPlanning($schedule);
+
         $conflits = [];
         $sansEnseignant = 0;
         $creneaux = 0;
@@ -327,7 +395,7 @@ class ScheduleService
         foreach ($schedule->slots()->where('status', '!=', 'cancelled')->cursor() as $slot) {
             $creneaux++;
 
-            if ($slot->teacher_id === null) {
+            if ($slot->teacher_id === null && $slot->coEnseignants()->count() === 0) {
                 $sansEnseignant++;
             }
 
@@ -336,7 +404,24 @@ class ScheduleService
             }
         }
 
-        return ['conflits' => array_values(array_unique($conflits)), 'sans_enseignant' => $sansEnseignant, 'creneaux' => $creneaux];
+        foreach ($rapportAudit->violationsDures() as $vd) {
+            $conflits[] = ($vd['matiere'] ?? 'Séance').' '.$vd['jour'].' '.substr($vd['debut'], 0, 5).' : '.$vd['message'];
+        }
+
+        $conflitsUniques = array_values(array_unique($conflits));
+
+        return [
+            'conflits' => $conflitsUniques,
+            'sans_enseignant' => $sansEnseignant,
+            'creneaux' => $creneaux,
+            'audit' => $rapportAudit,
+            'score' => $rapportAudit->scoreQualite(),
+            'est_valide' => $rapportAudit->estValide() && empty($conflitsUniques),
+            'violations_dures' => $rapportAudit->violationsDures(),
+            'penalites_souples' => $rapportAudit->penalitesSouples(),
+            'metriques' => $rapportAudit->metriques(),
+            'recommandations' => $rapportAudit->recommandations(),
+        ];
     }
 
     /**
@@ -374,8 +459,9 @@ class ScheduleService
 
             $controle = $this->controlePublication($schedule);
 
-            if ($controle['conflits'] !== []) {
-                throw new DomainException(count($controle['conflits']).' conflit(s) bloquent la publication.');
+            if ($controle['conflits'] !== [] || ! ($controle['est_valide'] ?? true)) {
+                $nb = count($controle['conflits']) ?: count($controle['violations_dures'] ?? []);
+                throw new DomainException("{$nb} conflit(s) bloquent la publication.");
             }
 
             $schedule->update(['statut' => 'publie', 'publie_a' => now(), 'actif' => true]);
@@ -456,5 +542,25 @@ class ScheduleService
         ScheduleChanged::dispatch($copie->id, 0, 'duplique');
 
         return $copie;
+    }
+
+    /**
+     * PHASE 4 : Génère automatiquement un emploi du temps réalisable via le solveur CSP.
+     *
+     * @param  array<string, mixed>  $options
+     */
+    public function genererAutomatiquement(Schedule $schedule, array $options = []): TimetableGeneration
+    {
+        return app(ScheduleGeneratorService::class)->generer($schedule, $options);
+    }
+
+    /**
+     * PHASE 4 : Simule la génération automatique (sans écriture dans schedule_slots).
+     *
+     * @param  array<string, mixed>  $options
+     */
+    public function simulerGeneration(Schedule $schedule, array $options = []): TimetableGeneration
+    {
+        return app(ScheduleGeneratorService::class)->simuler($schedule, $options);
     }
 }

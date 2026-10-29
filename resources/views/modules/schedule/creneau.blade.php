@@ -1,6 +1,11 @@
 {{-- Carte créneau réutilisée (grille desktop + liste mobile). --}}
-@php($estEnCours = ($jourEstAujourdhui ?? false) && ($creneau['statut'] ?? '') !== 'cancelled' && now()->format('H:i') >= ($creneau['debut'] ?? '99:99') && now()->format('H:i') < ($creneau['fin'] ?? '00:00'))
-<div class="rounded-xl border px-3 py-2 text-xs
+@php
+    $estEnCours = ($jourEstAujourdhui ?? false) && ($creneau['statut'] ?? '') !== 'cancelled' && now()->format('H:i') >= ($creneau['debut'] ?? '99:99') && now()->format('H:i') < ($creneau['fin'] ?? '00:00');
+    $modificateurCreneau = $creneau['statut'] === 'cancelled'
+        ? 'planning-slot--cancelled'
+        : ($creneau['exception'] ? 'planning-slot--exception' : 'planning-slot--normal');
+@endphp
+<div class="planning-slot {{ $modificateurCreneau }} rounded-xl border px-3 py-2 text-xs
     {{ $creneau['statut'] === 'cancelled' ? 'border-rose-300 bg-rose-50' : ($creneau['exception'] ? 'border-amber-300 bg-amber-50' : 'border-slate-200 bg-slate-50') }}">
     @if($estEnCours)
         <p class="mb-1 inline-flex items-center gap-1 rounded-full bg-primary-800 px-2 py-0.5 text-[10px] font-black text-white"><span class="h-1.5 w-1.5 rounded-full bg-white animate-pulse" aria-hidden="true"></span>● EN COURS</p>

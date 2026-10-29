@@ -136,7 +136,7 @@ class SurveillanceConstraintConfig extends Model
         return $this->belongsTo(AnneeUniversitaire::class);
     }
 
-    public function sessionExamen(): BelongsTo
+    public function session(): BelongsTo
     {
         return $this->belongsTo(SessionExamen::class);
     }

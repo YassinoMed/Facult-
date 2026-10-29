@@ -14,6 +14,7 @@ use App\Modules\Schedule\Models\Group;
 use App\Services\CampagneCourrielService;
 use App\Services\MoteurRenduCourriel;
 use App\Services\ResolutionDestinatairesService;
+use App\Support\CampagnePerimetre;
 use Carbon\Carbon;
 use Illuminate\View\View;
 use Livewire\Attributes\Layout;
@@ -124,7 +125,14 @@ class AssistantCompositionCampagne extends Component
     {
         $this->authorize('campagnes.manage');
 
+        $facultePerimetre = CampagnePerimetre::faculteAutorisee();
+
         if ($campagne && $campagne->exists) {
+            // Périmètre faculté : une campagne hors faculté est introuvable
+            // pour un administrateur de faculté (anti-IDOR, sans divulgation
+            // d'existence).
+            abort_unless(CampagnePerimetre::campagneAutorisee($campagne, $facultePerimetre), 404);
+
             $this->campagneId = $campagne->id;
             $this->titre = $campagne->titre;
             $this->sujet = $campagne->sujet;
@@ -155,6 +163,12 @@ class AssistantCompositionCampagne extends Component
             }
         } else {
             $this->dateProgrammation = now()->addDay()->format('Y-m-d');
+        }
+
+        // La faculté imposée par le rôle écrase toute valeur chargée ou
+        // forgée : le composant ne peut pas cibler d'autre faculté.
+        if ($facultePerimetre !== null) {
+            $this->filtreFaculteId = $facultePerimetre;
         }
 
         $this->actualiserEstimation();
@@ -268,6 +282,19 @@ class AssistantCompositionCampagne extends Component
                 $this->messageErreur = 'Veuillez sélectionner un type d’envoi valide.';
             }
         } elseif ($this->etape === 2) {
+            if ($this->typeCiblage === CampagneCourriel::CIBLAGE_GROUPE_ENREGISTRE) {
+                $groupe = $this->groupeEnregistreId !== null
+                    ? GroupeDestinataires::find($this->groupeEnregistreId)
+                    : null;
+
+                if ($groupe === null || $groupe->est_archive
+                    || ! CampagnePerimetre::groupeAutorise($groupe, CampagnePerimetre::faculteAutorisee())) {
+                    $this->messageErreur = 'Groupe de destinataires hors de votre périmètre.';
+
+                    return;
+                }
+            }
+
             $this->actualiserEstimation();
             if ($this->estimationValides === 0) {
                 $this->messageErreur = 'Aucun destinataire valide n’a été trouvé avec les critères actuels.';
@@ -293,7 +320,7 @@ class AssistantCompositionCampagne extends Component
         $donnees = $this->recueillirDonneesCiblage();
 
         try {
-            $res = $service->resoudre($this->typeCiblage, $donnees);
+            $res = $service->resoudre($this->typeCiblage, $donnees, CampagnePerimetre::faculteAutorisee());
             $this->estimationBrut = $res['total_brut'];
             $this->estimationValides = $res['total_valides'];
             $this->estimationDoublons = $res['total_doublons'];
@@ -354,7 +381,8 @@ class AssistantCompositionCampagne extends Component
         } elseif ($this->typeCiblage === CampagneCourriel::CIBLAGE_DYNAMIQUE_ETUDIANTS) {
             $donnees = [
                 'filtres' => array_filter([
-                    'faculte_id' => $this->filtreFaculteId,
+                    // La faculté imposée par le rôle prime sur la valeur du composant.
+                    'faculte_id' => CampagnePerimetre::faculteAutorisee() ?? $this->filtreFaculteId,
                     'programme_id' => $this->filtreProgrammeId,
                     'groupe_id' => $this->filtreGroupeId,
                     'niveau' => $this->filtreNiveau,
@@ -405,9 +433,17 @@ class AssistantCompositionCampagne extends Component
             'groupe_enregistre_id' => $this->groupeEnregistreId,
         ];
 
+        $faculte = CampagnePerimetre::faculteAutorisee();
         $campagne = $this->campagneId ? CampagneCourriel::find($this->campagneId) : null;
-        $campagne = $service->enregistrerBrouillon($donnees, $campagne, auth()->id());
-        $service->figerDestinataires($campagne, $this->recueillirDonneesCiblage());
+
+        if ($campagne !== null && ! CampagnePerimetre::campagneAutorisee($campagne, $faculte)) {
+            $this->messageErreur = 'Campagne hors de votre périmètre.';
+
+            return;
+        }
+
+        $campagne = $service->enregistrerBrouillon($donnees, $campagne, auth()->id(), $faculte);
+        $service->figerDestinataires($campagne, $this->recueillirDonneesCiblage(), $faculte);
 
         $this->redirectRoute('admin.campagnes-courriel.details', $campagne);
     }
@@ -445,10 +481,18 @@ class AssistantCompositionCampagne extends Component
             'groupe_enregistre_id' => $this->groupeEnregistreId,
         ];
 
+        $faculte = CampagnePerimetre::faculteAutorisee();
         $campagne = $this->campagneId ? CampagneCourriel::find($this->campagneId) : null;
-        $campagne = $service->enregistrerBrouillon($donnees, $campagne, auth()->id());
-        $service->figerDestinataires($campagne, $this->recueillirDonneesCiblage());
-        $service->planifier($campagne, $dateHeure);
+
+        if ($campagne !== null && ! CampagnePerimetre::campagneAutorisee($campagne, $faculte)) {
+            $this->messageErreur = 'Campagne hors de votre périmètre.';
+
+            return;
+        }
+
+        $campagne = $service->enregistrerBrouillon($donnees, $campagne, auth()->id(), $faculte);
+        $service->figerDestinataires($campagne, $this->recueillirDonneesCiblage(), $faculte);
+        $service->planifier($campagne, $dateHeure, $faculte);
 
         $this->redirectRoute('admin.campagnes-courriel.details', $campagne);
     }
@@ -474,10 +518,18 @@ class AssistantCompositionCampagne extends Component
             'groupe_enregistre_id' => $this->groupeEnregistreId,
         ];
 
+        $faculte = CampagnePerimetre::faculteAutorisee();
         $campagne = $this->campagneId ? CampagneCourriel::find($this->campagneId) : null;
-        $campagne = $service->enregistrerBrouillon($donnees, $campagne, auth()->id());
-        $service->figerDestinataires($campagne, $this->recueillirDonneesCiblage());
-        $service->envoyer($campagne);
+
+        if ($campagne !== null && ! CampagnePerimetre::campagneAutorisee($campagne, $faculte)) {
+            $this->messageErreur = 'Campagne hors de votre périmètre.';
+
+            return;
+        }
+
+        $campagne = $service->enregistrerBrouillon($donnees, $campagne, auth()->id(), $faculte);
+        $service->figerDestinataires($campagne, $this->recueillirDonneesCiblage(), $faculte);
+        $service->envoyer($campagne, $faculte);
 
         $this->redirectRoute('admin.campagnes-courriel.details', $campagne);
     }
@@ -485,6 +537,7 @@ class AssistantCompositionCampagne extends Component
     public function render(): View
     {
         $resolution = app(ResolutionDestinatairesService::class);
+        $faculte = CampagnePerimetre::faculteAutorisee();
 
         $apercuEtudiants = null;
         if ($this->typeCiblage === CampagneCourriel::CIBLAGE_LISTE_FIXE || $this->typeCiblage === CampagneCourriel::CIBLAGE_DYNAMIQUE_ETUDIANTS) {
@@ -496,7 +549,7 @@ class AssistantCompositionCampagne extends Component
                 'annee_academique' => $this->filtreAnneeAcademique,
                 'statut' => $this->filtreStatutEtudiant,
                 'recherche' => $this->rechercheEtudiants,
-            ]);
+            ], $faculte);
             $apercuEtudiants = $reqEtudiants->paginate(10, ['*'], 'etudiantsPage');
         }
 
@@ -509,18 +562,26 @@ class AssistantCompositionCampagne extends Component
                 'statut' => $this->filtreStatutEnseignant,
                 'actif' => $this->filtreActifEnseignant,
                 'recherche' => $this->rechercheEnseignants,
-            ]);
+            ], $faculte);
             $apercuEnseignants = $reqEnseignants->paginate(10, ['*'], 'enseignantsPage');
         }
 
         return view('livewire.admin.campagnes.assistant-composition', [
-            'facultes' => Faculte::orderBy('nom')->get(),
+            'facultes' => $faculte === null
+                ? Faculte::orderBy('nom')->get()
+                : Faculte::whereKey($faculte)->get(),
             'programmes' => Programme::orderBy('nom')->get(),
             'groupes' => Group::orderBy('name')->get(),
-            'departements' => Departement::orderBy('nom')->get(),
+            'departements' => $faculte === null
+                ? Departement::orderBy('nom')->get()
+                : Departement::where('faculte_id', $faculte)->orderBy('nom')->get(),
             'grades' => GradeEnseignant::orderBy('nom')->get(),
             'specialites' => Specialite::orderBy('nom')->get(),
-            'groupesEnregistres' => GroupeDestinataires::where('est_archive', false)->orderBy('nom')->get(),
+            'groupesEnregistres' => GroupeDestinataires::query()
+                ->where('est_archive', false)
+                ->when($faculte !== null, fn ($q) => $q->where('criteres->faculte_id', $faculte))
+                ->orderBy('nom')
+                ->get(),
             'modelesCourriel' => ModeleCourriel::where('statut', ModeleCourriel::STATUT_PUBLIE)->orderBy('nom')->get(),
             'apercuEtudiants' => $apercuEtudiants,
             'apercuEnseignants' => $apercuEnseignants,

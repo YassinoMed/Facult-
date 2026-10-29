@@ -12,6 +12,7 @@ use App\Models\Note;
 use App\Models\Semestre;
 use App\Models\User;
 use App\Modules\Evaluation\Models\Candidat;
+use App\Modules\Evaluation\Models\Epreuve;
 use App\Modules\Evaluation\Models\EvaluationIncident;
 use App\Modules\Evaluation\Models\Examen;
 use App\Modules\Evaluation\Models\NoteEpreuve;
@@ -554,6 +555,91 @@ class ExamensFeatureCompleteTest extends TestCase
         $response = $this->withSession(['etudiant_auth_id' => $etudiantA->id])
             ->get(route('etudiant.examens.convocation', $candidatB));
         $response->assertNotFound();
+    }
+
+    public function test_dashboard_affiche_les_prochains_examens_publies_uniquement(): void
+    {
+        $session = $this->creerSession();
+        $examen = $this->creerExamen($session);
+
+        $epreuve = Epreuve::create([
+            'examen_id' => $examen->id,
+            'session_id' => $session->id,
+            'annee_universitaire_id' => $this->annee->id,
+            'matiere_id' => $this->ecueA->id,
+            'salle_id' => $this->salle1->id,
+            'date' => now()->addDays(5)->toDateString(),
+            'heure_debut' => '09:00',
+            'heure_fin' => '11:00',
+            'statut' => 'published',
+        ]);
+
+        $brouillon = Epreuve::create([
+            'examen_id' => $examen->id,
+            'session_id' => $session->id,
+            'annee_universitaire_id' => $this->annee->id,
+            'matiere_id' => $this->ecueA->id,
+            'salle_id' => $this->salle2->id,
+            'date' => now()->addDays(6)->toDateString(),
+            'heure_debut' => '14:00',
+            'heure_fin' => '16:00',
+            'statut' => 'draft',
+        ]);
+
+        $etudiant = $this->creerEtudiantAvecInscription('Dashboard Examens', '10000003');
+        Candidat::create(['epreuve_id' => $epreuve->id, 'etudiant_id' => $etudiant->id, 'statut' => 'present']);
+        Candidat::create(['epreuve_id' => $brouillon->id, 'etudiant_id' => $etudiant->id, 'statut' => 'present']);
+
+        $this->withSession(['etudiant_auth_id' => $etudiant->id])
+            ->get(route('etudiant.dashboard'))
+            ->assertOk()
+            ->assertSee('Prochains examens')
+            ->assertSee($this->ecueA->code)
+            ->assertSee('AMPHI-A')
+            ->assertSee('Tous mes examens')
+            ->assertDontSee('SALLE-101');
+    }
+
+    public function test_dashboard_sans_examen_a_venir_affiche_un_etat_vide(): void
+    {
+        $etudiant = $this->creerEtudiantAvecInscription('Sans Examens', '10000004');
+
+        $this->withSession(['etudiant_auth_id' => $etudiant->id])
+            ->get(route('etudiant.dashboard'))
+            ->assertOk()
+            ->assertSee('Prochains examens')
+            ->assertSee('Aucun examen publié à venir.');
+    }
+
+    public function test_dashboard_limite_aux_trois_prochains_examens(): void
+    {
+        $session = $this->creerSession();
+        $examen = $this->creerExamen($session);
+        $etudiant = $this->creerEtudiantAvecInscription('Beaucoup Examens', '10000005');
+        $premierJour = now()->startOfDay()->addDay();
+
+        for ($i = 0; $i < 4; $i++) {
+            $epreuve = Epreuve::create([
+                'examen_id' => $examen->id,
+                'session_id' => $session->id,
+                'annee_universitaire_id' => $this->annee->id,
+                'matiere_id' => $this->ecueA->id,
+                'salle_id' => $this->salle1->id,
+                'date' => $premierJour->copy()->addDays($i)->toDateString(),
+                'heure_debut' => '09:00',
+                'heure_fin' => '10:00',
+                'statut' => 'published',
+            ]);
+
+            Candidat::create(['epreuve_id' => $epreuve->id, 'etudiant_id' => $etudiant->id, 'statut' => 'present']);
+        }
+
+        $this->withSession(['etudiant_auth_id' => $etudiant->id])
+            ->get(route('etudiant.dashboard'))
+            ->assertOk()
+            ->assertViewHas('prochainsExamens', fn ($candidatures) => $candidatures->count() === 3
+                && $candidatures->first()->epreuve->date->toDateString() === $premierJour->toDateString())
+            ->assertSee('Tous mes examens');
     }
 
     public function test_emargement_interactif_et_statuts_presence(): void

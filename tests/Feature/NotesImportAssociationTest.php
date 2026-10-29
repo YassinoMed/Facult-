@@ -221,6 +221,39 @@ class NotesImportAssociationTest extends TestCase
         $this->assertSame(8, Note::count());
     }
 
+    public function test_echantillon_10_lignes_colonnes_completes_importable(): void
+    {
+        // Échantillon à 10 colonnes canoniques complètes (matricule, cin,
+        // date_naissance, code_matiere, annee, semestre, note, session,
+        // evaluation_code, statut) : les 10 lignes se résolvent et
+        // s'importent réellement.
+        $this->artisan('db:seed', ['--class' => 'Database\\Seeders\\NotesDemoSeeder']);
+
+        $contenu = file_get_contents(base_path('docs/notes/exemple-notes-10-lignes.csv'));
+        $this->assertNotFalse($contenu);
+
+        $reponse = $this->actingAs($this->admin)
+            ->post('/admin/donnees/notes/import/preview', [
+                'fichier' => UploadedFile::fake()->createWithContent('exemple-notes-10-lignes.csv', $contenu, 'text/csv'),
+            ])
+            ->assertOk();
+
+        $page = (string) $reponse->getContent();
+        $this->assertStringNotContainsString('ETUDIANT_INTROUVABLE', $page);
+        $this->assertStringNotContainsString('MATIERE_INTROUVABLE', $page);
+        $this->assertStringNotContainsString('NIVEAU_INCOHERENT', $page);
+
+        $token = $reponse->viewData('token');
+        $this->assertNotEmpty($token);
+        $this->confirmer((string) $token);
+
+        $this->assertSame(10, Note::count());
+
+        // Deux sessions (normale + rattrapage) pour le même couple étudiant/matière.
+        $etudiant = Etudiant::where('cin', '12000106')->firstOrFail();
+        $this->assertSame(2, Note::where('etudiant_id', $etudiant->id)->count());
+    }
+
     private function csv(string $contenu, string $mime = 'text/csv'): UploadedFile
     {
         return UploadedFile::fake()->createWithContent('notes.csv', $contenu, $mime);

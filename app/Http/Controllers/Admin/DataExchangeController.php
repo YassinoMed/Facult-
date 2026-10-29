@@ -9,6 +9,7 @@ use App\Services\DataExchange\DataExportService;
 use App\Services\DataExchange\DataImportService;
 use App\Services\DataExchange\DefinitionRegistry;
 use App\Services\DataExchange\ImportDependencyService;
+use App\Services\Io\CsvSerializer;
 use App\Services\Io\IoException;
 use App\Services\Io\XlsxSerializer;
 use DomainException;
@@ -302,18 +303,19 @@ class DataExchangeController extends Controller
      */
     private function erreursCsv(array $erreurs): string
     {
+        $csv = app(CsvSerializer::class);
         $sortie = fopen('php://temp', 'r+');
         fwrite($sortie, "\xEF\xBB\xBF");
-        fputcsv($sortie, ['row', 'error_code', 'message', 'field', 'value'], ';');
+        fputcsv($sortie, $csv->neutraliserLigne(['row', 'error_code', 'message', 'field', 'value']), ';');
 
         foreach ($erreurs as $erreur) {
-            fputcsv($sortie, [
+            fputcsv($sortie, $csv->neutraliserLigne([
                 $erreur['ligne'] ?? '',
                 $erreur['code'] ?? '',
                 $erreur['message'] ?? '',
                 $erreur['champ'] ?? '',
                 '',
-            ], ';');
+            ]), ';');
         }
 
         rewind($sortie);

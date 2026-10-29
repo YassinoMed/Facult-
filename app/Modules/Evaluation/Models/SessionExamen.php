@@ -4,6 +4,7 @@ namespace App\Modules\Evaluation\Models;
 
 use App\Models\AnneeUniversitaire;
 use App\Modules\Referentiel\Models\Programme;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -89,5 +90,41 @@ class SessionExamen extends Model
     public function contientDate(string $date): bool
     {
         return $date >= (string) $this->date_debut && $date <= (string) $this->date_fin;
+    }
+
+    /**
+     * Mode d'organisation de la session (Mode A: pédagogique, Mode B: éligibilité).
+     */
+    public function modeOrganisation(): string
+    {
+        return $this->regles['mode_organisation'] ?? 'mode_a';
+    }
+
+    public function modeOrganisationLabel(): string
+    {
+        return $this->modeOrganisation() === 'mode_b'
+            ? 'Mode B (Groupes par Éligibilité)'
+            : 'Mode A (Groupes Pédagogiques)';
+    }
+
+    public function estRattrapage(): bool
+    {
+        return $this->type === 'rattrapage';
+    }
+
+    public function estSessionPrincipale(): bool
+    {
+        return $this->type === 'principale';
+    }
+
+    /**
+     * Filtre de listing : visible dans la faculté donnée (via examens ou session transversale).
+     */
+    public function scopePourFaculteId(Builder $query, int $faculteId): void
+    {
+        $query->where(fn ($w) => $w
+            ->whereHas('examens', fn ($e) => $e->pourFaculteId($faculteId))
+            ->orWhereDoesntHave('examens')
+        );
     }
 }

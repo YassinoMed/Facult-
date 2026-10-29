@@ -117,6 +117,49 @@
             @endcan
         </div>
 
+        {{-- LOOP-UNIREGISTRE-DOCUMENTS-REUTILISABLES-01 : état documentaire
+             de la dernière inscription ouverte (lecture seule). --}}
+        @if(($reutilisation ?? null) !== null)
+            @php
+                $anneeLibelle = $inscriptionCourante?->anneeUniversitaire?->libelle ?? 'année en cours';
+                $piecesAControler = collect($reutilisation['pieces'])->filter(
+                    fn ($piece) => $piece['obligatoire'] === true
+                        && in_array($piece['decision'], ['manquant', 'rejete', 'expire', 'non_conforme', 'en_attente'], true)
+                );
+                $piecesValides = collect($reutilisation['pieces'])->filter(
+                    fn ($piece) => in_array($piece['decision'], ['reutilise', 'associe'], true)
+                );
+            @endphp
+            <section aria-label="Pièces de l'inscription {{ $anneeLibelle }}" class="mt-6 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                <div class="flex flex-wrap items-center justify-between gap-2">
+                    <h2 class="text-sm font-black uppercase tracking-wider text-slate-900">Inscription {{ $anneeLibelle }} — pièces</h2>
+                    <span class="text-xs font-bold {{ $reutilisation['complet'] ? 'text-emerald-700' : 'text-amber-700' }}">
+                        {{ $reutilisation['complet'] ? '✓ Aucune pièce à renouveler' : $reutilisation['progression'] }}
+                    </span>
+                </div>
+                <p class="mt-1 text-xs text-slate-500">Réutilisation automatique du dossier permanent : aucun fichier n’est dupliqué.</p>
+
+                @if($piecesValides->isNotEmpty())
+                    <p class="mt-2 text-xs text-emerald-800">
+                        <span class="font-bold">Réutilisées / validées :</span>
+                        {{ $piecesValides->pluck('libelle')->implode(' · ') }}
+                    </p>
+                @endif
+
+                @if($piecesAControler->isNotEmpty())
+                    <h3 class="mt-3 text-[11px] font-bold uppercase tracking-wider text-slate-400">Pièces à contrôler ou à renouveler</h3>
+                    <ul class="mt-2 space-y-1 text-xs">
+                        @foreach($piecesAControler as $piece)
+                            <li class="rounded-lg px-2.5 py-1.5 {{ $piece['decision'] === 'en_attente' ? 'bg-amber-50 text-amber-800' : 'bg-rose-50 text-rose-800' }}">
+                                <span class="font-bold">{{ $piece['libelle'] }}</span> — {{ $piece['decision_libelle'] }}
+                                @if($piece['motif'])<span class="text-[11px]">({{ $piece['motif'] }})</span>@endif
+                            </li>
+                        @endforeach
+                    </ul>
+                @endif
+            </section>
+        @endif
+
         <section aria-label="Documents du dossier" class="mt-6 rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
             <h2 class="px-5 py-4 border-b border-slate-100 text-base font-black text-slate-900">Documents ({{ $dossier->documents->count() }})</h2>
             @if($dossier->documents->isNotEmpty())

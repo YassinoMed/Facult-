@@ -146,6 +146,7 @@ class EtudiantDefinition implements ExportDefinitionInterface, ImportDefinitionI
         }
 
         // Vérification cohérence programme
+        $programme = null;
         if (! empty($ligne['programme'])) {
             $programme = Programme::where('code', mb_strtoupper(trim((string) $ligne['programme'])))->first();
             if ($programme === null || (int) $programme->faculte_id !== (int) $faculte->id) {
@@ -153,6 +154,26 @@ class EtudiantDefinition implements ExportDefinitionInterface, ImportDefinitionI
                     'champ' => 'programme',
                     'message' => "Le programme « {$ligne['programme']} » est introuvable pour la faculté {$faculte->code}.",
                     'code' => 'PROGRAMME_NOT_FOUND',
+                ];
+                $programme = null;
+            }
+        }
+
+        // Cohérence niveau ↔ programme : `niveaux.code` n'est unique que
+        // par programme. Un code résolu hors programme peut désigner le
+        // niveau d'une autre formation.
+        if (! empty($ligne['niveau_ref'])) {
+            $niveau = $programme !== null
+                ? Niveau::resoudreDansProgramme($ligne['niveau_ref'], $programme->id)
+                : Niveau::resoudreCodeUnique($ligne['niveau_ref']);
+
+            if ($niveau === null) {
+                $erreurs[] = [
+                    'champ' => 'niveau_ref',
+                    'message' => $programme !== null
+                        ? "Le niveau « {$ligne['niveau_ref']} » n'appartient pas au programme « {$programme->code} »."
+                        : "Le niveau « {$ligne['niveau_ref']} » est ambigu : précisez le programme.",
+                    'code' => 'NIVEAU_HORS_PROGRAMME',
                 ];
             }
         }
@@ -268,10 +289,10 @@ class EtudiantDefinition implements ExportDefinitionInterface, ImportDefinitionI
 
         $niveauId = null;
         if (! empty($ligne['niveau_ref'])) {
-            $n = Niveau::where('code', mb_strtoupper(trim((string) $ligne['niveau_ref'])))
-                ->when($programmeId !== null, fn ($q) => $q->where('programme_id', $programmeId))
-                ->first();
-            $niveauId = $n?->id;
+            $niveau = $programmeId !== null
+                ? Niveau::resoudreDansProgramme($ligne['niveau_ref'], $programmeId)
+                : Niveau::resoudreCodeUnique($ligne['niveau_ref']);
+            $niveauId = $niveau?->id;
         }
 
         $groupeId = null;

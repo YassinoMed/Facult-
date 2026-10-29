@@ -4,10 +4,12 @@ use App\Http\Middleware\ApiExchangeLogger;
 use App\Http\Middleware\CheckApiScope;
 use App\Http\Middleware\EnsureBackOffice;
 use App\Http\Middleware\EnsureFacultyAdmin;
+use App\Http\Middleware\EnsureMfa;
 use App\Http\Middleware\EnsureModuleEnabled;
 use App\Http\Middleware\EnsureStudent;
 use App\Http\Middleware\EnsureSuperAdmin;
 use App\Http\Middleware\EnsureTeacher;
+use App\Http\Middleware\EnsureTrustedHost;
 use App\Http\Middleware\IdempotencyKey;
 use App\Http\Middleware\RequestId;
 use App\Http\Middleware\SecondaireVerrou;
@@ -31,6 +33,10 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
+        // Hôte de confiance (LOOP-SECURITY-REMEDIATION-01) : toute requête
+        // dont l'en-tête `Host` n'est pas autorisé est rejetée avant la
+        // génération d'URL (anti-empoisonnement des liens absolus).
+        $middleware->append(EnsureTrustedHost::class);
         $middleware->append(SecurityHeadersMiddleware::class);
         $middleware->append(RequestId::class);
         $middleware->alias([
@@ -49,6 +55,9 @@ return Application::configure(basePath: dirname(__DIR__))
             // Verrouillage secondaire après inactivité (LOOP N) : le
             // serveur impose l'état, l'overlay client n'autorise rien.
             'secondaire.verrou' => SecondaireVerrou::class,
+            // Double facteur obligatoire pour les rôles à privilèges
+            // (LOOP-SECURITY-REMEDIATION-01) : enrôlement avant tout accès.
+            'mfa.obligatoire' => EnsureMfa::class,
         ]);
         // Journal des échanges API : chaque requête /api/* est tracée (§55)
         $middleware->api(prepend: [
@@ -64,11 +73,63 @@ return Application::configure(basePath: dirname(__DIR__))
         // rate limiting par IP, le journal d'audit et l'anti-replay
         // webhook voient la VRAIE adresse client et non celle du proxy.
         $middleware->trustProxies(at: env('TRUSTED_PROXIES'));
+        // TrustHosts natif (defense en profondeur, actif hors local/test) :
+        // mêmes motifs que `security.trusted_hosts` — le middleware
+        // `EnsureTrustedHost` reste la garde toujours active.
+        $middleware->trustHosts(at: function (): array {
+            $motifs = [];
+
+            foreach ((array) config('security.trusted_hosts', []) as $motif) {
+                $motif = mb_strtolower(trim((string) $motif));
+
+                if ($motif === '') {
+                    continue;
+                }
+
+                $motifs[] = str_starts_with($motif, '*.')
+                    ? '^(.+\.)?'.preg_quote(substr($motif, 2), '/').'$'
+                    : '^'.preg_quote($motif, '/').'$';
+            }
+
+            return $motifs;
+        }, subdomains: false);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         $exceptions->shouldRenderJsonWhen(
             fn (Request $request) => $request->is('api/*') || $request->expectsJson(),
         );
+
+        // LOOP-UNIREGISTRE-ADMIN-INSCRIPTIONS — Pages d'erreur personnalisées et
+        // session. Les vues resources/views/errors/*.blade.php étendent
+        // `layouts.app`, qui lit la session (badge étudiant/enseignant,
+        // jeton CSRF). Une requête sans correspondance de route (404)
+        // n'exécute jamais le groupe `web` (StartSession) : la session est
+        // donc absente et le rendu de la page d'erreur plantait avec
+        // « Session store not set on request » au lieu d'afficher le 404
+        // personnalisé. On remet une session disponible, best-effort, et
+        // UNIQUEMENT pour le rendu HTML d'erreurs : les requêtes ayant
+        // déjà une session ne sont pas touchées et les requêtes JSON
+        // (API v1) sont exclues. Retour `null` : la conduite par défaut de
+        // Laravel (vue errors::*, statut HTTP d'origine) est préservée.
+        $exceptions->render(function (Throwable $e, Request $request) {
+            if ($request->hasSession() || $request->expectsJson()) {
+                return null;
+            }
+
+            try {
+                $request->setLaravelSession(app('session')->driver());
+            } catch (Throwable $sessionError) {
+                // Fail-soft : si la session ne peut pas démarrer (ex.
+                // indisponibilité de la session database — souvent la cause
+                // même de l'erreur affichée), le rendu par défaut de
+                // Laravel reste disponible. Aucun détail de l'exception
+                // interne n'est exposé : seul un marqueur neutre est
+                // journalisé (aucune PII).
+                Log::notice('exceptions.session_indisponible_rendu_erreur');
+            }
+
+            return null;
+        });
 
         // LOOP 9 — hygiène des journaux : une QueryException loggée brute
         // embarque le SQL + les bindings en clair (CIN, emails, hashes…,

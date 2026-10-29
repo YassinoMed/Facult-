@@ -41,24 +41,33 @@
         <p class="kv"><span class="cle">Date</span> <span class="valeur">{{ $date }}</span></p>
         <p class="kv"><span class="cle">Horaire</span> <span class="valeur">{{ $horaire }}</span></p>
         <p class="kv"><span class="cle">Salle</span> <span class="valeur">{{ $salle }}</span></p>
+        @if(!empty($numeroAnonyme) && $numeroAnonyme !== '—')
+            <p class="kv"><span class="cle">N° Anonymat</span> <span class="valeur font-mono" style="font-family: monospace; color: #1e3a5f;">{{ $numeroAnonyme }}</span></p>
+        @endif
         @if(!empty($place) && $place !== '—')
             <p class="kv"><span class="cle">Place</span> <span class="valeur">{{ $place }}</span></p>
         @endif
-        <div class="rappel">Présentez-vous 30 minutes avant le début de l'épreuve, muni(e) de votre carte d'étudiant. Tout retard ou absence non justifiée est consigné au procès-verbal.</div>
+        <div class="rappel">Présentez-vous 30 minutes avant le début de l'épreuve, muni(e) de votre carte d'étudiant. Tout retard ou absence non justifiée est consigné au procès-verbal. Ce document comporte une signature cryptographique vérifiable hors-ligne.</div>
     </div>
 
-    <div class="signature">
-        <div class="case">
+    <div class="signature" style="margin-top: 18pt;">
+        <div class="case" style="width: 55%; vertical-align: top;">
             <p><strong>Fait le :</strong> {{ $dateGeneration }}</p>
+            <p style="margin-top: 8pt;"><strong>Signature / cachet du centre d'examen :</strong></p>
+            <p style="height: 40pt;">&nbsp;</p>
         </div>
-        <div class="case">
-            <p><strong>Signature / cachet :</strong></p>
-            <p style="height: 50pt;">&nbsp;</p>
+        <div class="case" style="width: 40%; text-align: right; vertical-align: top;">
+            @if(!empty($qrCodeSvg))
+                <div style="display: inline-block; padding: 4pt; border: 0.5pt solid #cbd5e1; background: #ffffff;">
+                    {!! $qrCodeSvg !!}
+                </div>
+                <div style="font-size: 7pt; color: #64748b; margin-top: 2pt; font-family: monospace;">Secured by UniRegistre</div>
+            @endif
         </div>
     </div>
 
     <div class="pied">
-        {{ $institution }} — Réf. {{ $reference }} — {{ $dateGeneration }}
+        {{ $institution }} — Réf. {{ $reference }} — {{ $dateGeneration }} — Document officiel d'examen infalsifiable
     </div>
 </body>
 </html>

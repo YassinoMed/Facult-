@@ -2,17 +2,23 @@
 
 namespace App\Modules\Tasks\Services;
 
+use App\Models\DossierCorrection;
+use App\Models\DossierVerification;
 use App\Models\Etudiant;
+use App\Models\InscriptionAcademique;
+use App\Models\RegistrationPeriod;
 use App\Modules\Attendance\Models\Justification;
 use App\Modules\Evaluation\Models\Deliberation;
 use App\Modules\Evaluation\Models\Epreuve;
 use App\Modules\Finances\Models\Facture;
 use App\Modules\OnlineRequests\Models\OnlineRequest;
+use App\Modules\Tasks\Models\Task;
+use App\Services\PeriodeInscriptionService;
 
 /**
  * Génération idempotente (§9.5-9.6) : les émetteurs existants
- * (SLA, justifications, délibérations, épreuves) deviennent des
- * tâches actionnables. `cle_unique` = une source = une tâche active.
+ * (SLA, justifications, délibérations, épreuves, inscriptions)
+ * deviennent des tâches actionnables. `cle_unique` = une source = une tâche active.
  */
 class TaskGenerationService
 {
@@ -21,7 +27,18 @@ class TaskGenerationService
     /** @return array<string, int> */
     public function generer(): array
     {
-        $compteurs = ['demandes' => 0, 'justifications' => 0, 'deliberations' => 0, 'epreuves' => 0, 'sans_groupe' => 0, 'factures' => 0];
+        $compteurs = [
+            'inscriptions' => 0,
+            'demandes' => 0,
+            'justifications' => 0,
+            'deliberations' => 0,
+            'epreuves' => 0,
+            'sans_groupe' => 0,
+            'factures' => 0,
+        ];
+
+        $clesInscriptions = $this->synchroniserInscriptions();
+        $compteurs['inscriptions'] = count($clesInscriptions);
 
         $clesSansGroupe = $this->synchroniserSansGroupe();
         $compteurs['sans_groupe'] = count($clesSansGroupe);
@@ -90,7 +107,8 @@ class TaskGenerationService
             $compteurs['epreuves']++;
         }
 
-        $compteurs['cloturees'] = $this->taches->cloturerResolues('demande_sla', $clesDemandes)
+        $compteurs['cloturees'] = $this->taches->cloturerResolues('inscription', $clesInscriptions)
+            + $this->taches->cloturerResolues('demande_sla', $clesDemandes)
             + $this->taches->cloturerResolues('justification', $clesJustifications)
             + $this->taches->cloturerResolues('deliberation', $clesDeliberations)
             + $this->taches->cloturerResolues('epreuve_salle', $clesEpreuves)
@@ -98,6 +116,160 @@ class TaskGenerationService
             + $this->taches->cloturerResolues('facture_impayee', $clesFactures);
 
         return $compteurs;
+    }
+
+    /**
+     * Inscriptions académiques nécessitant un contrôle / instruction administrative.
+     * Idempotent : cle_unique = "inscription:{$inscription->id}".
+     *
+     * @return array<int, string>
+     */
+    public function synchroniserInscriptions(?int $faculteId = null, bool $cloturerResolues = false): array
+    {
+        $cles = [];
+
+        $query = InscriptionAcademique::with(['etudiant', 'anneeUniversitaire', 'programmeRef'])
+            ->where('statut', 'en_cours')
+            ->whereHas('etudiant', function ($q) use ($faculteId) {
+                $q->where('statut', 'en_attente');
+                if ($faculteId !== null) {
+                    $q->where('faculte_id', $faculteId);
+                }
+            });
+
+        $inscriptions = $query->get();
+
+        if ($inscriptions->isEmpty()) {
+            if ($cloturerResolues) {
+                $this->taches->cloturerResolues('inscription', [], $faculteId);
+            }
+
+            return [];
+        }
+
+        $etudiantIds = $inscriptions->pluck('etudiant_id')->filter()->unique()->all();
+
+        // 1. Compléments ouverts en attente (DossierCorrection)
+        $idsAvecComplement = ! empty($etudiantIds)
+            ? DossierCorrection::whereIn('etudiant_id', $etudiantIds)
+                ->where('statut', 'proposee')
+                ->pluck('etudiant_id')
+                ->flip()
+                ->all()
+            : [];
+
+        // 2. Derniers verdicts des vérifications (DossierVerification)
+        $derniersRuns = ! empty($etudiantIds)
+            ? DossierVerification::whereIn('etudiant_id', $etudiantIds)
+                ->whereIn('id', function ($sub) use ($etudiantIds) {
+                    $sub->selectRaw('MAX(id)')
+                        ->from('dossier_verifications')
+                        ->whereIn('etudiant_id', $etudiantIds)
+                        ->groupBy('etudiant_id');
+                })
+                ->get(['etudiant_id', 'verdict', 'regles_echouees'])
+                ->keyBy('etudiant_id')
+            : collect();
+
+        $maintenant = now();
+
+        foreach ($inscriptions as $inscription) {
+            $etudiant = $inscription->etudiant;
+            if ($etudiant === null) {
+                continue;
+            }
+
+            $cle = "inscription:{$inscription->id}";
+
+            // Respect du cycle de vie existant : ne jamais rouvrir implicitement
+            // une tâche déjà clôturée, annulée ou expirée par un gestionnaire.
+            $tacheExistante = Task::where('cle_unique', $cle)->first();
+            if ($tacheExistante !== null && ! $tacheExistante->estActive()) {
+                $cles[] = $cle;
+
+                continue;
+            }
+
+            // Calcul de priorité selon les règles documentées :
+            // 1. 'critical' : urgence réelle liée à une période officielle expirant dans < 48h (futur strictly <= 48h)
+            $echeance = null;
+            $estCritique = false;
+
+            if ($inscription->anneeUniversitaire !== null) {
+                try {
+                    $periodeInfo = app(PeriodeInscriptionService::class)->evaluer(
+                        $etudiant, $inscription->anneeUniversitaire, $inscription->type ?? 'premiere'
+                    );
+
+                    if (! empty($periodeInfo['periode_id'])) {
+                        $periodeModel = RegistrationPeriod::find($periodeInfo['periode_id']);
+                        $echeance = $periodeModel?->closed_at;
+                        if ($echeance !== null && $echeance->greaterThan($maintenant) && $echeance->lessThanOrEqualTo($maintenant->copy()->addHours(48))) {
+                            $estCritique = true;
+                        }
+                    }
+                } catch (\Throwable) {
+                    // Fail-soft : ne jamais bloquer la synchronisation sur une erreur de période
+                }
+            }
+
+            // 2. 'high' : blocage métier confirmé OU attente >= 7 jours
+            $joursAttente = $inscription->created_at ? (int) $inscription->created_at->diffInDays($maintenant) : 0;
+            $heuresAttente = $inscription->created_at ? (int) $inscription->created_at->diffInHours($maintenant) : 0;
+            $estEnSouffrance = $heuresAttente >= 48;
+
+            $run = $derniersRuns->get($etudiant->id);
+            $aBlocage = ($run?->verdict === 'BLOQUANT') || isset($idsAvecComplement[$etudiant->id]);
+
+            if ($estCritique) {
+                $priorite = 'critical';
+            } elseif ($aBlocage || $joursAttente >= 7) {
+                $priorite = 'high';
+            } else {
+                $priorite = 'normal';
+            }
+
+            $titre = "Contrôle inscription — {$etudiant->nom_complet}";
+            $details = array_filter([
+                $etudiant->matricule_ou_cin,
+                $inscription->niveau ?? $etudiant->niveau,
+                $inscription->programmeRef?->nom ?? $etudiant->filiere,
+                $estEnSouffrance ? "En attente depuis {$heuresAttente}h" : null,
+                $aBlocage ? 'Blocage détecté' : null,
+            ]);
+            $description = implode(' · ', $details);
+
+            $lien = route('admin.inscriptions.file-traitement', [
+                'search' => $etudiant->cin ?: $etudiant->nom,
+            ]);
+
+            $this->taches->synchroniser($cle, [
+                'titre' => $titre,
+                'description' => mb_substr($description, 0, 255),
+                'source' => 'inscription',
+                'priorite' => $priorite,
+                'echeance_a' => $echeance,
+                'lien' => $lien,
+                'data' => [
+                    'inscription_id' => $inscription->id,
+                    'etudiant_id' => $etudiant->id,
+                    'annee_universitaire_id' => $inscription->annee_universitaire_id,
+                    'est_en_souffrance' => $estEnSouffrance,
+                    'heures_attente' => $heuresAttente,
+                    'jours_attente' => $joursAttente,
+                    'bloque' => $aBlocage,
+                ],
+                'faculte_id' => $etudiant->faculte_id,
+            ]);
+
+            $cles[] = $cle;
+        }
+
+        if ($cloturerResolues) {
+            $this->taches->cloturerResolues('inscription', $cles, $faculteId);
+        }
+
+        return $cles;
     }
 
     /**

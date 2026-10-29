@@ -51,15 +51,15 @@
 
             @if($surveillances->isNotEmpty())
                 <div class="overflow-x-auto">
-                    <table class="w-full text-left text-xs">
-                        <thead class="bg-slate-50 dark:bg-slate-800/50 text-slate-400 uppercase font-black tracking-wider text-[10px]">
+                    <table class="w-full text-left text-xs min-w-[640px]">
+                        <thead class="bg-slate-50 dark:bg-slate-800/50 text-slate-700 dark:text-slate-300 uppercase font-black tracking-wider text-[10px]">
                             <tr>
-                                <th class="px-5 py-3">Date & Horaires</th>
-                                <th class="px-5 py-3">Épreuve & Session</th>
-                                <th class="px-5 py-3">Salle assignée</th>
-                                <th class="px-5 py-3">Rôle attribué</th>
-                                <th class="px-5 py-3">Statut</th>
-                                <th class="px-5 py-3 text-right">Actions</th>
+                                <th scope="col" class="px-5 py-3">Date & Horaires</th>
+                                <th scope="col" class="px-5 py-3">Épreuve & Session</th>
+                                <th scope="col" class="px-5 py-3">Salle assignée</th>
+                                <th scope="col" class="px-5 py-3">Rôle attribué</th>
+                                <th scope="col" class="px-5 py-3">Statut</th>
+                                <th scope="col" class="px-5 py-3 text-right">Actions</th>
                             </tr>
                         </thead>
                         <tbody class="divide-y divide-slate-100 dark:divide-slate-800 text-slate-700 dark:text-slate-300">
@@ -70,7 +70,7 @@
                                 <tr class="hover:bg-slate-50/50 dark:hover:bg-slate-800/30 transition {{ $estFuture ? 'bg-primary-50/20' : '' }}">
                                     <td class="px-5 py-3.5 whitespace-nowrap">
                                         <p class="font-bold text-slate-900 dark:text-slate-100">{{ $s->epreuve?->date?->format('d/m/Y') }}</p>
-                                        <p class="text-[11px] text-slate-400 font-mono">{{ substr((string) ($s->epreuve?->heure_debut ?? ''), 0, 5) }} → {{ substr((string) ($s->epreuve?->heure_fin ?? ''), 0, 5) }}</p>
+                                        <p class="text-[11px] text-slate-500 dark:text-slate-400 font-mono">{{ substr((string) ($s->epreuve?->heure_debut ?? ''), 0, 5) }} → {{ substr((string) ($s->epreuve?->heure_fin ?? ''), 0, 5) }}</p>
                                     </td>
                                     <td class="px-5 py-3.5">
                                         <p class="font-bold text-slate-800 dark:text-slate-100">{{ $s->epreuve?->code }} · {{ $s->epreuve?->matiere?->nom ?? 'Épreuve' }}</p>

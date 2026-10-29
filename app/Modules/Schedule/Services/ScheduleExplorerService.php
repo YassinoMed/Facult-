@@ -5,6 +5,7 @@ namespace App\Modules\Schedule\Services;
 use App\Models\User;
 use App\Modules\Schedule\Models\Room;
 use App\Modules\Schedule\Models\Schedule;
+use App\Modules\Schedule\Models\ScheduleAvailability;
 use App\Modules\Schedule\Models\ScheduleSlot;
 use App\Modules\Schedule\Models\Teacher;
 use Carbon\Carbon;
@@ -38,8 +39,9 @@ class ScheduleExplorerService
     {
         $slot = ScheduleSlot::max('updated_at');
         $planning = Schedule::max('updated_at');
+        $plage = ScheduleAvailability::max('updated_at');
 
-        return md5((string) $slot.'|'.(string) $planning);
+        return md5((string) $slot.'|'.(string) $planning.'|'.(string) $plage);
     }
 
     /**
@@ -84,22 +86,36 @@ class ScheduleExplorerService
     {
         $slots = $this->requeteCreneaux($faculteId, ['jour' => $jour])->get();
 
-        $enseignants = Teacher::where('actif', true)->orderBy('nom')->get()->map(function (Teacher $t) use ($slots, $debut, $fin) {
+        // PHASE A (Smart Timetables) : les indisponibilités DÉCLARÉES sont
+        // opposées à l'exploration, au même titre qu'un créneau occupé.
+        $indispos = ScheduleAvailability::query()->indisponibles()
+            ->where('day_of_week', $jour)
+            ->get()
+            ->filter(fn (ScheduleAvailability $p) => $p->chevauche($debut, $fin));
+
+        $enseignants = Teacher::where('actif', true)->orderBy('nom')->get()->map(function (Teacher $t) use ($slots, $indispos, $debut, $fin) {
             $occupe = $slots->where('teacher_id', $t->id)->first(fn ($s) => $s->chevauche($debut, $fin));
+            $indispo = $indispos->where('teacher_id', $t->id)->first();
 
             return [
-                'id' => $t->id, 'nom' => $t->nomComplet(), 'libre' => $occupe === null,
+                'id' => $t->id, 'nom' => $t->nomComplet(),
+                'libre' => $occupe === null && $indispo === null,
                 'occupe_par' => $occupe !== null ? $occupe->matiere->nom.' · '.$occupe->schedule->groupe->code : null,
+                'indisponible' => $indispo !== null,
+                'indisponible_par' => $indispo?->plageHumaine(),
             ];
         });
 
-        $salles = Room::where('actif', true)->orderBy('code')->get()->map(function (Room $s) use ($slots, $debut, $fin) {
+        $salles = Room::where('actif', true)->orderBy('code')->get()->map(function (Room $s) use ($slots, $indispos, $debut, $fin) {
             $occupe = $slots->where('room_id', $s->id)->first(fn ($s2) => $s2->chevauche($debut, $fin));
+            $indispo = $indispos->where('room_id', $s->id)->first();
 
             return [
                 'id' => $s->id, 'code' => $s->code, 'capacite' => $s->capacite,
-                'libre' => $occupe === null,
+                'libre' => $occupe === null && $indispo === null,
                 'occupe_par' => $occupe !== null ? $occupe->matiere->nom.' · '.$occupe->schedule->groupe->code : null,
+                'indisponible' => $indispo !== null,
+                'indisponible_par' => $indispo?->plageHumaine(),
             ];
         });
 
@@ -117,9 +133,17 @@ class ScheduleExplorerService
             ->filter(fn ($s) => $s->room_id !== null && $s->chevauche($debut, $fin))
             ->map(fn ($s) => $s->room_id)->unique()->all();
 
+        // PHASE A : les salles déclarées indisponibles sont exclues (dure).
+        $bloquees = ScheduleAvailability::query()->indisponibles()
+            ->where('day_of_week', $jour)
+            ->whereNotNull('room_id')
+            ->get()
+            ->filter(fn (ScheduleAvailability $p) => $p->chevauche($debut, $fin))
+            ->pluck('room_id')->unique()->all();
+
         return Room::where('actif', true)
             ->where('capacite', '>=', $capaciteMin)
-            ->whereNotIn('id', $occupes)
+            ->whereNotIn('id', array_merge($occupes, $bloquees))
             ->orderBy('capacite')->get();
     }
 
@@ -151,6 +175,7 @@ class ScheduleExplorerService
                     $teacherId, $roomId,
                     null,
                     $planning->groupe->etudiants()->count(),
+                    $planning,
                 );
 
                 if ($erreurs === []) {

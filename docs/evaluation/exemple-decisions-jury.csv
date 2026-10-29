@@ -1,0 +1,10 @@
+code;annee_code;parcours_code;niveau_code;semestre_code;date_deliberation;statut;session;programme;niveau;matricule;cin;moyenne;credits_obtenus;decision;commentaire
+;;;;;;;DEMO-S1;DEMO-LGL;L1;MAT-DEMO-001;12000101;14.5;30;admis;Admis en L1, session principale
+;;;;;;;DEMO-S1;DEMO-LGL;L1;MAT-DEMO-002;12000102;11;30;admis;Admis en L1, session principale
+;;;;;;;DEMO-S1;DEMO-LGL;L1;MAT-DEMO-003;12000103;9.5;0;rattrapage;Rattrapage requis en L1, session principale
+;;;;;;;DEMO-S1;DEMO-LGL;L1;MAT-DEMO-004;12000104;16.25;30;admis;Admis en L1, session principale
+;;;;;;;DEMO-S1;DEMO-LGL;L1;MAT-DEMO-005;12000105;12;30;admis;Admis en L1, session principale
+;;;;;;;DEMO-S1;DEMO-LGL;L1;MAT-DEMO-006;12000106;11.5;30;admis;Admis en session de rattrapage
+;;;;;;;DEMO-S1;DEMO-LGL;L1;MAT-DEMO-007;12000107;13.75;30;admis;Admis en L1, session principale
+;;;;;;;DEMO-S1;DEMO-LGL;L1;MAT-DEMO-008;12000108;10;30;admis;Admis en L1, session principale
+;;;;;;;DEMO-S1;DEMO-LGL;L1;MAT-DEMO-009;12000109;15;30;admis;Admis en L1, session principale

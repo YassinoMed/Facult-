@@ -7,6 +7,7 @@ use App\Models\CampagneCourrielDestinataire;
 use App\Models\Etudiant;
 use App\Models\GroupeDestinataires;
 use App\Modules\Schedule\Models\Teacher;
+use App\Support\CampagnePerimetre;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
 use InvalidArgumentException;
@@ -15,6 +16,11 @@ use InvalidArgumentException;
  * Service de résolution et de déduplication des destinataires (LOOP-MAIL-CAMPAIGNS-01).
  * Filtres en allowlist stricte, validation des adresses, déduplication
  * par condensat SHA-256 et séparation des populations (étudiants, enseignants, externe).
+ *
+ * LOOP-SECURITY-REMEDIATION-01 : toutes les entrées de résolution
+ * acceptent un périmètre faculté (`$faculteForcee`) qui écrase les
+ * filtres reçus — un administrateur de faculté ne peut jamais cibler
+ * d'autres facultés, même en forgeant les filtres côté client.
  */
 class ResolutionDestinatairesService
 {
@@ -43,7 +49,7 @@ class ResolutionDestinatairesService
      * @param  array<string, mixed>  $filtres
      * @return array<string, mixed>
      */
-    public function validerFiltresEtudiants(array $filtres): array
+    public function validerFiltresEtudiants(array $filtres, ?int $faculteForcee = null): array
     {
         $valides = [];
 
@@ -63,6 +69,11 @@ class ResolutionDestinatairesService
             } else {
                 $valides[$cle] = trim((string) $valeur);
             }
+        }
+
+        // Périmètre serveur : la faculté forcée écrase toute valeur client.
+        if ($faculteForcee !== null) {
+            $valides['faculte_id'] = $faculteForcee;
         }
 
         return $valides;
@@ -103,10 +114,12 @@ class ResolutionDestinatairesService
 
     /**
      * Construit la requête Eloquent pour cibler des étudiants.
+     * `$faculteForcee` (périmètre serveur) écrase toute valeur de faculte_id
+     * fournie dans les filtres.
      */
-    public function requeteEtudiants(array $filtres = []): Builder
+    public function requeteEtudiants(array $filtres = [], ?int $faculteForcee = null): Builder
     {
-        $filtres = $this->validerFiltresEtudiants($filtres);
+        $filtres = $this->validerFiltresEtudiants($filtres, $faculteForcee);
 
         $q = Etudiant::query()
             ->whereNotNull('email')
@@ -152,14 +165,20 @@ class ResolutionDestinatairesService
 
     /**
      * Construit la requête Eloquent pour cibler des enseignants.
+     * `$faculteForcee` restreint aux enseignants dont le département
+     * appartient à la faculté (périmètre serveur, non contournable).
      */
-    public function requeteEnseignants(array $filtres = []): Builder
+    public function requeteEnseignants(array $filtres = [], ?int $faculteForcee = null): Builder
     {
         $filtres = $this->validerFiltresEnseignants($filtres);
 
         $q = Teacher::query()
             ->whereNotNull('email')
             ->where('email', '!=', '');
+
+        if ($faculteForcee !== null) {
+            $q->whereHas('departement', fn ($sub) => $sub->where('faculte_id', $faculteForcee));
+        }
 
         if (isset($filtres['departement_id'])) {
             $q->where('departement_id', $filtres['departement_id']);
@@ -213,22 +232,22 @@ class ResolutionDestinatairesService
      *     }>
      * }
      */
-    public function resoudre(string $typeCiblage, array $donnees = []): array
+    public function resoudre(string $typeCiblage, array $donnees = [], ?int $faculteForcee = null): array
     {
         $bruts = collect();
 
         switch ($typeCiblage) {
             case CampagneCourriel::CIBLAGE_INDIVIDUEL:
-                $bruts = $this->extraireIndividuel($donnees);
+                $bruts = $this->extraireIndividuel($donnees, $faculteForcee);
                 break;
 
             case CampagneCourriel::CIBLAGE_LISTE_FIXE:
-                $bruts = $this->extraireListeFixe($donnees);
+                $bruts = $this->extraireListeFixe($donnees, $faculteForcee);
                 break;
 
             case CampagneCourriel::CIBLAGE_DYNAMIQUE_ETUDIANTS:
                 $filtres = (array) ($donnees['filtres'] ?? []);
-                $bruts = $this->requeteEtudiants($filtres)
+                $bruts = $this->requeteEtudiants($filtres, $faculteForcee)
                     ->select(['id', 'nom', 'prenom', 'email'])
                     ->cursor()
                     ->map(fn ($e) => [
@@ -241,7 +260,7 @@ class ResolutionDestinatairesService
 
             case CampagneCourriel::CIBLAGE_DYNAMIQUE_ENSEIGNANTS:
                 $filtres = (array) ($donnees['filtres'] ?? []);
-                $bruts = $this->requeteEnseignants($filtres)
+                $bruts = $this->requeteEnseignants($filtres, $faculteForcee)
                     ->select(['id', 'nom', 'prenom', 'email'])
                     ->cursor()
                     ->map(fn ($t) => [
@@ -259,7 +278,7 @@ class ResolutionDestinatairesService
                     throw new InvalidArgumentException('Groupe enregistré introuvable ou archivé.');
                 }
 
-                return $this->resoudreGroupe($groupe);
+                return $this->resoudreGroupe($groupe, $faculteForcee);
 
             default:
                 throw new InvalidArgumentException("Type de ciblage non reconnu : {$typeCiblage}.");
@@ -270,27 +289,98 @@ class ResolutionDestinatairesService
 
     /**
      * Résout les destinataires d'un groupe enregistré.
+     * `$faculteForcee` : groupe hors périmètre → refus ; listes fixes
+     * filtrées aux entités de la faculté.
      */
-    public function resoudreGroupe(GroupeDestinataires $groupe): array
+    public function resoudreGroupe(GroupeDestinataires $groupe, ?int $faculteForcee = null): array
     {
+        if (! CampagnePerimetre::groupeAutorise($groupe, $faculteForcee)) {
+            throw new InvalidArgumentException('Groupe de destinataires hors de votre périmètre.');
+        }
+
         if ($groupe->type === GroupeDestinataires::TYPE_DYNAMIQUE_ETUDIANTS) {
-            return $this->resoudre(CampagneCourriel::CIBLAGE_DYNAMIQUE_ETUDIANTS, ['filtres' => $groupe->criteres ?? []]);
+            return $this->resoudre(CampagneCourriel::CIBLAGE_DYNAMIQUE_ETUDIANTS, ['filtres' => $groupe->criteres ?? []], $faculteForcee);
         }
 
         if ($groupe->type === GroupeDestinataires::TYPE_DYNAMIQUE_ENSEIGNANTS) {
-            return $this->resoudre(CampagneCourriel::CIBLAGE_DYNAMIQUE_ENSEIGNANTS, ['filtres' => $groupe->criteres ?? []]);
+            return $this->resoudre(CampagneCourriel::CIBLAGE_DYNAMIQUE_ENSEIGNANTS, ['filtres' => $groupe->criteres ?? []], $faculteForcee);
         }
 
-        // Mode liste fixe
-        $membres = collect((array) ($groupe->membres_fixes ?? []));
+        // Mode liste fixe : les membres référencés hors faculté sont écartés.
+        $membres = $this->membresDansPerimetre(collect((array) ($groupe->membres_fixes ?? [])), $faculteForcee);
 
         return $this->filtrerEtDedupliquer($membres);
     }
 
     /**
-     * Extraction pour un destinataire unique.
+     * Ne conserve que les membres (listes fixes) rattachés aux entités de
+     * la faculté de périmètre. Les adresses externes saisies manuellement
+     * ne portent aucune référence : elles sont conservées.
+     *
+     * @param  Collection<int, mixed>  $membres
+     * @return Collection<int, mixed>
      */
-    private function extraireIndividuel(array $donnees): Collection
+    private function membresDansPerimetre(Collection $membres, ?int $faculteForcee): Collection
+    {
+        if ($faculteForcee === null || $membres->isEmpty()) {
+            return $membres;
+        }
+
+        $etudiantIds = $membres
+            ->filter(fn ($m) => is_array($m)
+                && ($m['type_destinataire'] ?? null) === CampagneCourrielDestinataire::TYPE_ETUDIANT
+                && ! empty($m['reference_id']))
+            ->pluck('reference_id')
+            ->map(fn ($id) => (int) $id)
+            ->unique()
+            ->values();
+
+        $teacherIds = $membres
+            ->filter(fn ($m) => is_array($m)
+                && ($m['type_destinataire'] ?? null) === CampagneCourrielDestinataire::TYPE_ENSEIGNANT
+                && ! empty($m['reference_id']))
+            ->pluck('reference_id')
+            ->map(fn ($id) => (int) $id)
+            ->unique()
+            ->values();
+
+        $etudiantsAutorises = $etudiantIds->isEmpty()
+            ? collect()
+            : Etudiant::whereIn('id', $etudiantIds)->where('faculte_id', $faculteForcee)->pluck('id')->map(fn ($id) => (int) $id);
+
+        $enseignantsAutorises = $teacherIds->isEmpty()
+            ? collect()
+            : Teacher::whereIn('id', $teacherIds)
+                ->whereHas('departement', fn ($sub) => $sub->where('faculte_id', $faculteForcee))
+                ->pluck('id')
+                ->map(fn ($id) => (int) $id);
+
+        return $membres->filter(function ($m) use ($etudiantsAutorises, $enseignantsAutorises) {
+            if (! is_array($m)) {
+                return false;
+            }
+
+            $type = $m['type_destinataire'] ?? null;
+            $refId = isset($m['reference_id']) ? (int) $m['reference_id'] : null;
+
+            if ($refId === null || $refId === 0) {
+                return true; // Adresse externe sans référence : conservée.
+            }
+
+            return match ($type) {
+                CampagneCourrielDestinataire::TYPE_ETUDIANT => $etudiantsAutorises->contains($refId),
+                CampagneCourrielDestinataire::TYPE_ENSEIGNANT => $enseignantsAutorises->contains($refId),
+                default => false,
+            };
+        })->values();
+    }
+
+    /**
+     * Extraction pour un destinataire unique.
+     * Hors périmètre faculté → aucun destinataire (silencieux : pas de
+     * fuite d'existence de la référence).
+     */
+    private function extraireIndividuel(array $donnees, ?int $faculteForcee = null): Collection
     {
         $type = $donnees['type_destinataire'] ?? CampagneCourrielDestinataire::TYPE_EXTERNE;
         $refId = isset($donnees['reference_id']) ? (int) $donnees['reference_id'] : null;
@@ -301,12 +391,18 @@ class ResolutionDestinatairesService
             if ($type === CampagneCourrielDestinataire::TYPE_ETUDIANT) {
                 $e = Etudiant::find($refId);
                 if ($e !== null) {
+                    if ($faculteForcee !== null && (int) $e->faculte_id !== $faculteForcee) {
+                        return collect();
+                    }
                     $email = (string) $e->email;
                     $nom = trim($e->prenom.' '.$e->nom);
                 }
             } elseif ($type === CampagneCourrielDestinataire::TYPE_ENSEIGNANT) {
                 $t = Teacher::find($refId);
                 if ($t !== null) {
+                    if ($faculteForcee !== null && (int) $t->faculteId() !== $faculteForcee) {
+                        return collect();
+                    }
                     $email = (string) $t->email;
                     $nom = trim($t->prenom.' '.$t->nom);
                 }
@@ -327,15 +423,23 @@ class ResolutionDestinatairesService
 
     /**
      * Extraction d'une liste sélectionnée d'étudiants / enseignants.
+     * `$faculteForcee` : les références hors faculté sont écartées avant
+     * toute déduplication (anti-IDOR de masse).
      */
-    private function extraireListeFixe(array $donnees): Collection
+    private function extraireListeFixe(array $donnees, ?int $faculteForcee = null): Collection
     {
         $items = collect();
 
         $etudiantIds = array_filter(array_map('intval', (array) ($donnees['etudiant_ids'] ?? [])));
         if (! empty($etudiantIds)) {
-            Etudiant::whereIn('id', $etudiantIds)
-                ->whereNotNull('email')
+            $requeteEtudiants = Etudiant::whereIn('id', $etudiantIds)
+                ->whereNotNull('email');
+
+            if ($faculteForcee !== null) {
+                $requeteEtudiants->where('faculte_id', $faculteForcee);
+            }
+
+            $requeteEtudiants
                 ->select(['id', 'nom', 'prenom', 'email'])
                 ->get()
                 ->each(function ($e) use ($items) {
@@ -350,8 +454,14 @@ class ResolutionDestinatairesService
 
         $teacherIds = array_filter(array_map('intval', (array) ($donnees['teacher_ids'] ?? [])));
         if (! empty($teacherIds)) {
-            Teacher::whereIn('id', $teacherIds)
-                ->whereNotNull('email')
+            $requeteEnseignants = Teacher::whereIn('id', $teacherIds)
+                ->whereNotNull('email');
+
+            if ($faculteForcee !== null) {
+                $requeteEnseignants->whereHas('departement', fn ($sub) => $sub->where('faculte_id', $faculteForcee));
+            }
+
+            $requeteEnseignants
                 ->select(['id', 'nom', 'prenom', 'email'])
                 ->get()
                 ->each(function ($t) use ($items) {

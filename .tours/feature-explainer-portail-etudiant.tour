@@ -1,0 +1,70 @@
+{
+  "$schema": "https://aka.ms/codetour-schema",
+  "title": "Portail étudiant — carte du terrain avant implémentation",
+  "description": "Visite guidée des points d'ancrage réels des 9 fonctionnalités du LOOP-UNIREGISTRE-PORTAIL-ETUDIANT-ADVANCED-01 : ce qui existe, ce qui est réutilisable, et les 4 défauts prouvés à corriger en premier. Lecture seule, aucun code n'est modifié.",
+  "steps": [
+    {
+      "directory": "app/Modules",
+      "title": "Le terrain de jeu : 15 modules, plusieurs déjà complets",
+      "description": "Situation : chaque fonctionnalité métier vit dans app/Modules/<Domaine>, déclarée dans config/modules.php et protégée par le middleware module:<clé>. Mécanisme : module inactif = 404 même en appel direct, donc un flag OFF rend une fonctionnalité invisible sans casser le code. Implication : avant d'écrire quoi que ce soit, vérifier si le module existe déjà — Attendance, OnlineRequests, StudentDossiers et Enseignement sont livrés. Piège : le module parcours-academique, qui porte le moteur de simulation, est désactivé par défaut."
+    },
+    {
+      "file": "config/modules.php",
+      "line": 15,
+      "title": "Le registre des modules et son flag par défaut",
+      "description": "Situation : le tableau retourné par ce fichier est la source de vérité de l'activation. Mécanisme : chaque entrée lit une variable MODULE_* avec un défaut false. Implication : un module absent du .env est éteint — c'est le cas de parcours-academique. Piège : les tests forcent les flags dans phpunit.xml, donc une fonctionnalité peut passer en test et rester invisible en dev."
+    },
+    {
+      "file": "app/Support/Permissions.php",
+      "line": 20,
+      "title": "223 permissions, 5 rôles, et aucune pour les 9 nouvelles features",
+      "description": "Situation : la matrice RBAC du projet, utilisée pour enregistrer les Gates. Mécanisme : TOUTES énumère les permissions connues, ROLES les 5 profils administratifs, et AppServiceProvider en dérive les Gates. Implication : les portails étudiant et enseignant ne passent pas par ces Gates mais par une session (etudiant_auth_id / enseignant_auth_id) vérifiée dans les contrôleurs. Piège : une policy User ne protège pas une route session-scopée — le contrôle anti-IDOR est un abort_if explicite, à tester pour chaque objet."
+    },
+    {
+      "file": "app/Services/AcademicCalculationService.php",
+      "line": 22,
+      "title": "Le moteur de calcul unique — et ses seuils codés en dur",
+      "description": "Situation : toute moyenne, crédit et décision du projet passe par ce service. Mécanisme : moyenne pondérée Σ(note × coefficient) / Σ(coefficient), arrondie au centième, avec SEUIL_VALIDATION = 10.0 et SEUIL_RATTRAPAGE = 8.0. Implication : la simulation du Lot 01 doit réutiliser ce service, jamais réimplémenter une formule. Piège : ces seuils ne sont pas configurables — les changer serait une décision institutionnelle, pas une correction technique."
+    },
+    {
+      "file": "app/Modules/ParcoursAcademique/Services/SimulationParcoursService.php",
+      "pattern": "N'écrit JAMAIS",
+      "title": "Le moteur de simulation existe déjà (mais reste côté admin)",
+      "description": "Situation : un service de simulation multi-scénarios est déjà écrit, avec 13 scénarios et une traçabilité append-only dans parcours_simulations. Mécanisme : il accepte des hypothèses, calcule un résultat explicable et n'écrit jamais dans notes, inscriptions, niveaux ni délibérations. Implication : le Lot 01 n'est pas une construction from scratch, c'est une exposition étudiante d'un moteur existant. Piège : ses routes sont admin/parcours/simulations*, protégées par auth + admin + can:parcours.* + module:parcours-academique — aucune surface étudiant n'existe."
+    },
+    {
+      "file": "app/Modules/Attendance/Controllers/JustificationController.php",
+      "line": 66,
+      "title": "Absences : le dépôt existe, le téléchargement n'existe pas",
+      "description": "Situation : le module Attendance gère séances, présences et justificatifs avec policy et audit. Mécanisme : deposer() stocke la pièce et enregistre piece_chemin / piece_nom via AssiduiteService. Implication : le fichier est bien conservé en privé, mais aucune route ne le sert — l'étudiant ne peut jamais revoir sa propre pièce. Piège : index(), valider() et deposer() sont les trois seules méthodes ; l'absence de méthode download est le défaut D-02, pas un oubli de routage."
+    },
+    {
+      "file": "resources/views/notifications/index.blade.php",
+      "line": 43,
+      "title": "Notifications : le bug de routage qui casse l'espace enseignant",
+      "description": "Situation : une seule vue sert les trois portails (admin, étudiant, enseignant). Mécanisme : l'action du formulaire choisit admin.* si on est admin, sinon etudiant.notifications.lire — sans branche pour enseignant. Implication : un enseignant qui clique « Ouvrir » ou « Marquer lue » appelle la route étudiante, dont le abort_if sur etudiant_auth_id renvoie 404. Piège : les tests existants appellent route('enseignant.notifications.lire') directement et ne traversent jamais ce chemin UI, donc ils restent verts."
+    },
+    {
+      "file": "app/Http/Controllers/Etudiant/TableauDeBordController.php",
+      "line": 41,
+      "title": "Tableau de bord : la fuite de moyennes non publiées",
+      "description": "Situation : le dashboard étudiant charge la dernière inscription et ses semestres. Mécanisme : le select récupère moyenne, credits_obtenus, credits_total et decision sans aucun filtre de publication. Implication : dès qu'une note est saisie, ArchiveService::recalculerInscription persiste ces colonnes et l'étudiant les voit — alors qu'ArchiveController::notes() exige DecisionDeliberation.publie = true. Piège : le docblock du contrôleur justifie l'absence de recalcul, mais ne dit rien de l'absence de contrôle de publication."
+    },
+    {
+      "file": "app/Services/Documents/DocumentVerificationService.php",
+      "line": 18,
+      "title": "Le socle de vérification à réutiliser pour la carte étudiante",
+      "description": "Situation : le projet sait déjà vérifier un document public par code court. Mécanisme : verifier() cherche un GeneratedDocument par code_verification et retourne un statut, un type, une date et un nom déjà masqué par masquerNom(). Implication : la carte étudiante (Lot 07) doit s'appuyer sur ce mécanisme, avec un code opaque dans le QR — jamais le CIN ni la date de naissance. Piège : l'appel doit rester rate-limité et l'IP hachée ; dupliquer cette logique créerait un second chemin de vérification à sécuriser."
+    },
+    {
+      "file": "app/Modules/OnlineRequests/Services/RequestWorkflowService.php",
+      "line": 15,
+      "title": "Le guichet administratif a déjà sa machine à états",
+      "description": "Situation : les demandes administratives suivent 9 états explicites. Mécanisme : TRANSITIONS énumère les arêtes autorisées et autorisee() répond par in_array strict ; rejected, cancelled et completed sont terminaux. Implication : le Lot 04 ne doit pas créer un second moteur — il doit vérifier les transitions concurrentes et l'affectation au service. Piège : approved → completed est la seule sortie d'un accord, donc toute « correction de note » passe par un nouveau circuit, jamais par une écriture directe dans notes."
+    },
+    {
+      "title": "Suite : trois corrections sûres avant toute nouvelle feature",
+      "description": "Vous savez maintenant où se trouvent les réutilisables (calcul, simulation, workflow, vérification, documents) et les quatre défauts prouvés (routage notifications, navigation étudiante absente, justificatif non téléchargeable, fuite de moyennes non publiées). Le prochain passage se fait dans cet ordre : D-04 + D-07, puis la surface étudiante de simulation avec correction de D-01, puis D-02 et D-03. Les lots 06, 07, 08 et 09 restent bloqués par des décisions institutionnelles documentées dans docs/engineering/LOOP-UNIREGISTRE-PORTAIL-ETUDIANT-ADVANCED-01.md."
+    }
+  ]
+}

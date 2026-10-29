@@ -11,19 +11,60 @@
         <div class="mt-4"><x-alert type="success">{{ session('success') }}</x-alert></div>
     @endif
 
+    @if(session('warning'))
+        <div class="mt-4"><x-alert type="warning">{{ session('warning') }}</x-alert></div>
+    @endif
+
+    @if($mfaObligatoire)
+        <div class="mt-4 ds-card border-l-4 border-amber-400 p-4">
+            <p class="text-sm font-bold text-amber-700">Double facteur obligatoire</p>
+            <p class="mt-1 text-xs text-slate-600">Votre rôle exige l'authentification à deux facteurs. Vous ne pourrez pas accéder au back-office tant qu'elle n'est pas active.</p>
+        </div>
+    @endif
+
+    @if(is_array(session('codes_secours')) && count(session('codes_secours')) > 0)
+        <div class="mt-4 ds-card border-l-4 border-emerald-500 p-5">
+            <p class="text-sm font-bold text-slate-800">Codes de secours — à conserver maintenant</p>
+            <p class="mt-1 text-xs text-slate-500">Chaque code remplace le code TOTP une seule fois, si vous perdez votre téléphone. Ils ne seront plus jamais affichés.</p>
+            <ul class="mt-3 grid grid-cols-2 gap-2 font-mono text-sm" aria-label="Codes de secours MFA">
+                @foreach(session('codes_secours') as $codeSecours)
+                    <li class="rounded-lg bg-slate-900 px-3 py-2 text-center tracking-widest text-white select-all">{{ $codeSecours }}</li>
+                @endforeach
+            </ul>
+            <p class="mt-3 text-[11px] text-amber-600 font-bold">Imprimez-les ou rangez-les dans un gestionnaire de mots de passe — jamais dans la boîte mail du compte.</p>
+        </div>
+    @endif
+
     @if($actif)
         <div class="mt-4 ds-card p-5">
             <p class="text-sm font-bold text-emerald-700">Protection active sur ce compte.</p>
-            <form method="POST" action="{{ route('admin.mfa.desactiver') }}" class="mt-4 space-y-3"
-                   onsubmit="return confirm('Désactiver le double facteur ?')">
+            <p class="mt-1 text-xs text-slate-500">Codes de secours restants : <strong>{{ $codesRestants }}</strong>.</p>
+
+            @if(! $mfaObligatoire)
+                <form method="POST" action="{{ route('admin.mfa.desactiver') }}" class="mt-4 space-y-3"
+                       onsubmit="return confirm('Désactiver le double facteur ?')">
+                    @csrf
+                    <div>
+                        <label class="mb-1 block text-[10px] font-bold uppercase tracking-wider text-slate-500" for="mfa-mdp">Mot de passe actuel *</label>
+                        <input id="mfa-mdp" name="password" type="password" required autocomplete="current-password"
+                               class="w-full rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm" />
+                        @error('password')<p class="mt-1 text-xs text-rose-600" role="alert">{{ $message }}</p>@enderror
+                    </div>
+                    <x-btn variant="danger" type="submit">Désactiver</x-btn>
+                </form>
+            @else
+                @error('password')<p class="mt-2 text-xs text-rose-600" role="alert">{{ $message }}</p>@enderror
+            @endif
+
+            <form method="POST" action="{{ route('admin.mfa.codes-secours') }}" class="mt-4 space-y-3 border-t border-slate-100 pt-4"
+                   onsubmit="return confirm('Générer de nouveaux codes de secours ? Les anciens seront immédiatement invalidés.')">
                 @csrf
                 <div>
-                    <label class="mb-1 block text-[10px] font-bold uppercase tracking-wider text-slate-500" for="mfa-mdp">Mot de passe actuel *</label>
-                    <input id="mfa-mdp" name="password" type="password" required autocomplete="current-password"
+                    <label class="mb-1 block text-[10px] font-bold uppercase tracking-wider text-slate-500" for="mfa-mdp-codes">Mot de passe actuel *</label>
+                    <input id="mfa-mdp-codes" name="password" type="password" required autocomplete="current-password"
                            class="w-full rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm" />
-                    @error('password')<p class="mt-1 text-xs text-rose-600" role="alert">{{ $message }}</p>@enderror
                 </div>
-                <x-btn variant="danger" type="submit">Désactiver</x-btn>
+                <x-btn variant="secondary" type="submit">Régénérer les codes de secours</x-btn>
             </form>
         </div>
     @else
@@ -68,6 +109,12 @@
                         <input id="mfa-code" name="code" required inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code"
                                class="w-full rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm font-mono" />
                         @error('code')<p class="mt-1 text-xs text-rose-600" role="alert">{{ $message }}</p>@enderror
+                    </div>
+                    <div>
+                        <label class="mb-1 block text-[10px] font-bold uppercase tracking-wider text-slate-500" for="mfa-mdp-activation">Mot de passe actuel * <span class="font-normal normal-case tracking-normal text-slate-400">(confirme votre identité au moment de l'activation)</span></label>
+                        <input id="mfa-mdp-activation" name="password" type="password" required autocomplete="current-password"
+                               class="w-full rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm" />
+                        @error('password')<p class="mt-1 text-xs text-rose-600" role="alert">{{ $message }}</p>@enderror
                     </div>
                     <x-btn type="submit">Activer</x-btn>
                 </form>

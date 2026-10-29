@@ -160,6 +160,15 @@ return [
     ],
 
     /*
+    | Signature d'intégrité (LOOP-07, R-07/6) : HMAC-SHA256 sur type,
+    | référence, contenu_hash et code de vérification. Clé dédiée
+    | recommandée en production ; à défaut, dérivation depuis APP_KEY.
+    */
+    'signature' => [
+        'cle' => env('DOCUMENTS_SIGNATURE_KEY'),
+    ],
+
+    /*
     | Génération automatique à la publication d'une délibération (LOOP 4) :
     | relevé annuel de chaque décision publiée, via job en file.
     | Désactiver (false) pour garder uniquement la génération manuelle.

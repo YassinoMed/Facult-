@@ -208,6 +208,49 @@ paths:
       responses:
         '200': { description: 'Collection DocumentResource paginée' }
 
+  /student-dossiers:
+    get:
+      summary: Dossiers administratifs permanents — lecture seule
+      description: 'Scope archives:read. Module student-dossiers requis. Périmètre faculté du token (404 hors périmètre).'
+      parameters:
+        - { name: search, in: query, schema: { type: string }, description: 'référence, CIN, nom, prénom, email, num_inscription' }
+        - { name: status, in: query, schema: { type: string, enum: [open, complete, archived] } }
+        - { name: niveau, in: query, schema: { type: string } }
+        - { name: faculty, in: query, schema: { type: string }, description: 'code faculté — ignoré si le token est restreint' }
+        - { name: per_page, in: query, schema: { type: integer, maximum: 100, default: 25 } }
+      responses:
+        '200': { description: 'Collection paginée (StudentDossierResource)' }
+        '401': { description: 'Token absent/invalide' }
+        '403': { description: 'Scope archives:read requis' }
+        '404': { description: 'Module désactivé' }
+        '429': { description: 'Rate limit dépassé' }
+
+  /student-dossiers/{dossier}:
+    get:
+      summary: Détail d'un dossier administratif (documents non inclus)
+      description: 'Scope archives:read. 404 si le dossier est hors du périmètre faculté.'
+      parameters:
+        - { name: dossier, in: path, required: true, schema: { type: integer } }
+      responses:
+        '200': { description: 'StudentDossierResource (documents_count, sans storage_path)' }
+        '404': { description: 'Dossier inconnu, hors périmètre ou module désactivé' }
+
+  /student-dossiers/{dossier}/documents:
+    get:
+      summary: Métadonnées paginées des documents d'un dossier
+      description: 'Scope documents:read. `storage_path` et contenu jamais exposés.'
+      parameters:
+        - { name: dossier, in: path, required: true, schema: { type: integer } }
+        - { name: status, in: query, schema: { type: string, enum: [pending, validated, rejected, expired, archived] } }
+        - { name: category, in: query, schema: { type: string }, description: 'catégorie configurée (config/student-dossiers.php)' }
+        - { name: document_type, in: query, schema: { type: string } }
+        - { name: search, in: query, schema: { type: string }, description: 'titre ou nom de fichier original' }
+        - { name: per_page, in: query, schema: { type: integer, maximum: 100, default: 25 } }
+      responses:
+        '200': { description: 'Collection paginée (StudentDocumentResource)' }
+        '403': { description: 'Scope documents:read requis' }
+        '404': { description: 'Dossier inconnu, hors périmètre ou module désactivé' }
+
   /students/{id}/results:
     get:
       summary: Résultats académiques par inscription (moyenne, crédits, dettes, décision publiée)

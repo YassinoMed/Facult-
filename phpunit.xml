@@ -18,7 +18,7 @@
         </include>
     </source>
     <php>
-        <ini name="memory_limit" value="512M"/>
+        <ini name="memory_limit" value="1536M"/>
         <env name="APP_ENV" value="testing"/>
         <!-- AC-00c (13/10) : clé de TEST dédiée (jamais un secret de prod) —
              indispensable en CI où aucun .env n'existe : sans APP_KEY, le

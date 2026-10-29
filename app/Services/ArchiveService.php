@@ -12,7 +12,6 @@ use App\Models\Note;
 use App\Models\RegistrationPeriod;
 use App\Models\Semestre;
 use App\Modules\Evaluation\Services\DeliberationService;
-use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
@@ -32,6 +31,7 @@ class ArchiveService
         private readonly AcademicCalculationService $calculs,
         private readonly AuditService $audit,
         private readonly PeriodeInscriptionService $periodes,
+        private readonly InscriptionService $inscriptions,
     ) {}
 
     /**
@@ -83,10 +83,14 @@ class ArchiveService
             RegistrationPeriod::where('annee_universitaire_id', $annee->id)->lockForUpdate()->get();
             PeriodeInscriptionService::oublierMemo();
             $exceptionId = $this->periodes->verifierCreation($etudiant, $annee, $type);
-            try {
-                $inscription = InscriptionAcademique::create([
-                    'etudiant_id' => $etudiant->id,
-                    'annee_universitaire_id' => $donnees['annee_universitaire_id'],
+
+            // Règle d'unicité annuelle CENTRALISÉE (InscriptionService) :
+            // garde + conflit concurrent traduits en DomainException —
+            // message contractuel unique, aucun 500 possible.
+            $inscription = $this->inscriptions->creerInscriptionAnnuelle(
+                (int) $etudiant->id,
+                (int) $annee->id,
+                [
                     'programme_id' => $donnees['programme_id'] ?? $etudiant->programme_id,
                     'niveau_id' => $donnees['niveau_id'] ?? $etudiant->niveau_id,
                     'niveau' => $donnees['niveau'],
@@ -95,11 +99,10 @@ class ArchiveService
                     'statut' => $donnees['statut'] ?? 'en_cours',
                     'type' => $donnees['type'] ?? 'premiere',
                     'regime' => $donnees['regime'] ?? 'initiale',
+                    'paye' => $donnees['paye'] ?? false,
                     'observation' => $donnees['observation'] ?? null,
-                ]);
-            } catch (UniqueConstraintViolationException $e) {
-                throw new \DomainException('Cet étudiant possède déjà une inscription pour cette année universitaire.');
-            }
+                ],
+            );
 
             foreach ([1, 2] as $numero) {
                 Semestre::create([

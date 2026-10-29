@@ -52,7 +52,15 @@
     </div>
 
     <div class="verification">
+        @if(! empty($qrCodeSvg))
+            <div style="float: right; margin-left: 8pt; width: 50pt; height: 50pt;">
+                {!! $qrCodeSvg !!}
+            </div>
+        @endif
         <p><strong>Vérification d'authenticité :</strong> {{ $urlVerification ?? '' }} — Code : {{ $codeVerification ?? '' }}</p>
+        @if(! empty($qrCodeSvg))
+            <div style="clear: both;"></div>
+        @endif
     </div>
 
     <div class="pied">

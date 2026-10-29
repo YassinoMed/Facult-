@@ -10,6 +10,7 @@ use App\Modules\Evaluation\Models\EvaluationIncident;
 use App\Modules\Evaluation\Models\Surveillance;
 use App\Modules\Evaluation\Services\ConvocationService;
 use App\Modules\Schedule\Models\Teacher;
+use App\Services\Io\CsvSerializer;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
 use Illuminate\View\View;
@@ -100,12 +101,13 @@ class MesSurveillancesController extends Controller
         $nomFichier = 'mes-surveillances-'.now()->format('Y-m-d-His').'.csv';
 
         return response()->streamDownload(function () use ($gardes) {
+            $csv = app(CsvSerializer::class);
             $sortie = fopen('php://output', 'w');
             fwrite($sortie, "\xEF\xBB\xBF");
-            fputcsv($sortie, ['Date', 'Horaire', 'Épreuve', 'Matière', 'Salle', 'Rôle', 'Statut'], ';');
+            fputcsv($sortie, $csv->neutraliserLigne(['Date', 'Horaire', 'Épreuve', 'Matière', 'Salle', 'Rôle', 'Statut']), ';');
 
             foreach ($gardes as $garde) {
-                fputcsv($sortie, [
+                fputcsv($sortie, $csv->neutraliserLigne([
                     $garde->epreuve->date->format('d/m/Y'),
                     substr((string) $garde->epreuve->heure_debut, 0, 5).' - '.substr((string) $garde->epreuve->heure_fin, 0, 5),
                     $garde->epreuve->code,
@@ -113,7 +115,7 @@ class MesSurveillancesController extends Controller
                     $garde->salle?->code ?? $garde->epreuve->salle?->code ?? '—',
                     $garde->role,
                     $garde->statut,
-                ], ';');
+                ]), ';');
             }
 
             fclose($sortie);

@@ -33,6 +33,7 @@ class OnlineRequest extends Model
         'objet',
         'description',
         'form_data',
+        'version_workflow', // LOT 01 : version de la définition épinglée (serveur uniquement)
     ];
 
     /**

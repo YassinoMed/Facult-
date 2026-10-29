@@ -40,6 +40,8 @@ class EnsureStudent
             return $this->expirer($request);
         }
 
+        $request->attributes->set('etudiant', $etudiant);
+
         return $next($request);
     }
 

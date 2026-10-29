@@ -28,7 +28,7 @@
     </div>
 
     <div x-show="voile" x-cloak x-transition.opacity role="alertdialog" aria-modal="true" aria-label="Session verrouillée"
-         class="fixed inset-0 z-[100] overflow-y-auto bg-slate-50 dark:bg-slate-950"
+         class="fixed inset-0 z-[100] overflow-y-auto overscroll-contain bg-slate-50 dark:bg-slate-950" data-lenis-prevent
          x-effect="document.documentElement.classList.toggle('overflow-hidden', voile)">
         <div class="mx-auto flex min-h-screen w-full max-w-md items-center px-4 py-10">
             <div class="ds-card w-full p-6 text-center sm:p-8">

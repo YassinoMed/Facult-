@@ -14,12 +14,53 @@ use Illuminate\Support\Facades\Event;
 
 /**
  * Workflows d'aménagement et d'orientation (§8-11).
- * proposee → validee|rejetee → revoquee/annulee.
+ * proposee → validee|rejetee ; validee → revoquee :
+ * transitions définies dans la constante TRANSITIONS (source unique).
  * Verrou pessimiste + transaction + audit + event.
  * Aucune écriture dans notes/inscriptions/décisions.
  */
 class AmenagementParcoursService
 {
+    /**
+     * Machine à états décisionnelle (§8-11) : source unique des
+     * transitions autorisées. `champ` = champ consommé par la
+     * décision de la catégorie ; `entrees` = cible => états sources
+     * autorisés. Les contrôleurs valident l'entrée avec cette carte,
+     * le service la re-vérifie sous transaction + verrou pessimiste.
+     * Tout ajout de statut passe ici, jamais par une liste en ligne.
+     */
+    public const TRANSITIONS = [
+        'equivalences' => [
+            'champ' => 'decision', // statut final dérivé : accordee→validee, refusee→rejetee
+            'entrees' => [
+                'accordee' => ['proposee'],
+                'refusee' => ['proposee'],
+            ],
+        ],
+        'dispenses' => [
+            'champ' => 'statut',
+            'entrees' => [
+                'validee' => ['proposee'],
+                'rejetee' => ['proposee'],
+                'revoquee' => ['validee'],
+            ],
+        ],
+        'reorientations' => [
+            'champ' => 'statut', // 'annulee' : état réservé du modèle, aucune transition ouverte
+            'entrees' => [
+                'validee' => ['proposee'],
+                'rejetee' => ['proposee'],
+            ],
+        ],
+        'passerelles' => [
+            'champ' => 'statut',
+            'entrees' => [
+                'admise' => ['proposee', 'eligible', 'non_eligible'],
+                'refusee' => ['proposee', 'eligible', 'non_eligible'],
+            ],
+        ],
+    ];
+
     public function __construct(private readonly AuditService $audit) {}
 
     /**
@@ -49,7 +90,7 @@ class AmenagementParcoursService
 
     public function deciderEquivalence(ParcoursEquivalence $equivalence, string $decision, ?string $justification, ?int $decideurId): ParcoursEquivalence
     {
-        abort_unless(in_array($decision, ParcoursEquivalence::DECISIONS, true), 422);
+        abort_unless(isset(self::TRANSITIONS['equivalences']['entrees'][$decision]), 422);
 
         return DB::transaction(function () use ($equivalence, $decision, $justification, $decideurId) {
             $verrouillee = ParcoursEquivalence::whereKey($equivalence->id)->lockForUpdate()->firstOrFail();
@@ -98,16 +139,16 @@ class AmenagementParcoursService
 
     public function deciderDispense(ParcoursDispense $dispense, string $statut, ?string $decision, ?int $decideurId): ParcoursDispense
     {
-        abort_unless(in_array($statut, ['validee', 'rejetee', 'revoquee'], true), 422);
+        $depuis = self::TRANSITIONS['dispenses']['entrees'][$statut] ?? null;
+        abort_unless($depuis !== null, 422);
 
-        return DB::transaction(function () use ($dispense, $statut, $decision, $decideurId) {
+        return DB::transaction(function () use ($dispense, $statut, $decision, $depuis, $decideurId) {
             $verrouillee = ParcoursDispense::whereKey($dispense->id)->lockForUpdate()->firstOrFail();
 
-            if ($statut === 'revoquee') {
-                abort_if($verrouillee->statut !== 'validee', 409, 'Seule une dispense validée peut être révoquée.');
-            } else {
-                abort_if($verrouillee->statut !== 'proposee', 409, 'Dispense déjà traitée.');
-            }
+            $message = $statut === 'revoquee'
+                ? 'Seule une dispense validée peut être révoquée.'
+                : 'Dispense déjà traitée.';
+            abort_if(! in_array($verrouillee->statut, $depuis, true), 409, $message);
 
             $verrouillee->update(['statut' => $statut, 'decision' => $decision]);
 
@@ -147,11 +188,12 @@ class AmenagementParcoursService
 
     public function deciderReorientation(ParcoursReorientation $reorientation, string $statut, ?string $decision, ?int $decideurId): ParcoursReorientation
     {
-        abort_unless(in_array($statut, ['validee', 'rejetee'], true), 422);
+        $depuis = self::TRANSITIONS['reorientations']['entrees'][$statut] ?? null;
+        abort_unless($depuis !== null, 422);
 
-        return DB::transaction(function () use ($reorientation, $statut, $decision, $decideurId) {
+        return DB::transaction(function () use ($reorientation, $statut, $decision, $depuis, $decideurId) {
             $verrouillee = ParcoursReorientation::whereKey($reorientation->id)->lockForUpdate()->firstOrFail();
-            abort_if($verrouillee->statut !== 'proposee', 409, 'Réorientation déjà traitée.');
+            abort_if(! in_array($verrouillee->statut, $depuis, true), 409, 'Réorientation déjà traitée.');
 
             $verrouillee->update(['statut' => $statut, 'decision' => $decision]);
 
@@ -191,11 +233,12 @@ class AmenagementParcoursService
 
     public function deciderPasserelle(ParcoursPasserelle $passerelle, string $statut, ?string $decisionAdmission, ?int $decideurId): ParcoursPasserelle
     {
-        abort_unless(in_array($statut, ['admise', 'refusee'], true), 422);
+        $depuis = self::TRANSITIONS['passerelles']['entrees'][$statut] ?? null;
+        abort_unless($depuis !== null, 422);
 
-        return DB::transaction(function () use ($passerelle, $statut, $decisionAdmission, $decideurId) {
+        return DB::transaction(function () use ($passerelle, $statut, $decisionAdmission, $depuis, $decideurId) {
             $verrouillee = ParcoursPasserelle::whereKey($passerelle->id)->lockForUpdate()->firstOrFail();
-            abort_if(! in_array($verrouillee->statut, ['proposee', 'eligible', 'non_eligible'], true), 409, 'Passerelle déjà décidée.');
+            abort_if(! in_array($verrouillee->statut, $depuis, true), 409, 'Passerelle déjà décidée.');
 
             $verrouillee->update(['statut' => $statut, 'decision_admission' => $decisionAdmission]);
 

@@ -17,9 +17,10 @@
             </div>
         </form>
 
-        @if($motif !== '' && mb_strlen($motif) < 2)
+        @php $motifRecherche = trim($motif); @endphp
+        @if($motifRecherche !== '' && mb_strlen($motifRecherche) < 2)
             <div class="mt-4"><x-alert type="error" message="Saisissez au moins 2 caractères." /></div>
-        @elseif($motif !== '')
+        @elseif($motifRecherche !== '')
             @forelse($sections as $titre => $resultats)
                 <section aria-label="{{ $titre }}" class="mt-4 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm overflow-hidden">
                     <div class="px-5 py-3 border-b border-slate-100 dark:border-slate-800">

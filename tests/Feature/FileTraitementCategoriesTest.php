@@ -204,6 +204,68 @@ class FileTraitementCategoriesTest extends TestCase
             ->assertOk()->assertSee($doublon->nom);
     }
 
+    public function test_filtre_ready_for_review_inclut_a_verifier_sans_famille(): void
+    {
+        // D-03 : le repli applicatif A_VERIFIER sans code spécialisé est
+        // READY_FOR_REVIEW ; le filtre SQL doit inclure le même dossier.
+        $etudiant = $this->creerEtudiant('30000017', 'en_attente');
+        DossierVerification::create([
+            'etudiant_id' => $etudiant->id, 'verdict' => 'A_VERIFIER', 'score' => 85,
+            'regles_verifiees' => 12, 'regles_reussies' => 11, 'anomalies_count' => 1,
+            'duree_ms' => 25.0, 'source' => 'web',
+        ]);
+
+        $this->actingAs($this->scolarite)
+            ->get(route('admin.inscriptions.file-traitement', ['categorie' => 'READY_FOR_REVIEW']))
+            ->assertOk()->assertSee($etudiant->nom);
+
+        $this->actingAs($this->scolarite)
+            ->get(route('admin.inscriptions.file-traitement', ['categorie' => 'BLOCKED']))
+            ->assertOk()->assertDontSee($etudiant->nom);
+    }
+
+    public function test_filtres_sql_categories_ne_se_chevauchent_pas(): void
+    {
+        // Complément + MENS : le complément est prioritaire (MISSING_DOCUMENTS),
+        // le dossier ne doit pas apparaître aussi dans MENS_REVIEW.
+        $complementMens = $this->creerEtudiant('30000018', 'en_attente');
+        DossierCorrection::create([
+            'etudiant_id' => $complementMens->id, 'champ' => 'email',
+            'nouvelle_valeur' => 'x@y.tn', 'motif' => 'Correction proposée test',
+            'statut' => 'proposee', 'propose_par' => $this->scolarite->id,
+        ]);
+        $this->creerRun($complementMens, 'BLOQUANT', ['mens.divergences']);
+
+        $this->actingAs($this->scolarite)
+            ->get(route('admin.inscriptions.file-traitement', ['categorie' => 'MISSING_DOCUMENTS']))
+            ->assertOk()->assertSee($complementMens->nom);
+        $this->actingAs($this->scolarite)
+            ->get(route('admin.inscriptions.file-traitement', ['categorie' => 'MENS_REVIEW']))
+            ->assertOk()->assertDontSee($complementMens->nom);
+
+        // MENS + identité : MENS est prioritaire.
+        $mensIdentite = $this->creerEtudiant('30000019', 'en_attente');
+        $this->creerRun($mensIdentite, 'BLOQUANT', ['mens.divergences', 'identite.complete']);
+
+        $this->actingAs($this->scolarite)
+            ->get(route('admin.inscriptions.file-traitement', ['categorie' => 'MENS_REVIEW']))
+            ->assertOk()->assertSee($mensIdentite->nom);
+        $this->actingAs($this->scolarite)
+            ->get(route('admin.inscriptions.file-traitement', ['categorie' => 'IDENTITY_REVIEW']))
+            ->assertOk()->assertDontSee($mensIdentite->nom);
+
+        // Identité + documents : identité est prioritaire.
+        $identiteDocuments = $this->creerEtudiant('30000020', 'en_attente');
+        $this->creerRun($identiteDocuments, 'A_VERIFIER', ['identite.coherence', 'documents.requis']);
+
+        $this->actingAs($this->scolarite)
+            ->get(route('admin.inscriptions.file-traitement', ['categorie' => 'IDENTITY_REVIEW']))
+            ->assertOk()->assertSee($identiteDocuments->nom);
+        $this->actingAs($this->scolarite)
+            ->get(route('admin.inscriptions.file-traitement', ['categorie' => 'MISSING_DOCUMENTS']))
+            ->assertOk()->assertDontSee($identiteDocuments->nom);
+    }
+
     public function test_filtre_categorie_invalide_refuse(): void
     {
         $this->actingAs($this->scolarite)

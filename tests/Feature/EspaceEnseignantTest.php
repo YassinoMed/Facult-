@@ -122,6 +122,9 @@ class EspaceEnseignantTest extends TestCase
         $this->withSession(['enseignant_auth_id' => $enseignant->id])
             ->patch(route('enseignant.profil.update'), [
                 'email' => 'nouveau@univ.test', 'bureau' => 'B12',
+                // Changement d'email = identifiant de connexion : le mot de
+                // passe actuel est exigé (LOOP-SECURITY-REMEDIATION-01).
+                'current_password' => 'Motdepasse@123',
                 'matricule' => 'PIRATE', 'statut' => 'inactif', 'role' => 'super_admin',
                 'faculte_id' => 9999, 'departement_id' => 9999,
             ])

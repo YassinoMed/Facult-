@@ -6,8 +6,7 @@ use App\Models\AnneeUniversitaire;
 use App\Models\Etudiant;
 use App\Models\InscriptionAcademique;
 use App\Modules\Referentiel\Models\Niveau;
-use App\Modules\StudentDossiers\Models\StudentDocument;
-use App\Modules\StudentDossiers\Models\StudentDossier;
+use App\Modules\StudentDossiers\Services\ReutilisationDocumentsService;
 use DomainException;
 use Illuminate\Support\Collection;
 
@@ -34,7 +33,7 @@ final class ReinscriptionService
     /**
      * Contexte d'une (ré)inscription pour une année cible.
      *
-     * @return array{etudiant: Etudiant, derniere: ?InscriptionAcademique, annee_cible: AnneeUniversitaire, existante: ?InscriptionAcademique, evaluation: ?array, situation: string, niveau_propose: ?array{id: int, code: string, nom: string}, source_decision: ?string, documents_reutilisables: Collection, documents_manquants: array<int, string>}
+     * @return array{etudiant: Etudiant, derniere: ?InscriptionAcademique, annee_cible: AnneeUniversitaire, existante: ?InscriptionAcademique, evaluation: ?array, situation: string, niveau_propose: ?array{id: int, code: string, nom: string}, source_decision: ?string, documents_reutilisables: Collection, documents_manquants: array<int, string>, documents_en_attente: array<int, string>}
      */
     public function contexte(Etudiant $etudiant, AnneeUniversitaire $anneeCible): array
     {
@@ -46,6 +45,7 @@ final class ReinscriptionService
 
         $evaluation = $derniere !== null ? $this->progressions->evaluer($etudiant, $derniere) : null;
         $situation = $this->situer($derniere, $evaluation, $existante);
+        $etatDocuments = $this->etatDocuments($etudiant, $derniere === null ? 'premiere' : 'reinscription');
 
         $niveauPropose = null;
         $sourceDecision = null;
@@ -68,8 +68,9 @@ final class ReinscriptionService
             'situation' => $situation,
             'niveau_propose' => $niveauPropose,
             'source_decision' => $sourceDecision,
-            'documents_reutilisables' => $this->documentsReutilisables($etudiant),
-            'documents_manquants' => $this->documentsManquants($etudiant, $derniere === null ? 'premiere' : 'reinscription'),
+            'documents_reutilisables' => $etatDocuments['documents_reutilisables'],
+            'documents_manquants' => $etatDocuments['a_fournir'],
+            'documents_en_attente' => $etatDocuments['en_attente'],
         ];
     }
 
@@ -210,29 +211,17 @@ final class ReinscriptionService
         }
     }
 
-    /** @return Collection<int, StudentDocument> */
-    private function documentsReutilisables(Etudiant $etudiant): Collection
+    /** @return array<string, mixed> */
+    private function etatDocuments(Etudiant $etudiant, string $type): array
     {
-        if (! class_exists(StudentDocument::class)) {
-            return collect();
+        if (! class_exists(ReutilisationDocumentsService::class)) {
+            return [
+                'documents_reutilisables' => collect(),
+                'a_fournir' => [],
+                'en_attente' => [],
+            ];
         }
 
-        $dossierIds = StudentDossier::where('etudiant_id', $etudiant->id)->pluck('id');
-
-        return StudentDocument::whereIn('student_dossier_id', $dossierIds)
-            ->whereIn('status', ['validated', 'pending'])
-            ->latest('id')
-            ->limit(20)
-            ->get();
-    }
-
-    /** @return array<int, string> */
-    private function documentsManquants(Etudiant $etudiant, ?string $type = null): array
-    {
-        if (! class_exists(StudentDocument::class)) {
-            return [];
-        }
-
-        return app(DocumentsRequisService::class)->verifier($etudiant, $type)['manquants'];
+        return app(ReutilisationDocumentsService::class)->previsualiser($etudiant, $type);
     }
 }

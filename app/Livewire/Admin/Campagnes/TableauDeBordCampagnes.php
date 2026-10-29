@@ -4,7 +4,9 @@ namespace App\Livewire\Admin\Campagnes;
 
 use App\Models\CampagneCourriel;
 use App\Services\CampagneCourrielService;
+use App\Support\CampagnePerimetre;
 use DomainException;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\View\View;
 use Livewire\Attributes\Layout;
 use Livewire\Attributes\Url;
@@ -14,6 +16,10 @@ use Livewire\WithPagination;
 /**
  * Tableau de bord principal des campagnes de courriels (LOOP-MAIL-CAMPAIGNS-01).
  * Suivi en temps réel des compteurs par état, filtrage paginé et actions de cycle de vie.
+ *
+ * LOOP-SECURITY-REMEDIATION-01 : un administrateur de faculté ne voit et
+ * ne pilote que les campagnes de SA faculté (marqueur `filtres.faculte_id`
+ * ou groupe enregistré rattaché) — liste, compteurs et actions compris.
  */
 #[Layout('layouts.app')]
 class TableauDeBordCampagnes extends Component
@@ -45,9 +51,10 @@ class TableauDeBordCampagnes extends Component
         $this->authorize('campagnes.manage');
 
         $campagne = CampagneCourriel::findOrFail($campagneId);
+        abort_unless(CampagnePerimetre::campagneAutorisee($campagne, CampagnePerimetre::faculteAutorisee()), 404);
 
         try {
-            $service->annuler($campagne);
+            $service->annuler($campagne, CampagnePerimetre::faculteAutorisee());
             $this->messageSucces = "La campagne « {$campagne->titre} » a été annulée.";
             $this->messageErreur = null;
         } catch (DomainException $e) {
@@ -62,9 +69,10 @@ class TableauDeBordCampagnes extends Component
         $this->authorize('mail.send');
 
         $campagne = CampagneCourriel::findOrFail($campagneId);
+        abort_unless(CampagnePerimetre::campagneAutorisee($campagne, CampagnePerimetre::faculteAutorisee()), 404);
 
         try {
-            $service->relancerEchecs($campagne);
+            $service->relancerEchecs($campagne, CampagnePerimetre::faculteAutorisee());
             $this->messageSucces = "La relance des échecs de la campagne « {$campagne->titre} » a été déclenchée.";
             $this->messageErreur = null;
         } catch (DomainException $e) {
@@ -78,6 +86,8 @@ class TableauDeBordCampagnes extends Component
         $this->authorize('campagnes.manage');
 
         $campagne = CampagneCourriel::findOrFail($campagneId);
+        abort_unless(CampagnePerimetre::campagneAutorisee($campagne, CampagnePerimetre::faculteAutorisee()), 404);
+
         if ($campagne->statut !== CampagneCourriel::STATUT_BROUILLON) {
             $this->messageErreur = 'Seul un brouillon peut être supprimé.';
 
@@ -92,7 +102,10 @@ class TableauDeBordCampagnes extends Component
     {
         $this->authorize('campagnes.view');
 
+        $faculte = CampagnePerimetre::faculteAutorisee();
+
         $requete = CampagneCourriel::query()->latest('id');
+        $this->appliquerPerimetre($requete, $faculte);
 
         if ($this->filtreStatut !== '' && in_array($this->filtreStatut, CampagneCourriel::STATUTS, true)) {
             $requete->where('statut', $this->filtreStatut);
@@ -106,13 +119,25 @@ class TableauDeBordCampagnes extends Component
             });
         }
 
+        $compter = function (array $statuts = []) use ($faculte): int {
+            $q = CampagneCourriel::query();
+
+            if (! empty($statuts)) {
+                $q->whereIn('statut', $statuts);
+            }
+
+            $this->appliquerPerimetre($q, $faculte);
+
+            return $q->count();
+        };
+
         $compteurs = [
-            'brouillons' => CampagneCourriel::where('statut', CampagneCourriel::STATUT_BROUILLON)->count(),
-            'planifiees' => CampagneCourriel::where('statut', CampagneCourriel::STATUT_PLANIFIEE)->count(),
-            'en_cours' => CampagneCourriel::whereIn('statut', [CampagneCourriel::STATUT_EN_ATTENTE, CampagneCourriel::STATUT_EN_COURS])->count(),
-            'terminees' => CampagneCourriel::where('statut', CampagneCourriel::STATUT_TERMINEE)->count(),
-            'erreurs' => CampagneCourriel::whereIn('statut', [CampagneCourriel::STATUT_TERMINEE_ERREURS, CampagneCourriel::STATUT_ECHOUEE])->count(),
-            'total' => CampagneCourriel::count(),
+            'brouillons' => $compter([CampagneCourriel::STATUT_BROUILLON]),
+            'planifiees' => $compter([CampagneCourriel::STATUT_PLANIFIEE]),
+            'en_cours' => $compter([CampagneCourriel::STATUT_EN_ATTENTE, CampagneCourriel::STATUT_EN_COURS]),
+            'terminees' => $compter([CampagneCourriel::STATUT_TERMINEE]),
+            'erreurs' => $compter([CampagneCourriel::STATUT_TERMINEE_ERREURS, CampagneCourriel::STATUT_ECHOUEE]),
+            'total' => $compter(),
         ];
 
         return view('livewire.admin.campagnes.tableau-de-bord', [
@@ -120,5 +145,21 @@ class TableauDeBordCampagnes extends Component
             'compteurs' => $compteurs,
             'statuts' => CampagneCourriel::STATUTS,
         ]);
+    }
+
+    /**
+     * Restreint la requête au périmètre faculté : campagne marquée sur ses
+     * filtres OU rattachée à un groupe enregistré de la faculté.
+     */
+    private function appliquerPerimetre(Builder $requete, ?int $faculte): void
+    {
+        if ($faculte === null) {
+            return;
+        }
+
+        $requete->where(function (Builder $q) use ($faculte) {
+            $q->where('filtres->faculte_id', $faculte)
+                ->orWhereHas('groupeEnregistre', fn (Builder $g) => $g->where('criteres->faculte_id', $faculte));
+        });
     }
 }

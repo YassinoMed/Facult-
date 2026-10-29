@@ -15,7 +15,7 @@ Document LAN (2026-10-11) : règles métier **réellement implémentées** dans 
 - `AffectationAutomatiqueService::tenter` : parmi les groupes compatibles, **le moins rempli, tie-break par id** ; fallback capacité par boucle ; échec explicite `NO_COMPATIBLE_GROUP` (audit + notif, jamais de solution inventée).
 - `AffectationService::affecter` : 10 contraintes codées + verrous ordonnés **étudiant → groupe** dans la transaction (anti-deadlock, double tenter = EXISTING).
 - Simulation avancée : `AssignmentSimulationService` (contraints-first, seed déterministe `hash(seed:id)`, alternatives scorées `{group_id, code, score}`, plan capacitaire, pureté sans écriture) ; confirmation re-valide (obsolescence + idempotence).
-- Lots asynchrones : `AffectationMasseLot` (tranches 500, reprise `traites_ids`, annulation coopérative, auteur re-vérifié `archives.update` à l'exécution).
+- Lots asynchrones : `AffectationMasseLot` (tranches 500, reprise `traites_ids`, annulation coopérative, auteur re-vérifié `archives.update` à l'exécution) — déclenchés au-delà du seuil `affectations.lots.seuil_sync` par la confirmation de masse ET par l'écran d'affectation automatique (`appliquerAuto`), qui sinon applique par tranches de 500 avec reliquat réaffiché.
 
 ### Historique
 - `AffectationGroupe.statut` : `active` / `cloturee` (+ `verrouille` interdit la mutation, `confirme_le/par`, `motif`, `auteur_id`).

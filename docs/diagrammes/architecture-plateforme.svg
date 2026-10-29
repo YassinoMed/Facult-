@@ -1,0 +1,331 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg viewBox="0 0 1560 1360" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Architecture complète de la plateforme inscription étudiants" id="architecture-plateforme-root">
+    <defs>
+      <style>#architecture-plateforme-root { --paper: #f5f5f5;
+    --surface: #ffffff;
+    --ink: #2d3142;
+    --muted: #6b7280;
+    --border: #e2e8f0;
+    --accent: #bf4520; }
+      #architecture-plateforme-root { color: var(--ink); font-family: -apple-system, "Segoe UI", Roboto, sans-serif; }
+      #architecture-plateforme-root .stage { max-width: 1560px; margin: 0 auto; padding: 24px; }
+      #architecture-plateforme-root .title { font-family: Georgia, "Times New Roman", serif; font-size: 28px; font-weight: 400; letter-spacing: -0.01em; margin: 0 0 4px; }
+      #architecture-plateforme-root .subtitle { font-size: 12.5px; color: var(--muted); margin: 0 0 16px; }
+      #architecture-plateforme-root .rule { width: 64px; height: 3px; background: var(--accent); margin-bottom: 20px; }</style>
+      <marker id="architecture-plateforme-arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M0,0 L10,5 L0,10 z" fill="#6b7280" opacity="0.55"/>
+      </marker>
+    </defs>
+
+    <!-- ══ BANDE 01 : ACTEURS ══ -->
+    <g font-family="-apple-system, 'Segoe UI', sans-serif">
+      <text x="48" y="142" font-size="11" font-weight="700" letter-spacing="1.5" fill="#6b7280">01 — ACTEURS &amp; CANAUX</text>
+      <rect x="48" y="152" width="24" height="1.5" fill="#e2e8f0"/>
+
+      <!-- 5 cartes w280 h68 gap16 -->
+      <g>
+        <rect x="48" y="166" width="280" height="68" rx="10" fill="#ffffff" stroke="#e2e8f0"/>
+        <text x="64" y="190" font-size="13.5" font-weight="600" fill="#2d3142">Administration</text>
+        <text x="64" y="207" font-size="10.5" fill="#6b7280">back-office /admin</text>
+        <text x="64" y="221" font-size="10.5" fill="#6b7280">scolarité · DAF · DSI</text>
+
+        <rect x="344" y="166" width="280" height="68" rx="10" fill="#ffffff" stroke="#e2e8f0"/>
+        <text x="360" y="190" font-size="13.5" font-weight="600" fill="#2d3142">Enseignant</text>
+        <text x="360" y="207" font-size="10.5" fill="#6b7280">/enseignant</text>
+        <text x="360" y="221" font-size="10.5" fill="#6b7280">évaluations · notes · séances</text>
+
+        <rect x="640" y="166" width="280" height="68" rx="10" fill="#ffffff" stroke="#e2e8f0"/>
+        <text x="656" y="190" font-size="13.5" font-weight="600" fill="#2d3142">Étudiant</text>
+        <text x="656" y="207" font-size="10.5" fill="#6b7280">/etudiant</text>
+        <text x="656" y="221" font-size="10.5" fill="#6b7280">inscription · dossiers · annonces</text>
+
+        <rect x="936" y="166" width="280" height="68" rx="10" fill="#ffffff" stroke="#e2e8f0"/>
+        <text x="952" y="190" font-size="13.5" font-weight="600" fill="#2d3142">Public</text>
+        <text x="952" y="207" font-size="10.5" fill="#6b7280">portail ouvert</text>
+        <text x="952" y="221" font-size="10.5" fill="#6b7280">suivi public · vérification documents</text>
+
+        <rect x="1232" y="166" width="280" height="68" rx="10" fill="#ffffff" stroke="#e2e8f0"/>
+        <text x="1248" y="190" font-size="13.5" font-weight="600" fill="#2d3142">Clients API</text>
+        <text x="1248" y="207" font-size="10.5" fill="#6b7280">/api/v1 · intégrations</text>
+        <text x="1248" y="221" font-size="10.5" fill="#6b7280">tokens Sanctum à scopes restreints</text>
+      </g>
+    </g>
+
+    <!-- connecteurs 01→02 -->
+    <g stroke="#6b7280" stroke-width="1.2" opacity="0.5">
+      <line x1="560" y1="234" x2="560" y2="266" marker-end="url(#architecture-plateforme-arr)"/>
+      <line x1="1000" y1="234" x2="1000" y2="266" marker-end="url(#architecture-plateforme-arr)"/>
+    </g>
+
+    <!-- ══ BANDE 02 : POINTS D'ENTRÉE ══ -->
+    <g font-family="-apple-system, 'Segoe UI', sans-serif">
+      <text x="48" y="296" font-size="11" font-weight="700" letter-spacing="1.5" fill="#6b7280">02 — POINTS D'ENTRÉE</text>
+      <rect x="48" y="306" width="24" height="1.5" fill="#e2e8f0"/>
+
+      <!-- 4 cartes w348 h74 gap20 -->
+      <g>
+        <rect x="48" y="320" width="348" height="74" rx="10" fill="#ffffff" stroke="#e2e8f0"/>
+        <text x="64" y="344" font-size="13.5" font-weight="600" fill="#2d3142">Web — 425 routes</text>
+        <text x="64" y="361" font-size="10.5" fill="#6b7280">prefix /admin · /enseignant · /etudiant · portail</text>
+        <text x="64" y="375" font-size="10.5" fill="#6b7280">sessions + CSRF + throttle</text>
+
+        <rect x="416" y="320" width="348" height="74" rx="10" fill="#ffffff" stroke="#e2e8f0"/>
+        <text x="432" y="344" font-size="13.5" font-weight="600" fill="#2d3142">API v1 — 55 routes</text>
+        <text x="432" y="361" font-size="10.5" fill="#6b7280">/api/v1 · Sanctum</text>
+        <text x="432" y="375" font-size="10.5" fill="#6b7280">scopes restreints par token</text>
+
+        <rect x="784" y="320" width="348" height="74" rx="10" fill="#ffffff" stroke="#e2e8f0"/>
+        <text x="800" y="344" font-size="13.5" font-weight="600" fill="#2d3142">Webhooks</text>
+        <text x="800" y="361" font-size="10.5" fill="#6b7280">HMAC + signature</text>
+        <text x="800" y="375" font-size="10.5" fill="#6b7280">timestamp anti-replay</text>
+
+        <rect x="1152" y="320" width="348" height="74" rx="10" fill="#ffffff" stroke="#e2e8f0"/>
+        <text x="1168" y="344" font-size="13.5" font-weight="600" fill="#2d3142">CLI artisan</text>
+        <text x="1168" y="361" font-size="10.5" fill="#6b7280">commandes de gestion</text>
+        <text x="1168" y="375" font-size="10.5" fill="#6b7280">imports · sauvegardes · traitements</text>
+      </g>
+    </g>
+
+    <!-- connecteurs 02→03 -->
+    <g stroke="#6b7280" stroke-width="1.2" opacity="0.5">
+      <line x1="560" y1="394" x2="560" y2="426" marker-end="url(#architecture-plateforme-arr)"/>
+      <line x1="1000" y1="394" x2="1000" y2="426" marker-end="url(#architecture-plateforme-arr)"/>
+    </g>
+
+    <!-- ══ BANDE 03 : CŒUR TRANSVERSE ══ -->
+    <g font-family="-apple-system, 'Segoe UI', sans-serif">
+      <text x="48" y="456" font-size="11" font-weight="700" letter-spacing="1.5" fill="#6b7280">03 — CŒUR TRANSVERSE (CORE)</text>
+      <rect x="48" y="466" width="24" height="1.5" fill="#e2e8f0"/>
+
+      <!-- 5 cartes w280 h86 gap16 -->
+      <g>
+        <rect x="48" y="480" width="280" height="86" rx="10" fill="#ffffff" stroke="#e2e8f0"/>
+        <text x="64" y="504" font-size="13.5" font-weight="600" fill="#2d3142">Auth &amp; MFA</text>
+        <text x="64" y="521" font-size="10.5" fill="#6b7280">comptes back-office</text>
+        <text x="64" y="535" font-size="10.5" fill="#6b7280">TOTP · sessions signées</text>
+
+        <rect x="344" y="480" width="280" height="86" rx="10" fill="#ffffff" stroke="#e2e8f0"/>
+        <text x="360" y="504" font-size="13.5" font-weight="600" fill="#2d3142">RBAC &amp; Policies</text>
+        <text x="360" y="521" font-size="10.5" fill="#6b7280">Gate + permissions</text>
+        <text x="360" y="535" font-size="10.5" fill="#6b7280">périmètre faculté (404)</text>
+
+        <rect x="640" y="480" width="280" height="86" rx="10" fill="#ffffff" stroke="#bf4520" stroke-width="1.5"/>
+        <rect x="640" y="494" width="3" height="24" rx="1.5" fill="#bf4520"/>
+        <text x="656" y="504" font-size="13.5" font-weight="600" fill="#2d3142">ModuleRegistry</text>
+        <text x="656" y="521" font-size="10.5" fill="#6b7280">registre config/modules.php</text>
+        <text x="656" y="535" font-size="10.5" fill="#6b7280">middleware module:* → 404 si inactif</text>
+
+        <rect x="936" y="480" width="280" height="86" rx="10" fill="#ffffff" stroke="#e2e8f0"/>
+        <text x="952" y="504" font-size="13.5" font-weight="600" fill="#2d3142">Validation serveur</text>
+        <text x="952" y="521" font-size="10.5" fill="#6b7280">extension + MIME réel (finfo)</text>
+        <text x="952" y="535" font-size="10.5" fill="#6b7280">images ré-exécutables · tailles max</text>
+
+        <rect x="1232" y="480" width="280" height="86" rx="10" fill="#ffffff" stroke="#e2e8f0"/>
+        <text x="1248" y="504" font-size="13.5" font-weight="600" fill="#2d3142">Audit centralisé</text>
+        <text x="1248" y="521" font-size="10.5" fill="#6b7280">historique_academique</text>
+        <text x="1248" y="535" font-size="10.5" fill="#6b7280">événements sans PII</text>
+      </g>
+    </g>
+
+    <!-- connecteurs 03→04 -->
+    <g stroke="#6b7280" stroke-width="1.2" opacity="0.5">
+      <line x1="560" y1="566" x2="560" y2="598" marker-end="url(#architecture-plateforme-arr)"/>
+      <line x1="1000" y1="566" x2="1000" y2="598" marker-end="url(#architecture-plateforme-arr)"/>
+    </g>
+
+    <!-- ══ BANDE 04 : SERVICES MÉTIER ══ -->
+    <g font-family="-apple-system, 'Segoe UI', sans-serif">
+      <text x="48" y="628" font-size="11" font-weight="700" letter-spacing="1.5" fill="#6b7280">04 — SERVICES MÉTIER</text>
+      <rect x="48" y="638" width="24" height="1.5" fill="#e2e8f0"/>
+
+      <!-- rangée 1 : y=652 h=100 -->
+      <g>
+        <rect x="48" y="652" width="348" height="100" rx="10" fill="#ffffff" stroke="#bf4520" stroke-width="1.5"/>
+        <rect x="48" y="666" width="3" height="24" rx="1.5" fill="#bf4520"/>
+        <text x="64" y="676" font-size="13.5" font-weight="600" fill="#2d3142">Inscriptions &amp; Admissions</text>
+        <text x="64" y="695" font-size="10.5" fill="#6b7280">InscriptionService · AdmissionService</text>
+        <text x="64" y="709" font-size="10.5" fill="#6b7280">verrou_actif — unicité DB des actifs</text>
+        <text x="64" y="723" font-size="10.5" fill="#6b7280">progression LMD · réinscription · éligibilité</text>
+
+        <rect x="416" y="652" width="348" height="100" rx="10" fill="#ffffff" stroke="#e2e8f0"/>
+        <text x="432" y="676" font-size="13.5" font-weight="600" fill="#2d3142">Référentiel &amp; Parcours</text>
+        <text x="432" y="695" font-size="10.5" fill="#6b7280">programmes · niveaux · ECUE (LMD)</text>
+        <text x="432" y="709" font-size="10.5" fill="#6b7280">délibérations · jurys · calculs académiques</text>
+        <text x="432" y="723" font-size="10.5" fill="#6b7280">EligibiliteParcoursService · HistoriqueAcademique</text>
+
+        <rect x="784" y="652" width="348" height="100" rx="10" fill="#ffffff" stroke="#e2e8f0"/>
+        <text x="800" y="676" font-size="13.5" font-weight="600" fill="#2d3142">Dossiers &amp; Documents</text>
+        <text x="800" y="695" font-size="10.5" fill="#6b7280">file de traitement · pièces requises</text>
+        <text x="800" y="709" font-size="10.5" fill="#6b7280">OCR identité fail-soft · purge immédiate</text>
+        <text x="800" y="723" font-size="10.5" fill="#6b7280">GED · attestations · signatures</text>
+
+        <rect x="1152" y="652" width="348" height="100" rx="10" fill="#ffffff" stroke="#e2e8f0"/>
+        <text x="1168" y="676" font-size="13.5" font-weight="600" fill="#2d3142">Communications</text>
+        <text x="1168" y="695" font-size="10.5" fill="#6b7280">CourrielService + Studio (modèles)</text>
+        <text x="1168" y="709" font-size="10.5" fill="#6b7280">campagnes &amp; destinataires</text>
+        <text x="1168" y="723" font-size="10.5" fill="#6b7280">NotificationService · AudienceResolver</text>
+      </g>
+
+      <!-- rangée 2 : y=768 h=100 -->
+      <g>
+        <rect x="48" y="768" width="348" height="100" rx="10" fill="#ffffff" stroke="#e2e8f0"/>
+        <text x="64" y="792" font-size="13.5" font-weight="600" fill="#2d3142">Pilotage &amp; BI</text>
+        <text x="64" y="811" font-size="10.5" fill="#6b7280">BIService · AgrégateurQualité</text>
+        <text x="64" y="825" font-size="10.5" fill="#6b7280">cockpit · dashboard faculté</text>
+        <text x="64" y="839" font-size="10.5" fill="#6b7280">anomalies qualité (doublons CIN…)</text>
+
+        <rect x="416" y="768" width="348" height="100" rx="10" fill="#ffffff" stroke="#e2e8f0"/>
+        <text x="432" y="792" font-size="13.5" font-weight="600" fill="#2d3142">Data Exchange</text>
+        <text x="432" y="811" font-size="10.5" fill="#6b7280">imports validés (ImportJob + rapport)</text>
+        <text x="432" y="825" font-size="10.5" fill="#6b7280">exports planifiés · masquage personal</text>
+        <text x="432" y="839" font-size="10.5" fill="#6b7280">journaux d'intégration</text>
+
+        <rect x="784" y="768" width="348" height="100" rx="10" fill="#ffffff" stroke="#e2e8f0"/>
+        <text x="800" y="792" font-size="13.5" font-weight="600" fill="#2d3142">Exploitation &amp; Supervision</text>
+        <text x="800" y="811" font-size="10.5" fill="#6b7280">sauvegardes DB (BackupService)</text>
+        <text x="800" y="825" font-size="10.5" fill="#6b7280">SupervisionService · paramètres</text>
+        <text x="800" y="839" font-size="10.5" fill="#6b7280">préférences utilisateurs</text>
+
+        <rect x="1152" y="768" width="348" height="100" rx="10" fill="#ffffff" stroke="#e2e8f0"/>
+        <text x="1168" y="792" font-size="13.5" font-weight="600" fill="#2d3142">Affectations &amp; Groupes</text>
+        <text x="1168" y="811" font-size="10.5" fill="#6b7280">AffectationService · proposition auto</text>
+        <text x="1168" y="825" font-size="10.5" fill="#6b7280">simulation · lots de masse</text>
+        <text x="1168" y="839" font-size="10.5" fill="#6b7280">changement de groupe (traçé)</text>
+      </g>
+    </g>
+
+    <!-- connecteurs 04→05 -->
+    <g stroke="#6b7280" stroke-width="1.2" opacity="0.5">
+      <line x1="560" y1="868" x2="560" y2="900" marker-end="url(#architecture-plateforme-arr)"/>
+      <line x1="1000" y1="868" x2="1000" y2="900" marker-end="url(#architecture-plateforme-arr)"/>
+    </g>
+
+    <!-- ══ BANDE 05 : MODULES ══ -->
+    <g font-family="-apple-system, 'Segoe UI', sans-serif">
+      <text x="48" y="930" font-size="11" font-weight="700" letter-spacing="1.5" fill="#6b7280">05 — MODULES (REGISTRE config/modules.php)</text>
+      <rect x="48" y="940" width="24" height="1.5" fill="#e2e8f0"/>
+      <text x="1512" y="930" font-size="10" fill="#6b7280" text-anchor="end">● actif par défaut&#160;&#160;&#160;○ désactivé par défaut</text>
+
+      <!-- 15 pastilles w280 h52 ; rangées y=954 / 1014 / 1074 -->
+      <g>
+        <rect x="48" y="954" width="280" height="52" rx="8" fill="#ffffff" stroke="#e2e8f0"/>
+        <circle cx="66" cy="980" r="4" fill="#bf4520"/>
+        <text x="80" y="977" font-size="12.5" font-weight="600" fill="#2d3142">Référentiel LMD</text>
+        <text x="80" y="994" font-size="9.5" font-family="ui-monospace, Menlo, monospace" fill="#6b7280">MODULE_REFERENTIEL</text>
+
+        <rect x="344" y="954" width="280" height="52" rx="8" fill="#ffffff" stroke="#e2e8f0"/>
+        <circle cx="362" cy="980" r="4" fill="#bf4520"/>
+        <text x="376" y="977" font-size="12.5" font-weight="600" fill="#2d3142">Enseignement</text>
+        <text x="376" y="994" font-size="9.5" font-family="ui-monospace, Menlo, monospace" fill="#6b7280">MODULE_ENSEIGNEMENT</text>
+
+        <rect x="640" y="954" width="280" height="52" rx="8" fill="#ffffff" stroke="#e2e8f0"/>
+        <circle cx="658" cy="980" r="4" fill="none" stroke="#9aa0a6" stroke-width="1.5"/>
+        <text x="672" y="977" font-size="12.5" font-weight="600" fill="#2d3142">Évaluation</text>
+        <text x="672" y="994" font-size="9.5" font-family="ui-monospace, Menlo, monospace" fill="#6b7280">MODULE_EVALUATION</text>
+
+        <rect x="936" y="954" width="280" height="52" rx="8" fill="#ffffff" stroke="#e2e8f0"/>
+        <circle cx="954" cy="980" r="4" fill="none" stroke="#9aa0a6" stroke-width="1.5"/>
+        <text x="968" y="977" font-size="12.5" font-weight="600" fill="#2d3142">Parcours académique</text>
+        <text x="968" y="994" font-size="9.5" font-family="ui-monospace, Menlo, monospace" fill="#6b7280">MODULE_PARCOURS_ACADEMIQUE</text>
+
+        <rect x="1232" y="954" width="280" height="52" rx="8" fill="#ffffff" stroke="#e2e8f0"/>
+        <circle cx="1250" cy="980" r="4" fill="none" stroke="#9aa0a6" stroke-width="1.5"/>
+        <text x="1264" y="977" font-size="12.5" font-weight="600" fill="#2d3142">Dossiers étudiants</text>
+        <text x="1264" y="994" font-size="9.5" font-family="ui-monospace, Menlo, monospace" fill="#6b7280">MODULE_STUDENT_DOSSIERS</text>
+
+        <rect x="48" y="1022" width="280" height="52" rx="8" fill="#ffffff" stroke="#e2e8f0"/>
+        <circle cx="66" cy="1048" r="4" fill="none" stroke="#9aa0a6" stroke-width="1.5"/>
+        <text x="80" y="1045" font-size="12.5" font-weight="600" fill="#2d3142">Archives étudiants</text>
+        <text x="80" y="1062" font-size="9.5" font-family="ui-monospace, Menlo, monospace" fill="#6b7280">MODULE_STUDENT_ARCHIVE</text>
+
+        <rect x="344" y="1022" width="280" height="52" rx="8" fill="#ffffff" stroke="#e2e8f0"/>
+        <circle cx="362" cy="1048" r="4" fill="none" stroke="#9aa0a6" stroke-width="1.5"/>
+        <text x="376" y="1045" font-size="12.5" font-weight="600" fill="#2d3142">Demandes en ligne</text>
+        <text x="376" y="1062" font-size="9.5" font-family="ui-monospace, Menlo, monospace" fill="#6b7280">MODULE_ONLINE_REQUESTS</text>
+
+        <rect x="640" y="1022" width="280" height="52" rx="8" fill="#ffffff" stroke="#e2e8f0"/>
+        <circle cx="658" cy="1048" r="4" fill="none" stroke="#9aa0a6" stroke-width="1.5"/>
+        <text x="672" y="1045" font-size="12.5" font-weight="600" fill="#2d3142">Finances</text>
+        <text x="672" y="1062" font-size="9.5" font-family="ui-monospace, Menlo, monospace" fill="#6b7280">MODULE_FINANCES</text>
+
+        <rect x="936" y="1022" width="280" height="52" rx="8" fill="#ffffff" stroke="#e2e8f0"/>
+        <circle cx="954" cy="1048" r="4" fill="none" stroke="#9aa0a6" stroke-width="1.5"/>
+        <text x="968" y="1045" font-size="12.5" font-weight="600" fill="#2d3142">Emplois du temps</text>
+        <text x="968" y="1062" font-size="9.5" font-family="ui-monospace, Menlo, monospace" fill="#6b7280">MODULE_SCHEDULE</text>
+
+        <rect x="1232" y="1022" width="280" height="52" rx="8" fill="#ffffff" stroke="#e2e8f0"/>
+        <circle cx="1250" cy="1048" r="4" fill="none" stroke="#9aa0a6" stroke-width="1.5"/>
+        <text x="1264" y="1045" font-size="12.5" font-weight="600" fill="#2d3142">Présences</text>
+        <text x="1264" y="1062" font-size="9.5" font-family="ui-monospace, Menlo, monospace" fill="#6b7280">MODULE_ATTENDANCE</text>
+
+        <rect x="48" y="1090" width="280" height="52" rx="8" fill="#ffffff" stroke="#e2e8f0"/>
+        <circle cx="66" cy="1116" r="4" fill="none" stroke="#9aa0a6" stroke-width="1.5"/>
+        <text x="80" y="1113" font-size="12.5" font-weight="600" fill="#2d3142">Annonces</text>
+        <text x="80" y="1130" font-size="9.5" font-family="ui-monospace, Menlo, monospace" fill="#6b7280">MODULE_ANNOUNCEMENTS</text>
+
+        <rect x="344" y="1090" width="280" height="52" rx="8" fill="#ffffff" stroke="#e2e8f0"/>
+        <circle cx="362" cy="1116" r="4" fill="none" stroke="#9aa0a6" stroke-width="1.5"/>
+        <text x="376" y="1113" font-size="12.5" font-weight="600" fill="#2d3142">Calendrier</text>
+        <text x="376" y="1130" font-size="9.5" font-family="ui-monospace, Menlo, monospace" fill="#6b7280">MODULE_CALENDAR</text>
+
+        <rect x="640" y="1090" width="280" height="52" rx="8" fill="#ffffff" stroke="#e2e8f0"/>
+        <circle cx="658" cy="1116" r="4" fill="none" stroke="#9aa0a6" stroke-width="1.5"/>
+        <text x="672" y="1113" font-size="12.5" font-weight="600" fill="#2d3142">Tâches &amp; cockpit</text>
+        <text x="672" y="1130" font-size="9.5" font-family="ui-monospace, Menlo, monospace" fill="#6b7280">MODULE_TASKS</text>
+
+        <rect x="936" y="1090" width="280" height="52" rx="8" fill="#ffffff" stroke="#e2e8f0"/>
+        <circle cx="954" cy="1116" r="4" fill="none" stroke="#9aa0a6" stroke-width="1.5"/>
+        <text x="968" y="1113" font-size="12.5" font-weight="600" fill="#2d3142">Sentinel</text>
+        <text x="968" y="1130" font-size="9.5" font-family="ui-monospace, Menlo, monospace" fill="#6b7280">MODULE_SENTINEL</text>
+
+        <rect x="1232" y="1090" width="280" height="52" rx="8" fill="#ffffff" stroke="#e2e8f0"/>
+        <circle cx="1250" cy="1116" r="4" fill="none" stroke="#9aa0a6" stroke-width="1.5"/>
+        <text x="1264" y="1113" font-size="12.5" font-weight="600" fill="#2d3142">Versioning</text>
+        <text x="1264" y="1130" font-size="9.5" font-family="ui-monospace, Menlo, monospace" fill="#6b7280">MODULE_VERSIONING</text>
+      </g>
+    </g>
+
+    <!-- connecteurs 05→06 -->
+    <g stroke="#6b7280" stroke-width="1.2" opacity="0.5">
+      <line x1="560" y1="1150" x2="560" y2="1182" marker-end="url(#architecture-plateforme-arr)"/>
+      <line x1="1000" y1="1150" x2="1000" y2="1182" marker-end="url(#architecture-plateforme-arr)"/>
+    </g>
+
+    <!-- ══ BANDE 06 : DONNÉES &amp; EXPLOITATION ══ -->
+    <g font-family="-apple-system, 'Segoe UI', sans-serif">
+      <text x="48" y="1206" font-size="11" font-weight="700" letter-spacing="1.5" fill="#6b7280">06 — DONNÉES &amp; EXPLOITATION</text>
+      <rect x="48" y="1216" width="24" height="1.5" fill="#e2e8f0"/>
+
+      <!-- 4 cartes w348 h84 gap20 y=1212 -->
+      <g>
+        <rect x="48" y="1230" width="348" height="84" rx="10" fill="#ffffff" stroke="#e2e8f0"/>
+        <text x="64" y="1254" font-size="13.5" font-weight="600" fill="#2d3142">Base relationnelle</text>
+        <text x="64" y="1271" font-size="10.5" fill="#6b7280">MySQL (prod) · SQLite (dev/test)</text>
+        <text x="64" y="1285" font-size="10.5" fill="#6b7280">73 modèles Eloquent</text>
+        <text x="64" y="1299" font-size="10.5" fill="#6b7280">migrations additives uniquement</text>
+
+        <rect x="416" y="1230" width="348" height="84" rx="10" fill="#ffffff" stroke="#e2e8f0"/>
+        <text x="432" y="1254" font-size="13.5" font-weight="600" fill="#2d3142">Stockage privé</text>
+        <text x="432" y="1271" font-size="10.5" fill="#6b7280">storage/app/private</text>
+        <text x="432" y="1285" font-size="10.5" fill="#6b7280">documents temporaires (OCR identité)</text>
+        <text x="432" y="1299" font-size="10.5" fill="#6b7280">suppression immédiate (finally)</text>
+
+        <rect x="784" y="1230" width="348" height="84" rx="10" fill="#ffffff" stroke="#e2e8f0"/>
+        <text x="800" y="1254" font-size="13.5" font-weight="600" fill="#2d3142">Journaux &amp; audit</text>
+        <text x="800" y="1271" font-size="10.5" fill="#6b7280">logs applicatifs centralisés</text>
+        <text x="800" y="1285" font-size="10.5" fill="#6b7280">audit admin sans PII</text>
+        <text x="800" y="1299" font-size="10.5" fill="#6b7280">refus métier journalisés</text>
+
+        <rect x="1152" y="1230" width="348" height="84" rx="10" fill="#ffffff" stroke="#e2e8f0"/>
+        <text x="1168" y="1254" font-size="13.5" font-weight="600" fill="#2d3142">Sauvegardes</text>
+        <text x="1168" y="1271" font-size="10.5" fill="#6b7280">database_backups</text>
+        <text x="1168" y="1285" font-size="10.5" fill="#6b7280">rétention &amp; restauration</text>
+        <text x="1168" y="1299" font-size="10.5" fill="#6b7280">vérification périodique</text>
+      </g>
+    </g>
+
+    <!-- note d'architecture -->
+    <g font-family="-apple-system, 'Segoe UI', sans-serif">
+      <text x="48" y="1348" font-size="10.5" fill="#6b7280">Règle d'architecture : le CORE ne dépend d'aucun module — chaque module est activable/désactivable par variable d'environnement (routes → 404, navigation masquée).</text>
+    </g>
+  </svg>

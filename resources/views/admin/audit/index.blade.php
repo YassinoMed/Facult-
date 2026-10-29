@@ -27,7 +27,7 @@
             @if($entrees->isNotEmpty())
                 <table class="w-full min-w-[720px] text-left text-xs sm:text-sm">
                     <thead>
-                        <tr class="border-b border-slate-100 text-[11px] uppercase tracking-wider text-slate-400">
+                        <tr class="border-b border-slate-100 text-[11px] uppercase tracking-wider text-slate-700 font-bold">
                             <th scope="col" class="px-5 py-3 font-bold">Date</th>
                             <th scope="col" class="px-5 py-3 font-bold">Action</th>
                             <th scope="col" class="px-5 py-3 font-bold">Entité</th>

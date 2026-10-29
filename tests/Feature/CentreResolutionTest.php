@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\AnneeUniversitaire;
+use App\Models\DossierVerification;
 use App\Models\Etudiant;
 use App\Models\Faculte;
 use App\Models\HistoriqueAcademique;
@@ -60,6 +61,9 @@ class CentreResolutionTest extends TestCase
         $etudiant = $this->creerEtudiant('CTR00002', ['nom' => '']);
         $this->inscrire($etudiant);
 
+        // La file active ne contient que les dossiers en attente (D-09).
+        $etudiant->definirStatut('en_attente');
+
         $this->actingAs($this->scolarite)->post(route('admin.verification.verifier', $etudiant))->assertRedirect();
 
         $contenu = (string) $this->actingAs($this->scolarite)
@@ -70,6 +74,29 @@ class CentreResolutionTest extends TestCase
             ->get(route('admin.verification.show', $etudiant))->assertOk()->getContent();
         $this->assertStringContainsString('BLOQUANT', $fiche);
         $this->assertStringContainsString('IDENTITE_COMPLETE', $fiche);
+    }
+
+    public function test_centre_bloquees_exclut_les_dossiers_deja_traites(): void
+    {
+        $etudiant = $this->creerEtudiant('CTR00006', ['nom' => '']);
+        $this->inscrire($etudiant);
+
+        DossierVerification::create([
+            'etudiant_id' => $etudiant->id, 'verdict' => 'BLOQUANT', 'score' => 20,
+            'regles_verifiees' => 10, 'regles_reussies' => 4, 'anomalies_count' => 2,
+            'duree_ms' => 10, 'source' => 'web', 'regles_echouees' => ['identite.complete'],
+        ]);
+
+        // Un dossier validé ne doit plus polluer la file des bloqués avec un
+        // ancien verdict (D-09), ni ses compteurs.
+        $etudiant->definirStatut('valide');
+
+        $reponse = $this->actingAs($this->scolarite)
+            ->get(route('admin.verification.index'))->assertOk();
+
+        $reponse->assertDontSee($etudiant->num_inscription);
+        $this->assertSame(0, $reponse->viewData('etudiants')->total());
+        $this->assertSame(0, $reponse->viewData('compteurs')['bloquants']);
     }
 
     public function test_correction_justifiee_reverifiee(): void

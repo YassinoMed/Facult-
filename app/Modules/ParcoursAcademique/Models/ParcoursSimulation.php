@@ -24,6 +24,27 @@ class ParcoursSimulation extends Model
         'validation_matiere', 'equivalence', 'dispense',
     ];
 
+    /**
+     * Libellés d'affichage des scénarios — partagés back-office et
+     * portail étudiant : une seule source de libellés, jamais de
+     * divergence de présentation entre les deux espaces.
+     */
+    public const LIBELLES = [
+        'passage' => 'Passage',
+        'redoublement' => 'Redoublement',
+        'conditionnel' => 'Admission conditionnelle',
+        'conservation_dettes' => 'Conservation des dettes',
+        'reorientation' => 'Réorientation',
+        'changement_parcours' => 'Changement de parcours',
+        'admission_formation' => 'Admission en formation',
+        'passerelle_master' => 'Passerelle Master',
+        'validation_semestre' => 'Validation de semestre',
+        'compensation' => 'Compensation',
+        'validation_matiere' => 'Validation de matière',
+        'equivalence' => 'Équivalence',
+        'dispense' => 'Dispense',
+    ];
+
     protected $fillable = [
         'etudiant_id', 'inscription_source_id', 'annee_universitaire_id',
         'scenario', 'hypotheses', 'resultat', 'regle_reference', 'auteur_id',

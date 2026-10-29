@@ -1,7 +1,7 @@
 @extends('layouts.app')
 
 @section('title', 'Modifier mes coordonnées — Espace Étudiant')
-@section('meta_description', 'Mettez à jour vos coordonnées personnelles : email, téléphone, adresse complète et date de naissance.')
+@section('meta_description', 'Mettez à jour vos coordonnées personnelles : téléphone, adresse complète et code postal. L\'email et la date de naissance sont vérifiés par la scolarité.')
 
 @section('content')
 <div class="mx-auto max-w-3xl px-4 sm:px-6 lg:px-8 py-10 sm:py-14">
@@ -18,7 +18,7 @@
         <h1 class="mt-3 text-2xl sm:text-3xl font-black tracking-tight text-slate-900">Modifier mes coordonnées</h1>
         <p class="mt-2 text-sm text-slate-500">
             Ces informations permettent au service de la scolarité de vous joindre pendant le traitement de votre dossier
-            <span class="font-semibold text-slate-700">{{ session('num_inscription') }}</span>.
+            <span class="font-semibold text-slate-700">{{ $etudiant->num_inscription ?? session('num_inscription') }}</span>.
         </p>
     </div>
 
@@ -29,10 +29,10 @@
             @method('PATCH')
 
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-5">
-                {{-- Email --}}
+                {{-- Email — lecture seule : changement via parcours vérifié (double code) --}}
                 <div class="sm:col-span-2">
                     <label for="email" class="mb-1.5 block text-xs font-bold text-slate-700 uppercase tracking-wider">
-                        Adresse email <span class="text-rose-500">*</span>
+                        Adresse email
                     </label>
                     <div class="relative">
                         <div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3.5 text-slate-400">
@@ -40,15 +40,20 @@
                                 <path stroke-linecap="round" stroke-linejoin="round" d="M21.75 6.75v10.5a2.25 2.25 0 0 1-2.25 2.25h-15a2.25 2.25 0 0 1-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0 0 19.5 4.5h-15a2.25 2.25 0 0 0-2.25 2.25m19.5 0v.243a2.25 2.25 0 0 1-1.07 1.916l-7.5 4.615a2.25 2.25 0 0 1-2.36 0L3.32 8.91a2.25 2.25 0 0 1-1.07-1.916V6.75" />
                             </svg>
                         </div>
-                        <input id="email" name="email" type="email" required autocomplete="email"
-                               value="{{ old('email', $etudiant->email) }}"
-                               placeholder="prenom.nom@email.com"
-                               class="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 pl-11 text-sm text-slate-900 transition-smooth focus:border-primary-600 focus:ring-4 focus:ring-primary-500/15 focus:outline-none @error('email') border-rose-300 bg-rose-50/50 @enderror">
+                        <input id="email" name="email" type="email" readonly aria-readonly="true"
+                               autocomplete="email"
+                               value="{{ $etudiant->email }}"
+                               class="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 pl-11 text-sm text-slate-600 cursor-not-allowed focus:outline-none @error('email') border-rose-300 bg-rose-50/50 @enderror">
                     </div>
                     @error('email')
                         <p class="mt-1 text-xs text-rose-600">{{ $message }}</p>
                     @enderror
-                    <p class="mt-1.5 text-xs text-slate-400">L'adresse email vous servira d'identifiant de connexion.</p>
+                    <p class="mt-1.5 text-xs text-slate-400">
+                        L'adresse email vous sert d'identifiant de connexion et de canal de récupération de votre dossier.
+                        Pour la modifier, utilisez le parcours vérifié
+                        <a href="{{ route('inscription.existant.accueil') }}" class="font-semibold text-primary-700 underline">« Modifier mon adresse email »</a>
+                        (code de confirmation envoyé à l'ancienne puis à la nouvelle adresse).
+                    </p>
                 </div>
 
                 {{-- Téléphone --}}
@@ -68,27 +73,6 @@
                                class="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 pl-11 text-sm text-slate-900 transition-smooth focus:border-primary-600 focus:ring-4 focus:ring-primary-500/15 focus:outline-none @error('telephone') border-rose-300 bg-rose-50/50 @enderror">
                     </div>
                     @error('telephone')
-                        <p class="mt-1 text-xs text-rose-600">{{ $message }}</p>
-                    @enderror
-                </div>
-
-                {{-- Date de naissance --}}
-                <div>
-                    <label for="date_naissance" class="mb-1.5 block text-xs font-bold text-slate-700 uppercase tracking-wider">
-                        Date de naissance
-                    </label>
-                    <div class="relative">
-                        <div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3.5 text-slate-400">
-                            <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke-width="1.8" stroke="currentColor">
-                                <path stroke-linecap="round" stroke-linejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 0 1 2.25-2.25h13.5A2.25 2.25 0 0 1 21 7.5v11.25m-18 0A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75m-18 0v-7.5A2.25 2.25 0 0 1 5.25 9h13.5A2.25 2.25 0 0 1 21 11.25v7.5" />
-                            </svg>
-                        </div>
-                        <input id="date_naissance" name="date_naissance" type="date"
-                               min="1920-01-01" max="{{ now()->toDateString() }}"
-                               value="{{ old('date_naissance', $etudiant->date_naissance?->format('Y-m-d')) }}"
-                               class="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 pl-11 text-sm text-slate-900 transition-smooth focus:border-primary-600 focus:ring-4 focus:ring-primary-500/15 focus:outline-none @error('date_naissance') border-rose-300 bg-rose-50/50 @enderror">
-                    </div>
-                    @error('date_naissance')
                         <p class="mt-1 text-xs text-rose-600">{{ $message }}</p>
                     @enderror
                 </div>

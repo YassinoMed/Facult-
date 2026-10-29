@@ -2,6 +2,7 @@
 
 use App\Modules\ParcoursAcademique\Controllers\AmenagementParcoursController;
 use App\Modules\ParcoursAcademique\Controllers\FicheParcoursController;
+use App\Modules\ParcoursAcademique\Controllers\MaSimulationParcoursController;
 use App\Modules\ParcoursAcademique\Controllers\RegleParcoursController;
 use App\Modules\ParcoursAcademique\Controllers\SimulationParcoursController;
 use App\Modules\ParcoursAcademique\Controllers\TableauBordParcoursController;
@@ -67,4 +68,26 @@ Route::middleware(['auth', 'admin', 'secondaire.verrou', 'module:parcours-academ
     Route::post('parcours-regles', [RegleParcoursController::class, 'store'])
         ->middleware(['can:parcours.regles', 'throttle:20,1'])
         ->name('parcours.regles.store');
+});
+
+/*
+|--------------------------------------------------------------------------
+| Portail ÉTUDIANT — simulations self-service (ADVANCED-01 LOT B)
+|--------------------------------------------------------------------------
+| Session `etudiant_auth_id` + `module:parcours-academique` (404 si inactif).
+| Aucun identifiant client : l'étudiant et la source d'inscription sont
+| résolus serveur ; persistance append-only (`auteur_id` null) ;
+| aucune écriture officielle — résultat explicitement non officiel.
+*/
+Route::middleware(['etudiant.auth', 'module:parcours-academique'])->prefix('etudiant')->name('etudiant.')->group(function () {
+    Route::get('parcours/simulations', [MaSimulationParcoursController::class, 'index'])
+        ->name('parcours.simulations.index');
+    Route::get('parcours/simulations/creer', [MaSimulationParcoursController::class, 'create'])
+        ->name('parcours.simulations.create');
+    Route::post('parcours/simulations', [MaSimulationParcoursController::class, 'store'])
+        ->middleware('throttle:10,1')
+        ->name('parcours.simulations.store');
+    Route::get('parcours/simulations/{simulation}', [MaSimulationParcoursController::class, 'show'])
+        ->whereNumber('simulation')
+        ->name('parcours.simulations.show');
 });

@@ -219,7 +219,19 @@ class DeliberationDefinition implements ExportDefinitionInterface, ImportDefinit
             $code = trim((string) $ligne['code']);
             $annee = ! empty($ligne['annee_code']) ? AnneeUniversitaire::where('libelle', trim((string) $ligne['annee_code']))->first() : null;
             $programme = ! empty($ligne['parcours_code']) ? Programme::where('code', trim((string) $ligne['parcours_code']))->first() : null;
-            $niveau = ! empty($ligne['niveau_code']) ? Niveau::where('code', trim((string) $ligne['niveau_code']))->first() : null;
+            $niveau = ! empty($ligne['niveau_code'])
+                ? ($programme !== null
+                    ? Niveau::resoudreDansProgramme($ligne['niveau_code'], $programme->id)
+                    : Niveau::resoudreCodeUnique($ligne['niveau_code']))
+                : null;
+
+            if (! empty($ligne['niveau_code']) && $niveau === null) {
+                throw IoException::malforme(
+                    $programme !== null
+                        ? "Niveau « {$ligne['niveau_code']} » inexistant pour ce parcours (ligne {$ligne['ligne']})."
+                        : "Niveau « {$ligne['niveau_code']} » ambigu : parcours requis (ligne {$ligne['ligne']})."
+                );
+            }
             $semestre = ! empty($ligne['semestre_code']) ? SemestreLmd::where('code', trim((string) $ligne['semestre_code']))->first() : null;
 
             $statutBrut = mb_strtolower(trim((string) ($ligne['statut'] ?? 'prepared')));
@@ -275,7 +287,7 @@ class DeliberationDefinition implements ExportDefinitionInterface, ImportDefinit
         $donnees = [
             'inscription_academique_id' => $inscription?->id,
             'moyenne' => ! empty($ligne['moyenne']) ? (float) $ligne['moyenne'] : null,
-            'credits_obtenus' => ! empty($ligne['credits_obtenus']) ? (int) $ligne['credits_obtenus'] : null,
+            'credits_obtenus' => (int) ($ligne['credits_obtenus'] ?? 0),
             'decision' => $ligne['decision'],
             'commentaire' => $ligne['commentaire'] ?? 'Import Délibération DataExchange',
             'publie' => true,

@@ -10,9 +10,11 @@ use App\Modules\Evaluation\Models\NoteEpreuve;
 use App\Modules\Evaluation\Services\SaisieNoteService;
 use App\Services\DataExchange\Contracts\ImportContextuel;
 use App\Services\DataExchange\Contracts\ImportDefinitionInterface;
+use App\Services\DataExchange\Contracts\ImportLotInterface;
 use App\Services\DataExchange\Contracts\ImportSansPii;
 use App\Services\DataExchange\Contracts\ImportValidationAvancee;
 use App\Services\Io\IoException;
+use Illuminate\Support\Collection;
 
 /**
  * Import anonyme des notes d'épreuve (§LOOP IMPORT MULTI-FORMAT) :
@@ -21,9 +23,18 @@ use App\Services\Io\IoException;
  * toutes les règles métier sont déléguées à SaisieNoteService
  * (jamais recopiées, jamais d'écriture directe en `notes`).
  */
-class NoteEpreuveAnonymeDefinition implements ImportContextuel, ImportDefinitionInterface, ImportSansPii, ImportValidationAvancee
+class NoteEpreuveAnonymeDefinition implements ImportContextuel, ImportDefinitionInterface, ImportLotInterface, ImportSansPii, ImportValidationAvancee
 {
     private ?Epreuve $epreuve = null;
+
+    /** @var Collection<string, EvaluationCompostage>|null */
+    private ?Collection $compostages = null;
+
+    /** @var Collection<int, Candidat>|null */
+    private ?Collection $candidats = null;
+
+    /** @var Collection<int, NoteEpreuve>|null */
+    private ?Collection $notesExistantes = null;
 
     public function entite(): string
     {
@@ -80,6 +91,23 @@ class NoteEpreuveAnonymeDefinition implements ImportContextuel, ImportDefinition
     {
         $epreuveId = $contexte['epreuve_id'] ?? null;
         $this->epreuve = is_numeric($epreuveId) ? Epreuve::find((int) $epreuveId) : null;
+
+        if ($this->epreuve !== null) {
+            $this->compostages = EvaluationCompostage::where('epreuve_id', $this->epreuve->id)
+                ->get()
+                ->keyBy(fn ($c) => mb_strtoupper(trim($c->numero)));
+            $this->candidats = Candidat::where('epreuve_id', $this->epreuve->id)
+                ->with('etudiant')
+                ->get()
+                ->keyBy('etudiant_id');
+            $this->notesExistantes = NoteEpreuve::where('epreuve_id', $this->epreuve->id)
+                ->get()
+                ->keyBy('etudiant_id');
+        } else {
+            $this->compostages = null;
+            $this->candidats = null;
+            $this->notesExistantes = null;
+        }
     }
 
     public function epreuve(): ?Epreuve
@@ -93,6 +121,10 @@ class NoteEpreuveAnonymeDefinition implements ImportContextuel, ImportDefinition
 
         if ($compostage === null || $this->epreuve === null) {
             return null;
+        }
+
+        if ($this->notesExistantes !== null) {
+            return $this->notesExistantes->get($compostage->etudiant_id);
         }
 
         return NoteEpreuve::where('epreuve_id', $this->epreuve->id)
@@ -112,37 +144,46 @@ class NoteEpreuveAnonymeDefinition implements ImportContextuel, ImportDefinition
             return [$this->erreur($ligne, 'epreuve', 'Épreuve verrouillée : import interdit (EPREUVE_LOCKED).', 'EPREUVE_LOCKED')];
         }
 
-        if ($auteurId !== null) {
-            $auteur = User::find($auteurId);
+        $auteur = $auteurId !== null ? User::find($auteurId) : null;
 
-            if ($auteur !== null && $epreuve->faculteId() !== null && ! $auteur->peutAccederFaculte($epreuve->faculteId())) {
-                return [$this->erreur($ligne, 'epreuve', 'Épreuve hors de votre périmètre faculté (HORS_PERIMETRE).', 'HORS_PERIMETRE')];
-            }
+        if ($auteur !== null && $epreuve->faculteId() !== null && ! $auteur->peutAccederFaculte($epreuve->faculteId())) {
+            return [$this->erreur($ligne, 'epreuve', 'Épreuve hors de votre périmètre faculté (HORS_PERIMETRE).', 'HORS_PERIMETRE')];
         }
 
-        $compostage = EvaluationCompostage::where('epreuve_id', $epreuve->id)
-            ->where('numero', mb_strtoupper(trim((string) ($ligne['compostage'] ?? ''))))
-            ->first();
+        $compostage = $this->resoudre($ligne);
 
         if ($compostage === null) {
             return [$this->erreur($ligne, 'compostage', "Numéro {$ligne['compostage']} inconnu pour cette épreuve (COMPOSTAGE_NOT_FOUND).", 'COMPOSTAGE_NOT_FOUND')];
         }
 
-        $candidat = Candidat::where('epreuve_id', $epreuve->id)
-            ->where('etudiant_id', $compostage->etudiant_id)
-            ->first();
+        $candidat = $this->candidats !== null
+            ? $this->candidats->get($compostage->etudiant_id)
+            : Candidat::where('epreuve_id', $epreuve->id)
+                ->where('etudiant_id', $compostage->etudiant_id)
+                ->with('etudiant')
+                ->first();
 
         if ($candidat === null) {
             return [$this->erreur($ligne, 'compostage', "Numéro {$ligne['compostage']} sans candidature à cette épreuve (CANDIDAT_NOT_ELIGIBLE).", 'CANDIDAT_NOT_ELIGIBLE')];
+        }
+
+        if ($auteur !== null && isset($candidat->etudiant?->faculte_id) && ! $auteur->peutAccederFaculte((int) $candidat->etudiant->faculte_id)) {
+            return [$this->erreur($ligne, 'compostage', 'Étudiant hors de votre périmètre faculté (HORS_PERIMETRE).', 'HORS_PERIMETRE')];
+        }
+
+        if ($candidat->estAbsent() && $ligne['note'] !== null && $ligne['note'] !== '') {
+            return [$this->erreur($ligne, 'note', "Candidat absent pour {$ligne['compostage']} : saisie interdite (CANDIDAT_ABSENT).", 'CANDIDAT_ABSENT')];
         }
 
         if ($ligne['note'] !== null && ((float) $ligne['note'] < 0 || (float) $ligne['note'] > (float) $epreuve->note_max)) {
             return [$this->erreur($ligne, 'note', "Note hors bornes 0..{$epreuve->note_max} (NOTE_OUT_OF_RANGE).", 'NOTE_OUT_OF_RANGE')];
         }
 
-        $existante = NoteEpreuve::where('epreuve_id', $epreuve->id)
-            ->where('etudiant_id', $compostage->etudiant_id)
-            ->first();
+        $existante = $this->notesExistantes !== null
+            ? $this->notesExistantes->get($compostage->etudiant_id)
+            : NoteEpreuve::where('epreuve_id', $epreuve->id)
+                ->where('etudiant_id', $compostage->etudiant_id)
+                ->first();
 
         if ($existante !== null && $existante->estVerrouillee()
             && (string) ($ligne['note'] ?? '') !== (string) $existante->valeur) {
@@ -179,6 +220,14 @@ class NoteEpreuveAnonymeDefinition implements ImportContextuel, ImportDefinition
             throw IoException::malforme("numéro {$ligne['compostage']} inconnu pour cette épreuve.");
         }
 
+        // Le mode est une garantie serveur : en création seule, une note
+        // déjà présente ne doit jamais être silencieusement écrasée.
+        if ($mode === 'creer' && $this->trouverExistant($ligne) !== null) {
+            throw IoException::malforme(
+                "note déjà existante pour le compostage {$compostage->numero} (MODE_CREATION_ONLY)."
+            );
+        }
+
         $resultat = app(SaisieNoteService::class)->saisirLotParCompostages(
             $this->epreuve,
             [['numero' => $compostage->numero, 'valeur' => $ligne['note'] ?? null]],
@@ -190,6 +239,66 @@ class NoteEpreuveAnonymeDefinition implements ImportContextuel, ImportDefinition
         }
 
         return "saisie : {$compostage->numero} ({$this->epreuve->code})";
+    }
+
+    /**
+     * Persistance groupée : une seule résolution de compostages et un
+     * seul appel à `saisirLot`, au lieu d'un appel par ligne.
+     */
+    public function persisterLot(array $lignes, string $mode, ?int $auteurId): int
+    {
+        if ($this->epreuve === null) {
+            throw IoException::malforme('contexte épreuve manquant.');
+        }
+
+        if ($lignes === []) {
+            return 0;
+        }
+
+        $anonymes = [];
+        $numerosParEtudiant = [];
+
+        foreach ($lignes as $ligne) {
+            $compostage = $this->resoudre($ligne);
+
+            if ($compostage === null) {
+                throw IoException::malforme("numéro {$ligne['compostage']} inconnu pour cette épreuve.");
+            }
+
+            $anonymes[] = [
+                'numero' => $compostage->numero,
+                'valeur' => $ligne['note'] ?? null,
+            ];
+            $numerosParEtudiant[$compostage->etudiant_id] = $compostage->numero;
+        }
+
+        if ($mode === 'creer') {
+            $existants = NoteEpreuve::where('epreuve_id', $this->epreuve->id)
+                ->whereIn('etudiant_id', array_keys($numerosParEtudiant))
+                ->pluck('etudiant_id')
+                ->all();
+
+            if ($existants !== []) {
+                $etudiantId = (int) reset($existants);
+                $numero = $numerosParEtudiant[$etudiantId] ?? "#{$etudiantId}";
+
+                throw IoException::malforme(
+                    "note déjà existante pour le compostage {$numero} (MODE_CREATION_ONLY)."
+                );
+            }
+        }
+
+        $resultat = app(SaisieNoteService::class)->saisirLotParCompostages(
+            $this->epreuve,
+            $anonymes,
+            (int) $auteurId
+        );
+
+        if ($resultat['erreurs'] !== []) {
+            throw IoException::malforme((string) reset($resultat['erreurs']));
+        }
+
+        return count($lignes);
     }
 
     public function modes(): array
@@ -208,8 +317,14 @@ class NoteEpreuveAnonymeDefinition implements ImportContextuel, ImportDefinition
             return null;
         }
 
+        $numero = mb_strtoupper(trim((string) ($ligne['compostage'] ?? '')));
+
+        if ($this->compostages !== null) {
+            return $this->compostages->get($numero);
+        }
+
         return EvaluationCompostage::where('epreuve_id', $this->epreuve->id)
-            ->where('numero', mb_strtoupper(trim((string) ($ligne['compostage'] ?? ''))))
+            ->where('numero', $numero)
             ->first();
     }
 
@@ -219,6 +334,8 @@ class NoteEpreuveAnonymeDefinition implements ImportContextuel, ImportDefinition
      */
     private function erreur(array $ligne, string $champ, string $message, string $code = 'COMPOSTAGE_NOT_FOUND'): array
     {
-        return ['champ' => $champ, 'message' => $message." (ligne {$ligne['ligne']}).", 'code' => $code];
+        $numLigne = $ligne['ligne'] ?? 1;
+
+        return ['champ' => $champ, 'message' => $message." (ligne {$numLigne}).", 'code' => $code];
     }
 }

@@ -66,15 +66,15 @@
 
             @if($presences->isNotEmpty())
                 <div class="overflow-x-auto">
-                    <table class="w-full text-left text-xs">
-                        <thead class="bg-slate-50 dark:bg-slate-800/50 text-slate-400 uppercase font-black tracking-wider text-[10px]">
+                    <table class="w-full text-left text-xs min-w-[680px]">
+                        <thead class="bg-slate-50 dark:bg-slate-800/50 text-slate-700 dark:text-slate-300 uppercase font-black tracking-wider text-[10px]">
                             <tr>
-                                <th class="px-5 py-3">Date & Séance</th>
-                                <th class="px-5 py-3">Matière & Groupe</th>
-                                <th class="px-5 py-3">Salle</th>
-                                <th class="px-5 py-3">Pointage effectif</th>
-                                <th class="px-5 py-3">Statut</th>
-                                <th class="px-5 py-3 text-right">Actions</th>
+                                <th scope="col" class="px-5 py-3">Date & Séance</th>
+                                <th scope="col" class="px-5 py-3">Matière & Groupe</th>
+                                <th scope="col" class="px-5 py-3">Salle</th>
+                                <th scope="col" class="px-5 py-3">Pointage effectif</th>
+                                <th scope="col" class="px-5 py-3">Statut</th>
+                                <th scope="col" class="px-5 py-3 text-right">Actions</th>
                             </tr>
                         </thead>
                         <tbody class="divide-y divide-slate-100 dark:divide-slate-800 text-slate-700 dark:text-slate-300">
@@ -82,7 +82,7 @@
                                 <tr class="hover:bg-slate-50/50 dark:hover:bg-slate-800/30 transition">
                                     <td class="px-5 py-3.5 whitespace-nowrap">
                                         <p class="font-bold text-slate-900 dark:text-slate-100">{{ $p->date?->format('d/m/Y') }}</p>
-                                        <p class="text-[11px] text-slate-400 font-mono">{{ substr((string) ($p->slot?->start_time ?? ''), 0, 5) }} - {{ substr((string) ($p->slot?->end_time ?? ''), 0, 5) }}</p>
+                                        <p class="text-[11px] text-slate-500 dark:text-slate-400 font-mono">{{ substr((string) ($p->slot?->start_time ?? ''), 0, 5) }} - {{ substr((string) ($p->slot?->end_time ?? ''), 0, 5) }}</p>
                                     </td>
                                     <td class="px-5 py-3.5">
                                         <p class="font-bold text-slate-800 dark:text-slate-100">{{ $p->slot?->matiere?->nom ?? '—' }}</p>

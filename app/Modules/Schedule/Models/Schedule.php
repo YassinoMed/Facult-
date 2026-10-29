@@ -68,4 +68,17 @@ class Schedule extends Model
     {
         return $this->hasMany(ScheduleSlot::class, 'schedule_id');
     }
+
+    /**
+     * @return HasMany<ScheduleVersion, $this>
+     */
+    public function versions(): HasMany
+    {
+        return $this->hasMany(ScheduleVersion::class, 'schedule_id')->orderByDesc('numero_version');
+    }
+
+    public function derniereVersionPubliee(): ?ScheduleVersion
+    {
+        return $this->versions()->where('statut', ScheduleVersion::STATUT_PUBLIEE)->first();
+    }
 }

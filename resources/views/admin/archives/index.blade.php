@@ -20,6 +20,8 @@
             </div>
         </div>
 
+        {{-- Actions de l'en-tête (export, configuration, création) --}}
+        <div class="flex flex-wrap items-center gap-2">
             @can('archives.export')
                 <a href="{{ route('admin.archives.export-registre', request()->query()) }}"
                    class="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50 shadow-xs transition-smooth"
@@ -128,7 +130,7 @@
             </div>
 
             <div class="flex items-center justify-between gap-3">
-                <p class="text-xs text-slate-400" role="status" aria-live="polite">{{ $dossiers->total() }} dossier(s) — CIN masquée par mesure de confidentialité.</p>
+                <p class="text-xs text-slate-600 font-medium" role="status" aria-live="polite">{{ $dossiers->total() }} dossier(s) — CIN masquée par mesure de confidentialité.</p>
                 <div class="flex gap-2">
                     <a href="{{ route('admin.archives.index') }}" class="rounded-xl border border-slate-200 px-3.5 py-2 text-xs font-bold text-slate-600 hover:bg-slate-50 transition-smooth">Réinitialiser</a>
                     <button type="submit" class="rounded-xl bg-primary-600 px-4 py-2 text-xs font-bold text-white hover:bg-primary-700 transition-smooth">Filtrer</button>
@@ -139,26 +141,27 @@
 
     {{-- ── Tableau (desktop) ── --}}
     <div class="hidden lg:block rounded-3xl border border-slate-200/80 bg-white shadow-xs overflow-hidden">
-        <table class="w-full text-left text-sm">
-            <thead class="border-b border-slate-200 bg-slate-50/70 text-[11px] uppercase tracking-wider text-slate-400">
-                <tr>
-                    <th class="px-5 py-3.5">Matricule</th>
-                    <th class="px-5 py-3.5">Étudiant</th>
-                    <th class="px-5 py-3.5">CIN</th>
-                    <th class="px-5 py-3.5">Faculté</th>
-                    <th class="px-5 py-3.5">Dernier niveau</th>
-                    <th class="px-5 py-3.5">Années</th>
-                    <th class="px-5 py-3.5">Statut</th>
-                    <th class="px-5 py-3.5 text-right">Actions</th>
-                </tr>
-            </thead>
+        <div class="overflow-x-auto">
+            <table class="w-full text-left text-sm min-w-[800px]">
+                <thead class="border-b border-slate-200 bg-slate-50/70 text-[11px] uppercase tracking-wider text-slate-700 font-bold">
+                    <tr>
+                        <th scope="col" class="px-5 py-3.5">Matricule</th>
+                        <th scope="col" class="px-5 py-3.5">Étudiant</th>
+                        <th scope="col" class="px-5 py-3.5">CIN</th>
+                        <th scope="col" class="px-5 py-3.5">Faculté</th>
+                        <th scope="col" class="px-5 py-3.5">Dernier niveau</th>
+                        <th scope="col" class="px-5 py-3.5">Années</th>
+                        <th scope="col" class="px-5 py-3.5">Statut</th>
+                        <th scope="col" class="px-5 py-3.5 text-right">Actions</th>
+                    </tr>
+                </thead>
             <tbody class="divide-y divide-slate-100">
                 @forelse($dossiers as $dossier)
                     <tr class="hover:bg-primary-50/30 transition-smooth">
                         <td class="px-5 py-4 font-mono text-xs font-bold text-slate-900">{{ $dossier->matricule }}</td>
                         <td class="px-5 py-4">
                             <div class="font-bold text-slate-900">{{ $dossier->etudiant->nom_complet }}</div>
-                            <div class="text-xs text-slate-400">{{ $dossier->etudiant->num_inscription }}</div>
+                            <div class="text-xs text-slate-500 font-medium">{{ $dossier->etudiant->num_inscription }}</div>
                         </td>
                         <td class="px-5 py-4 font-mono text-xs text-slate-500">{{ $dossier->etudiant->cin_masquee }}</td>
                         <td class="px-5 py-4">
@@ -183,7 +186,7 @@
                     </tr>
                 @empty
                     <tr>
-                        <td colspan="8" class="px-5 py-14 text-center text-sm text-slate-400">
+                        <td colspan="8" class="px-5 py-14 text-center text-sm text-slate-600 font-medium">
                             <p>Aucun dossier académique ne correspond à votre recherche.</p>
                             @if(request()->anyFilled(['search', 'faculte_id', 'annee_universitaire_id', 'niveau', 'statut', 'programme_id']))
                                 <a href="{{ route('admin.archives.index') }}" class="mt-3 inline-flex items-center gap-1.5 text-xs font-semibold text-primary-600 hover:text-primary-800 transition-smooth">
@@ -196,6 +199,7 @@
                 @endforelse
             </tbody>
         </table>
+        </div>
     </div>
 
     {{-- ── Cartes (mobile) ── --}}
@@ -206,7 +210,7 @@
                 <div class="flex items-center justify-between gap-3">
                     <div class="min-w-0">
                         <p class="truncate text-sm font-bold text-slate-900">{{ $dossier->etudiant->nom_complet }}</p>
-                        <p class="font-mono text-[11px] text-slate-400">{{ $dossier->matricule }} · {{ $dossier->etudiant->cin_masquee }}</p>
+                        <p class="font-mono text-[11px] text-slate-500 font-medium">{{ $dossier->matricule }} · {{ $dossier->etudiant->cin_masquee }}</p>
                     </div>
                     @if($dossier->statut === 'actif')
                         <span class="flex-shrink-0 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200 px-2 py-0.5 text-[10px] font-bold">Actif</span>
@@ -223,7 +227,7 @@
                 </div>
             </a>
         @empty
-            <div class="rounded-2xl border border-slate-200/80 bg-white p-10 text-center text-sm text-slate-400">
+            <div class="rounded-2xl border border-slate-200/80 bg-white p-10 text-center text-sm text-slate-600 font-medium">
                 <p>Aucun dossier académique trouvé.</p>
                 @if(request()->anyFilled(['search', 'faculte_id', 'annee_universitaire_id', 'niveau', 'statut', 'programme_id']))
                     <a href="{{ route('admin.archives.index') }}" class="mt-3 inline-flex items-center gap-1.5 text-xs font-semibold text-primary-600 hover:text-primary-800 transition-smooth">

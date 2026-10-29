@@ -20,6 +20,8 @@ class EvaluationIncident extends Model
 
     public const TYPES = ['retard', 'fraude', 'materiel', 'copie_manquante', 'probleme_salle', 'autre'];
 
+    public const GRAVITES = ['mineure', 'majeure', 'critique'];
+
     public const STATUTS = ['signale', 'en_cours', 'resolu'];
 
     /** Transitions serveur : le frontend ne décide jamais. */
@@ -36,7 +38,26 @@ class EvaluationIncident extends Model
         'etudiant_id',
         'created_by',
         'teacher_id',
+        'gravite',
+        'responsable_id',
+        'delai_cible_at',
+        'resolu_at',
+        'actions_prises',
+        'preuves',
+        'valide_par',
+        'valide_at',
     ];
+
+    protected function casts(): array
+    {
+        return [
+            'delai_cible_at' => 'datetime',
+            'resolu_at' => 'datetime',
+            'valide_at' => 'datetime',
+            'actions_prises' => 'array',
+            'preuves' => 'array',
+        ];
+    }
 
     protected static function booted(): void
     {
@@ -66,6 +87,16 @@ class EvaluationIncident extends Model
         return $this->belongsTo(User::class, 'created_by');
     }
 
+    public function responsable(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'responsable_id');
+    }
+
+    public function validateur(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'valide_par');
+    }
+
     /**
      * @return BelongsTo<Teacher, $this>
      */
@@ -77,6 +108,29 @@ class EvaluationIncident extends Model
     public function estClos(): bool
     {
         return $this->statut === 'resolu';
+    }
+
+    public function estValide(): bool
+    {
+        return $this->valide_par !== null;
+    }
+
+    /**
+     * Description affichable : les incidents enrichis par le service
+     * stockent leurs métadonnées en JSON ; on restitue le texte utile
+     * plutôt que la structure brute.
+     */
+    public function getDescriptionLisibleAttribute(): string
+    {
+        $decode = json_decode((string) $this->description, true);
+
+        if (! is_array($decode)) {
+            return (string) $this->description;
+        }
+
+        return (string) ($decode['description_textuelle']
+            ?? $decode['resolution_finale']['constat']
+            ?? $this->description);
     }
 
     public function peutTransiterVers(string $cible): bool

@@ -15,6 +15,7 @@ use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\RateLimiter;
 use RuntimeException;
@@ -190,12 +191,16 @@ class DossierExistantService
         if ($email === '' || ! str_contains($email, '@')) {
             // Fail-closed : sans canal de vérification déjà enregistré,
             // le parcours ne peut pas prouver l'identité.
+            $this->tracerRefus('recherche', 'adresse_absente');
+
             throw new RuntimeException('Aucune adresse email enregistrée pour ce dossier.');
         }
 
         $cleRenvoi = $this->cleRenvoi($etudiant);
 
         if (RateLimiter::tooManyAttempts($cleRenvoi, 1)) {
+            $this->tracerRefus('recherche', 'cooldown');
+
             throw new RuntimeException('Un code vient déjà d\'être envoyé. Patientez avant de demander un nouveau code.');
         }
 
@@ -609,7 +614,7 @@ class DossierExistantService
         // une donnée académique ; le changement reste protégé par la
         // double preuve, audité et notifié aux deux adresses). Un dossier
         // rejeté exige la réouverture par la scolarité.
-        $this->controlerGardesChangementEmail($etudiant, $normalise);
+        $this->controlerGardesChangementEmail($etudiant, $normalise, 'changement');
 
         if (RateLimiter::tooManyAttempts($this->cleRenvoiEmail($etudiant), 1)) {
             throw new RuntimeException('Un code vient déjà d\'être envoyé. Patientez avant de demander un nouveau code.');
@@ -633,7 +638,10 @@ class DossierExistantService
             // (`$etudiant->notify()` → adresse enregistrée). La nouvelle
             // adresse ne reçoit rien à ce stade.
             $etudiant->notify(new CodeConfirmationChangementEmail($code, (int) (self::DUREE_CODE_EMAIL / 60)));
-        } catch (Throwable) {
+        } catch (Throwable $e) {
+            // Trace sans donnée personnelle : le message brut d'une
+            // erreur SMTP peut citer l'adresse du destinataire.
+            Log::warning('dossier_existant.code_email_transport_echec', ['classe' => $e::class]);
             Cache::forget($this->cleCodeEmail($etudiant));
 
             throw new RuntimeException('Envoi du code de confirmation impossible. Vérifiez votre adresse actuelle et réessayez.');
@@ -736,7 +744,7 @@ class DossierExistantService
             throw new RuntimeException('Cette adresse est déjà celle enregistrée sur votre dossier.');
         }
 
-        $this->controlerGardesChangementEmail($dossier, $normalise);
+        $this->controlerGardesChangementEmail($dossier, $normalise, 'nouvelle_adresse');
 
         if (RateLimiter::tooManyAttempts($this->cleRenvoiEmailNouvelle($dossier), 1)) {
             throw new RuntimeException('Un code vient déjà d\'être envoyé à votre nouvelle adresse. Patientez avant de demander un nouveau code.');
@@ -764,7 +772,8 @@ class DossierExistantService
             Notification::route('mail', $normalise)->notify(
                 new CodeConfirmationNouvelleAdresse($code, (int) (self::DUREE_CODE_EMAIL_NOUVELLE / 60))
             );
-        } catch (Throwable) {
+        } catch (Throwable $e) {
+            Log::warning('dossier_existant.code_email_nouvelle_adresse_echec', ['classe' => $e::class]);
             Cache::forget($this->cleCodeEmailNouvelle($dossier));
             // La première preuve a été consommée : sans cette libération,
             // l'étudiant devrait attendre le délai de renvoi pour
@@ -946,23 +955,41 @@ class DossierExistantService
      *
      * @throws RuntimeException si le statut, la période ou l'unicité interdisent la poursuite
      */
-    private function controlerGardesChangementEmail(Etudiant $etudiant, string $emailNormalise): void
+    private function controlerGardesChangementEmail(Etudiant $etudiant, string $emailNormalise, string $flux): void
     {
         // Garde de statut : dossier en attente OU validé (l'email est une
         // coordonnée de contact, pas une donnée académique ; le changement
         // reste protégé par la double preuve, audité et notifié aux deux
         // adresses). Un dossier rejeté exige la réouverture par la scolarité.
         if (! in_array($etudiant->statut, ['en_attente', 'valide'], true)) {
+            $this->tracerRefus($flux, 'statut');
+
             throw new RuntimeException('Dossier non modifiable en ligne : contactez le service de la scolarité.');
         }
 
         if (! $this->periodeAutorisee($etudiant)) {
+            $this->tracerRefus($flux, 'periode_fermee');
+
             throw new RuntimeException("Période d'inscription fermée : modification en ligne indisponible.");
         }
 
         if ($this->emailUtiliseParAutre($emailNormalise, $etudiant->id)) {
+            $this->tracerRefus($flux, 'adresse_deja_utilisee');
+
             throw new RuntimeException('Cette adresse email est déjà utilisée par un autre dossier.');
         }
+    }
+
+    /**
+     * Trace un refus SURVENU AVANT tout envoi : flux + motif fermés, aucune
+     * donnée personnelle (ni CIN, ni adresse, ni mot de passe). La réponse
+     * faite au client reste strictement neutre (anti-oracle) — mais un code
+     * qui n'arrive pas doit toujours pouvoir s'expliquer côté exploitation :
+     * sans motif, un refus muet est indiscernable d'une panne de transport.
+     */
+    private function tracerRefus(string $flux, string $motif): void
+    {
+        Log::info('dossier_existant.refus', ['flux' => $flux, 'motif' => $motif]);
     }
 
     /**
@@ -1028,6 +1055,8 @@ class DossierExistantService
     public function demanderChangementAutonome(string $cin, string $dateNaissance, string $ancienEmail, string $motDePasse, string $nouvelEmail): ?string
     {
         if ($this->demandeAutonomeBloquee($cin, $dateNaissance)) {
+            $this->tracerRefus('autonome', 'limite_demandes');
+
             return null;
         }
 
@@ -1050,31 +1079,48 @@ class DossierExistantService
             || $ancienNormalise !== mb_strtolower(trim((string) $etudiant->email))
             || ! $motDePasseValide
         ) {
+            // Motif fermé : distingue, POUR L'EXPLOITATION SEULEMENT, une
+            // saisie à corriger d'un mot de passe erroné. La réponse au
+            // client, elle, reste identique dans tous les cas.
+            $this->tracerRefus('autonome', match (true) {
+                $etudiant === null => 'dossier_introuvable',
+                $ancienNormalise === '' || $ancienNormalise !== mb_strtolower(trim((string) $etudiant->email)) => 'ancienne_adresse',
+                default => 'mot_de_passe',
+            });
+
             return null;
         }
 
         $normalise = mb_strtolower(trim($nouvelEmail));
 
         if ($normalise === '' || ! str_contains($normalise, '@')) {
+            $this->tracerRefus('autonome', 'nouvelle_adresse_invalide');
+
             return null;
         }
 
         if ($normalise === mb_strtolower(trim((string) $etudiant->email))) {
+            $this->tracerRefus('autonome', 'nouvelle_adresse_identique');
+
             return null;
         }
 
         try {
-            $this->controlerGardesChangementEmail($etudiant, $normalise);
+            $this->controlerGardesChangementEmail($etudiant, $normalise, 'autonome');
         } catch (RuntimeException) {
             return null;
         }
 
         if (RateLimiter::tooManyAttempts($this->cleRenvoiAutonome($etudiant), 1)) {
+            $this->tracerRefus('autonome', 'cooldown_dossier');
+
             return null;
         }
 
         // Anti-mailbomb par destinataire (même candidate via des CIN multiples).
         if (RateLimiter::tooManyAttempts($this->cleRenvoiCandidat($normalise), 1)) {
+            $this->tracerRefus('autonome', 'cooldown_candidat');
+
             return null;
         }
 
@@ -1098,7 +1144,8 @@ class DossierExistantService
             Notification::route('mail', $normalise)->notify(
                 new CodeConfirmationNouvelleAdresse($code, (int) (self::DUREE_CODE_AUTONOME / 60))
             );
-        } catch (Throwable) {
+        } catch (Throwable $e) {
+            Log::warning('dossier_existant.code_autonome_transport_echec', ['classe' => $e::class]);
             Cache::forget($this->cleAutonome($jeton));
 
             return null;
@@ -1249,11 +1296,16 @@ class DossierExistantService
     /* ── Email final (après commit) ──────────────────────────────── */
 
     /**
-     * Envoi de l'email de confirmation APRÈS commit. Tolérant aux
-     * pannes : un échec d'envoi ne remet JAMAIS en cause
-     * l'enregistrement déjà validé ; l'état est journalisé (sans PII)
-     * et l'envoi reste récupérable (notification en file avec retries).
-     * Retourne vrai si l'envoi a été accepté/planifié.
+     * Envoi de l'email de confirmation APRÈS commit, appelé uniquement
+     * quand au moins un champ a réellement changé (une demande vide
+     * n'engendre aucun email — contrat produit). Tolérant aux pannes :
+     * un échec d'envoi ne remet JAMAIS en cause l'enregistrement déjà
+     * validé ; l'échec est tracé sans PII (rapport neutre, jamais le
+     * message brut du transport) et l'écran final distingue « demande
+     * enregistrée » de « email envoyé ». Envoi synchrone : la file
+     * `notifications` n'étant pas servie en permanence, un email en
+     * attente serait un email perdu. Retourne vrai si l'envoi a été
+     * effectué avec succès.
      */
     public function notifierConfirmation(Etudiant $etudiant, int $nbChampsModifies): bool
     {
@@ -1266,8 +1318,8 @@ class DossierExistantService
             return true;
         } catch (Throwable) {
             // Fail-soft : la source de vérité reste le dossier en base.
-            // La notification est en file (retries) ou le transport a
-            // échoué : journalisé, jamais bloquant.
+            // Trace neutre (jamais le message brut du transport : il
+            // contient l'adresse du destinataire).
             report(new RuntimeException('Email de confirmation de mise à jour non envoyé (dossier conservé).'));
 
             return false;

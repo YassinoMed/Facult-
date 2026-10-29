@@ -6,9 +6,16 @@ use App\Models\AnneeUniversitaire;
 use App\Models\Etudiant;
 use App\Models\Faculte;
 use App\Models\InscriptionAcademique;
+use App\Models\Matiere;
 use App\Models\Semestre;
 use App\Models\User;
+use App\Modules\Evaluation\Models\DecisionDeliberation;
+use App\Modules\Evaluation\Models\Deliberation;
+use App\Modules\Schedule\Models\Group;
+use App\Modules\Schedule\Models\Schedule;
+use App\Modules\Schedule\Models\ScheduleSlot;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
 /**
@@ -107,6 +114,25 @@ class TableauDeBordTest extends TestCase
             'decision' => 'Validé',
         ]);
 
+        // D-01 : le dashboard n'affiche un résultat que si la décision du
+        // jury est PUBLIÉE. La colonne `decision` de l'inscription est un
+        // calcul automatique, jamais une publication.
+        $deliberation = Deliberation::create([
+            'annee_universitaire_id' => $annee->id,
+            'statut' => 'published',
+            'published_at' => now(),
+        ]);
+        DecisionDeliberation::create([
+            'deliberation_id' => $deliberation->id,
+            'etudiant_id' => $etudiant->id,
+            'inscription_academique_id' => $inscription->id,
+            'moyenne' => 14.25,
+            'credits_obtenus' => 42,
+            'credits_total' => 60,
+            'decision' => 'admis',
+            'publie' => true,
+        ]);
+
         $reponse = $this->get(route('etudiant.dashboard'));
 
         $reponse->assertOk()
@@ -197,5 +223,66 @@ class TableauDeBordTest extends TestCase
         $stats = $reponse->original->getData()['stats'];
         $this->assertSame(1, $stats['total']);
         $reponse->assertDontSee('BK920002');
+    }
+
+    public function test_budget_requetes_dashboard_etudiant_sans_n_plus_un(): void
+    {
+        config(['modules.schedule.active' => true]);
+
+        $annee = AnneeUniversitaire::create([
+            'libelle' => '2026-2027', 'date_debut' => '2026-09-01', 'date_fin' => '2027-06-30', 'active' => true,
+        ]);
+        $groupe = Group::create([
+            'code' => 'G-INFO', 'nom' => 'Groupe Info', 'faculte_id' => $this->faculte->id, 'niveau' => 'L1', 'actif' => true,
+        ]);
+        $etudiant = $this->creerEtudiant($this->faculte, 'BK990001', 'valide');
+        $etudiant->update(['groupe_id' => $groupe->id]);
+        $this->connecterEtudiant($etudiant);
+
+        InscriptionAcademique::create([
+            'etudiant_id' => $etudiant->id,
+            'annee_universitaire_id' => $annee->id,
+            'niveau' => 'L1',
+            'filiere' => 'Informatique',
+            'statut' => 'valide',
+            'moyenne_annuelle' => 15.0,
+            'credits_obtenus' => 60,
+            'credits_total' => 60,
+        ]);
+
+        $matiere = Matiere::create(['code' => 'ALGO-1', 'nom' => 'Algorithmique', 'niveau' => 'L1', 'semestre' => 1]);
+        $planning = Schedule::create([
+            'nom' => 'Planning L1',
+            'groupe_id' => $groupe->id,
+            'annee_universitaire_id' => $annee->id,
+            'semestre' => 1,
+            'statut' => 'publie',
+            'actif' => true,
+        ]);
+
+        $jour = strtolower(now()->format('l'));
+        foreach (['08:30:00', '10:30:00', '14:00:00'] as $debut) {
+            ScheduleSlot::create([
+                'schedule_id' => $planning->id,
+                'matiere_id' => $matiere->id,
+                'day_of_week' => $jour,
+                'start_time' => $debut,
+                'end_time' => date('H:i:s', strtotime($debut) + 5400),
+                'type' => 'cours',
+                'status' => 'scheduled',
+            ]);
+        }
+
+        DB::enableQueryLog();
+
+        $reponse = $this->get(route('etudiant.dashboard'));
+        $reponse->assertOk()->assertSee('Bonjour Etudiant');
+
+        $requetes = DB::getQueryLog();
+        DB::disableQueryLog();
+
+        $requetesSchedule = array_filter($requetes, fn ($q) => str_contains($q['query'], 'schedules'));
+        $this->assertLessThanOrEqual(1, count($requetesSchedule), 'Le planning ne doit pas être interrogé deux fois.');
+        $this->assertLessThanOrEqual(22, count($requetes), 'Budget de requêtes du dashboard étudiant dépassé (mesure : '.count($requetes).', seuil : 22).');
     }
 }

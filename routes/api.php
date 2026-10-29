@@ -12,6 +12,7 @@ use App\Http\Controllers\Api\V1\ScheduleImportApiController;
 use App\Http\Controllers\Api\V1\StudentApiController;
 use App\Http\Controllers\Api\V1\WebhookController;
 use App\Modules\ParcoursAcademique\Controllers\ParcoursApiController;
+use App\Modules\StudentDossiers\Controllers\Api\StudentDossierApiController;
 use App\Modules\Versioning\Controllers\Api\VersioningApiController;
 use Illuminate\Support\Facades\Route;
 
@@ -80,6 +81,20 @@ Route::prefix('v1')->name('api.v1.')->group(function () {
             ->whereNumber('student')
             ->middleware('scope:documents:read', 'throttle:api')
             ->name('students.documents');
+
+        // ── Dossiers administratifs permanents (module StudentDossiers,
+        // lecture seule : métadonnées + documents, jamais storage_path) ──
+        Route::get('student-dossiers', [StudentDossierApiController::class, 'index'])
+            ->middleware('module:student-dossiers', 'scope:archives:read', 'throttle:api')
+            ->name('student-dossiers.index');
+        Route::get('student-dossiers/{dossier}', [StudentDossierApiController::class, 'show'])
+            ->whereNumber('dossier')
+            ->middleware('module:student-dossiers', 'scope:archives:read', 'throttle:api')
+            ->name('student-dossiers.show');
+        Route::get('student-dossiers/{dossier}/documents', [StudentDossierApiController::class, 'documents'])
+            ->whereNumber('dossier')
+            ->middleware('module:student-dossiers', 'scope:documents:read', 'throttle:api')
+            ->name('student-dossiers.documents');
 
         // ── Résultats académiques (Phase 6 §38, lecture moteur) ──
         Route::get('students/{student}/results', [StudentApiController::class, 'results'])

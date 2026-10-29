@@ -25,6 +25,7 @@ class Group extends Model
         'code', 'nom', 'faculte_id', 'niveau', 'filiere', 'actif',
         // Phase 2 (additif, nullable) : rattachement LMD + capacité (§15).
         'programme_id', 'niveau_id', 'annee_universitaire_id', 'capacite',
+        'capacite_illimitee',
     ];
 
     /**
@@ -32,7 +33,7 @@ class Group extends Model
      */
     protected function casts(): array
     {
-        return ['actif' => 'boolean'];
+        return ['actif' => 'boolean', 'capacite_illimitee' => 'boolean'];
     }
 
     /**
@@ -109,10 +110,25 @@ class Group extends Model
     }
 
     /**
-     * Capacité atteinte (null = illimitée).
+     * Capacité atteinte (null = illimitée — règle historique conservée ;
+     * voir modeCapacite() pour le triptyque documenté).
      */
     public function estComplet(): bool
     {
         return $this->capacite !== null && $this->effectifActuel() >= (int) $this->capacite;
+    }
+
+    /**
+     * Triptyque Data Mesh des capacités (lecture seule, sans effet moteur) :
+     * DEFINIE (capacité opposable), ILLIMITEE (décision métier explicite),
+     * INCONNUE (NULL sans décision — à confirmer, jamais inventée).
+     */
+    public function modeCapacite(): string
+    {
+        if ($this->capacite !== null) {
+            return 'DEFINIE';
+        }
+
+        return (bool) ($this->capacite_illimitee ?? false) ? 'ILLIMITEE' : 'INCONNUE';
     }
 }

@@ -16,6 +16,7 @@ use App\Services\Affectations\AssignmentConfirmationService;
 use App\Services\Affectations\AssignmentConstraintEngine;
 use App\Services\Affectations\AssignmentSimulationService;
 use App\Services\DataExchange\ValueNormalizer;
+use App\Services\Io\CsvSerializer;
 use DomainException;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -255,19 +256,20 @@ class AutomaticAssignmentController extends Controller
         abort_unless($request->user()->hasPermission('data.export'), 403);
 
         return response()->streamDownload(function () use ($simulation) {
+            $csv = app(CsvSerializer::class);
             $sortie = fopen('php://output', 'w');
             fwrite($sortie, "\xEF\xBB\xBF");
-            fputcsv($sortie, ['matricule', 'nom', 'prenom', 'groupe_propose', 'statut', 'raison'], ';');
+            fputcsv($sortie, $csv->neutraliserLigne(['matricule', 'nom', 'prenom', 'groupe_propose', 'statut', 'raison']), ';');
 
-            AssignmentItem::where('simulation_id', $simulation->id)->with(['etudiant', 'groupePropose'])->chunkById(500, function ($items) use ($sortie) {
+            AssignmentItem::where('simulation_id', $simulation->id)->with(['etudiant', 'groupePropose'])->chunkById(500, function ($items) use ($sortie, $csv) {
                 foreach ($items as $item) {
-                    fputcsv($sortie, [
+                    fputcsv($sortie, $csv->neutraliserLigne([
                         ValueNormalizer::celluleExport((string) ($item->etudiant?->num_inscription ?? '')),
                         $item->etudiant?->nom, $item->etudiant?->prenom,
                         $item->groupePropose?->code ?? '',
                         $item->statut,
                         mb_substr((string) $item->raison, 0, 200),
-                    ], ';');
+                    ]), ';');
                 }
             });
 

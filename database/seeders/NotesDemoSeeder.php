@@ -7,6 +7,7 @@ use App\Models\DossierAcademique;
 use App\Models\Etudiant;
 use App\Models\Faculte;
 use App\Models\Matiere;
+use App\Support\DemoData;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\Hash;
 
@@ -24,8 +25,8 @@ class NotesDemoSeeder extends Seeder
 
     public function run(): void
     {
-        if (! app()->environment('local', 'testing')) {
-            $this->command?->warn('NotesDemoSeeder ignoré (environnement non local).');
+        if (! DemoData::autorisee()) {
+            $this->command?->warn('NotesDemoSeeder ignoré (SEED_DEMO_DATA non activé).');
 
             return;
         }

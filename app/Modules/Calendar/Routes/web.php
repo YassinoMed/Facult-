@@ -24,3 +24,7 @@ Route::middleware(['auth', 'admin', 'secondaire.verrou', 'module:calendar'])->pr
 Route::middleware(['etudiant.auth', 'module:calendar'])->prefix('etudiant')->name('etudiant.')->group(function () {
     Route::get('calendrier', [CalendrierController::class, 'agenda'])->name('calendrier.agenda');
 });
+
+Route::middleware(['enseignant.auth', 'module:calendar'])->prefix('enseignant')->name('enseignant.')->group(function () {
+    Route::get('calendrier', [CalendrierController::class, 'agendaEnseignant'])->name('calendrier.agenda');
+});

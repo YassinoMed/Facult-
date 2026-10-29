@@ -50,6 +50,15 @@ Route::middleware(['auth', 'admin', 'secondaire.verrou', 'module:online-requests
         ->middleware(['can:demandes.pdf', 'throttle:20,1'])
         ->name('demandes.document.download');
 
+    // Délégations de l'autorité de validation (LOT 01) : fenêtre bornée,
+    // révocable — gérées par les titulaires de l'affectation.
+    Route::post('demandes/delegations', [OnlineRequestController::class, 'deleguer'])
+        ->middleware(['can:demandes.assign', 'throttle:10,1'])
+        ->name('demandes.delegations.store');
+    Route::delete('demandes/delegations/{delegation}', [OnlineRequestController::class, 'revoquerDelegation'])
+        ->middleware(['can:demandes.assign', 'throttle:10,1'])
+        ->name('demandes.delegations.destroy');
+
     // Catalogue des services (Phase 9 §41) : configuration globale.
     Route::get('demandes-types', [RequestTypeController::class, 'index'])
         ->middleware('can:configuration.manage')

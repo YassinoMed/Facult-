@@ -3,6 +3,7 @@
 namespace App\Modules\StudentDossiers\Services\Pdf;
 
 use App\Modules\StudentDossiers\Contracts\PdfGeneratorInterface;
+use App\Support\ArabicPdfShaper;
 use Dompdf\Dompdf;
 use Dompdf\Options;
 
@@ -12,8 +13,8 @@ use Dompdf\Options;
  * (isRemoteEnabled=false) : aucune ressource distante, aucun appel
  * réseau pendant la génération.
  *
- * Limite documentée : pas de mise en forme contextuelle arabe
- * (ligatures) — glyphes via DejaVu Sans, texte arabe préservé tel quel.
+ * Support arabe complet : mise en forme contextuelle des glyphes (Presentation
+ * Forms-B) et réordonnancement BiDi automatique via ArabicPdfShaper.
  *
  * Flux non compressés (`compress => 0`) : structure du document
  * inspectable. Note : DejaVu Sans est sous-ensemblées, le texte des
@@ -25,6 +26,8 @@ class DompdfPdfGenerator implements PdfGeneratorInterface
 {
     public function generer(string $html, array $options = []): string
     {
+        $html = ArabicPdfShaper::preparerHtmlPourDompdf($html);
+
         $config = new Options([
             'defaultFont' => 'DejaVu Sans',
             'isRemoteEnabled' => false,

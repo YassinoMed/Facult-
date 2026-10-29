@@ -15,6 +15,7 @@ use App\Modules\Evaluation\Models\Epreuve;
 use App\Modules\Evaluation\Models\EvaluationCompostage;
 use App\Modules\Evaluation\Models\Examen;
 use App\Modules\Evaluation\Models\NoteEpreuve;
+use App\Modules\Evaluation\Models\NoteEpreuveHistorique;
 use App\Modules\Evaluation\Models\SessionExamen;
 use App\Modules\Referentiel\Models\Departement;
 use App\Modules\Referentiel\Models\Niveau;
@@ -147,6 +148,31 @@ class EnseignantNotesTest extends TestCase
         Candidat::create(['epreuve_id' => $this->epreuveMienne->id, 'etudiant_id' => $this->etudiant2->id, 'statut' => 'present']);
     }
 
+    public function test_saisie_enseignant_refuse_trois_decimales_puis_bareme_nul(): void
+    {
+        $this->sessionEnseignant($this->enseignant)
+            ->get(route('enseignant.notes.saisie', $this->epreuveMienne))
+            ->assertOk();
+
+        $numero = EvaluationCompostage::where('epreuve_id', $this->epreuveMienne->id)->firstOrFail()->numero;
+
+        $this->sessionEnseignant($this->enseignant)
+            ->post(route('enseignant.notes.store', $this->epreuveMienne), [
+                'lignes' => [['numero' => $numero, 'valeur' => 12.345]],
+            ])
+            ->assertSessionHasErrors('lignes.0.valeur');
+
+        $this->epreuveMienne->forceFill(['note_max' => 0])->save();
+
+        $this->sessionEnseignant($this->enseignant)
+            ->post(route('enseignant.notes.store', $this->epreuveMienne), [
+                'lignes' => [['numero' => $numero, 'valeur' => 10]],
+            ])
+            ->assertSessionHasErrors('lignes.0.valeur');
+
+        $this->assertEquals(0, NoteEpreuve::where('epreuve_id', $this->epreuveMienne->id)->count());
+    }
+
     private function creerEnseignant(Faculte $faculte): Teacher
     {
         $departement = Departement::create([
@@ -226,8 +252,12 @@ class EnseignantNotesTest extends TestCase
             ->assertSessionHas('success');
 
         $this->assertEquals(2, NoteEpreuve::where('epreuve_id', $this->epreuveMienne->id)->count());
-        // Auteur portail : aucun compte back-office imputé.
+        // Auteur portail : aucun compte back-office imputé, mais historique tracé.
         $this->assertTrue(NoteEpreuve::where('epreuve_id', $this->epreuveMienne->id)->whereNull('saisi_par')->exists());
+        $note = NoteEpreuve::where('epreuve_id', $this->epreuveMienne->id)->first();
+        $historique = NoteEpreuveHistorique::where('evaluation_note_id', $note->id)->first();
+        $this->assertNotNull($historique);
+        $this->assertStringContainsString('Enseignant', (string) $historique->motif);
     }
 
     public function test_saisie_refuse_note_hors_bornes_et_epreuve_verrouillee(): void
@@ -277,6 +307,15 @@ class EnseignantNotesTest extends TestCase
             ->assertSessionHas('success');
 
         $this->assertEquals(2, NoteEpreuve::where('epreuve_id', $this->epreuveMienne->id)->count());
+
+        // Test délimiteur alternatif point-virgule (;)
+        $csvPv = "numero;note\n{$numeros[0]};16\n{$numeros[1]};13\n";
+        $fichierPv = UploadedFile::fake()->createWithContent('notes_pv.csv', $csvPv);
+
+        $this->sessionEnseignant($this->enseignant)
+            ->post(route('enseignant.notes.importer', $this->epreuveMienne), ['fichier' => $fichierPv])
+            ->assertSessionHasNoErrors()
+            ->assertSessionHas('success');
 
         $csvPiege = "numero,note,nom\n{$numeros[0]},15,Dupont\n";
         $piege = UploadedFile::fake()->createWithContent('piege.csv', $csvPiege);

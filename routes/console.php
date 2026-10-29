@@ -16,6 +16,12 @@ Schedule::command('exports:purge')->hourly();
 Schedule::command('demandes:verifier-sla')->dailyAt('07:30');
 Schedule::command('notifications:purger')->weekly();
 
+// LOT 02 — reprise de l'outbox : échecs d'acheminement externe et jobs perdus.
+Schedule::command('notifications:reprendre-echecs')->everyThirtyMinutes();
+
+// LOT 03 — Data Mesh Outbox : publication périodique des événements et rejeu des échecs.
+Schedule::command('datamesh:outbox-publier --retenter')->everyFiveMinutes();
+
 // Phases 7-9 — Génération quotidienne des tâches (idempotente)
 Schedule::command('taches:generer')->dailyAt('06:30');
 
@@ -52,6 +58,19 @@ Schedule::command('periodes:avertir')->dailyAt('07:45');
 
 // Phase 10 — Préchauffage quotidien du cache BI (heures creuses)
 Schedule::command('bi:prewarmer')->dailyAt('04:30');
+
+// LOT 03 — Registre des définitions KPI : dérive documentaire versionnée
+// + snapshot de valeur du périmètre BI. Commande fail-soft (registre
+// absent = avertissement), juste après le préchauffage.
+Schedule::command('bi:synchroniser-kpi-definitions')->dailyAt('04:40');
+
+// LOOP 20 — Contrôle en LECTURE SEULE de la cohérence des associations
+// compétence ↔ programme/UE/ECUE (module référentiel actif uniquement).
+// Aucune correction automatique : les anomalies sont listées et loguées
+// pour une intervention humaine.
+Schedule::command('competences:coherence')
+    ->dailyAt('05:40')
+    ->when(fn () => (bool) config('modules.referentiel.active', false));
 
 // Sauvegardes planifiées (horaire par défaut, configurable) : l'évaluateur
 // décide, verrouille et délègue au job — jamais d'exécution concurrente.

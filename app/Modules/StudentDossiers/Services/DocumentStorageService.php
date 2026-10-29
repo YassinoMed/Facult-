@@ -26,19 +26,28 @@ class DocumentStorageService
      *
      * @return array{storage_path: string, mime_type: string, extension: string, size: int, sha256: string, original_filename: string}
      */
-    public function stocker(UploadedFile $fichier, int $etudiantId, string $annee, string $categorie): array
-    {
+    public function stocker(
+        UploadedFile $fichier,
+        int $etudiantId,
+        string $annee,
+        string $categorie,
+        string $racine = 'student-dossiers',
+    ): array {
         $this->valider($fichier, $categorie);
 
         // Segments de chemin blanchisés : aucune valeur BD ne doit pouvoir
         // faire sortir du répertoire (traversal si donnée corrompue).
+        // LOOP-UNIREGISTRE-INSCRIPTIONS-PAIEMENTS-01 : la racine reste
+        // paramétrable pour isoler les reçus de paiement des pièces
+        // permanentes, sans dupliquer la validation profonde.
+        $segmentRacine = preg_replace('/[^a-z0-9_-]/i', '', $racine) ?: 'documents';
         $segmentAnnee = preg_match('/^\d{4}-\d{4}$/', trim($annee)) === 1 ? trim($annee) : 'sans-annee';
         $segmentCategorie = preg_replace('/[^a-z0-9_-]/i', '', $categorie) ?: 'divers';
 
         $extension = mb_strtolower($fichier->getClientOriginalExtension());
         $nomInterne = Str::uuid()->toString().'.'.$extension;
         $chemin = implode('/', [
-            'student-dossiers',
+            $segmentRacine,
             $segmentAnnee,
             (string) $etudiantId,
             $segmentCategorie,
@@ -54,13 +63,17 @@ class DocumentStorageService
             'storage_path' => $chemin,
             'sha256' => $sha256,
             'size' => strlen($contenu),
+            'disk' => 'private',
+            'categorie' => $categorie,
         ]);
 
         if (! $resultat->sain) {
+            // Jamais de fichier refusé ou non analysé dans le dossier.
             Storage::disk('private')->delete($chemin);
 
+            $detail = $resultat->signature ?? $resultat->erreur;
             throw new RuntimeException(
-                'Document refusé par l\'analyse antivirus'.($resultat->signature !== null ? " ({$resultat->signature})." : '.')
+                'Document refusé par l\'analyse antivirus'.($detail !== null ? " ({$detail})." : '.')
             );
         }
 
@@ -82,6 +95,44 @@ class DocumentStorageService
     public function existe(string $chemin): bool
     {
         return Storage::disk('private')->exists($chemin);
+    }
+
+    /**
+     * Taille réelle du fichier privé, ou null s'il est absent/illisible.
+     * LOOP-UNIREGISTRE-DOCUMENTS-REUTILISABLES-01 : sert à vérifier
+     * qu'un document réutilisé est toujours physiquement lisible (la
+     * métadonnée seule ne prouve jamais la présence du fichier).
+     */
+    public function taille(string $chemin): ?int
+    {
+        if (! $this->existe($chemin)) {
+            return null;
+        }
+
+        try {
+            return (int) Storage::disk('private')->size($chemin);
+        } catch (\Throwable) {
+            return null;
+        }
+    }
+
+    /**
+     * Empreinte SHA-256 du fichier privé, ou null s'il est absent/illisible.
+     * LOOP-UNIREGISTRE-DOCUMENTS-REUTILISABLES-01 : garantit que le fichier
+     * réutilisé est exactement celui qui a été validé (pas seulement une
+     * taille identique).
+     */
+    public function empreinte(string $chemin): ?string
+    {
+        if (! $this->existe($chemin)) {
+            return null;
+        }
+
+        try {
+            return hash('sha256', (string) Storage::disk('private')->get($chemin));
+        } catch (\Throwable) {
+            return null;
+        }
     }
 
     /**

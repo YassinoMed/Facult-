@@ -330,12 +330,14 @@ class InscriptionParcoursCompletBoutEnBoutTest extends TestCase
         $respCorrections->assertOk();
         $respCorrections->assertSee('prenom');
 
-        // 3. L'étudiant soumet la correction requise
+        // 3. L'étudiant soumet la correction requise — la certification sur
+        // l'honneur reste obligatoire (contrôle serveur `required|accepted`).
         $respSoumettre = $this->withSession(['etudiant_auth_id' => $etudiant->id])
             ->post(route('etudiant.corrections.store'), [
                 'champs' => [
                     'prenom' => 'Selma',
                 ],
+                'attestation_honneur' => '1',
             ]);
         $respSoumettre->assertRedirect(route('etudiant.suivi'));
 

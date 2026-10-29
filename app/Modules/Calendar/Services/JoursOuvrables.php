@@ -69,6 +69,31 @@ class JoursOuvrables
         return $this->compterOuvres($depuis, $echeance, $chomes);
     }
 
+    /**
+     * Ajoute N jours ouvrés à une date de départ (SLA en jours ouvrés).
+     *
+     * Le jour de départ n'est jamais compté : une demande créée vendredi
+     * avec un SLA d'un jour ouvre l'échéance au lundi suivant (ou au
+     * premier jour ouvré après les jours fériés/vacances publiés).
+     */
+    public function ajouterJoursOuvres(string $depart, int $nbJours): string
+    {
+        $jour = Carbon::parse($depart)->startOfDay();
+        $restants = max(0, $nbJours);
+        $limite = $jour->copy()->addDays(732);
+        $chomes = $this->joursChomes($jour->format('Y-m-d'), $limite->format('Y-m-d'));
+
+        while ($restants > 0 && $jour->lessThanOrEqualTo($limite)) {
+            $jour->addDay();
+
+            if (! $jour->isWeekend() && ! in_array($jour->format('Y-m-d'), $chomes, true)) {
+                $restants--;
+            }
+        }
+
+        return $jour->format('Y-m-d');
+    }
+
     /** @param array<int, string> $chomes */
     private function compterOuvres(string $debut, string $fin, array $chomes): int
     {

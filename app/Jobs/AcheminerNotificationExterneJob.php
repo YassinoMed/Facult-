@@ -48,11 +48,11 @@ class AcheminerNotificationExterneJob implements ShouldQueue
         try {
             $canal->envoyer($notification);
 
-            $data['statut_envoi'] = 'envoye';
+            $data['statut_envoi'] = CanalNotificationExterneInterface::STATUT_ENVOYE;
             $data['erreur'] = null;
             $notification->update(['data' => $data]);
         } catch (Throwable $e) {
-            $data['statut_envoi'] = 'echec';
+            $data['statut_envoi'] = CanalNotificationExterneInterface::STATUT_ECHEC;
             $data['erreur'] = mb_substr($e->getMessage(), 0, 255);
             $notification->update(['data' => $data]);
 
@@ -72,7 +72,7 @@ class AcheminerNotificationExterneJob implements ShouldQueue
         $notification = AppNotification::find($this->notificationId);
         if ($notification !== null) {
             $data = $notification->data ?? [];
-            $data['statut_envoi'] = 'echec_definitif';
+            $data['statut_envoi'] = CanalNotificationExterneInterface::STATUT_ECHEC_DEFINITIF;
             $data['erreur'] = $exception !== null ? mb_substr($exception->getMessage(), 0, 255) : 'Échec définitif d\'envoi.';
             $notification->update(['data' => $data]);
         }

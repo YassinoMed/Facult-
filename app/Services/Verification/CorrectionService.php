@@ -44,6 +44,14 @@ final class CorrectionService
      */
     public function reglesChampCorrigeable(Etudiant $etudiant): array
     {
+        // P1 : un groupe cible ne doit jamais appartenir à une autre faculté.
+        // Le filtre n'est ajouté que si la faculté de l'étudiant est connue.
+        $regleGroupe = Rule::exists('groups', 'id');
+
+        if ($etudiant->faculte_id !== null) {
+            $regleGroupe->where('faculte_id', $etudiant->faculte_id);
+        }
+
         return [
             'nom' => ['nullable', 'string', 'max:100'],
             'prenom' => ['nullable', 'string', 'max:100'],
@@ -53,7 +61,7 @@ final class CorrectionService
             'sexe' => ['nullable', 'string', 'in:M,F'],
             'date_naissance' => ['nullable', 'date', 'before:today'],
             'adresse' => ['nullable', 'string', 'max:500'],
-            'groupe_id' => ['nullable', 'integer', Rule::exists('groups', 'id')],
+            'groupe_id' => ['nullable', 'integer', $regleGroupe],
             'statut' => ['nullable', 'string', 'in:'.implode(',', Etudiant::STATUTS)],
         ];
     }
@@ -152,11 +160,47 @@ final class CorrectionService
             throw new DomainException('Aucune cible explicite (programme, niveau ou type) : la correction doit nommer ce qui change.');
         }
 
-        if (isset($cibles['niveau_id']) && isset($cibles['programme_id'])) {
-            $programme = Programme::findOrFail((int) $cibles['programme_id']);
-            $niveau = Niveau::findOrFail((int) $cibles['niveau_id']);
-            abort_unless((int) $niveau->programme_id === (int) $programme->id, 422,
-                'Le niveau cible doit appartenir au programme cible.');
+        $etudiant = $inscription->etudiant;
+
+        if ($etudiant === null) {
+            throw new DomainException('Dossier étudiant introuvable pour cette inscription.');
+        }
+
+        // P1 : le programme et le niveau cibles doivent rester dans la
+        // faculté de l'étudiant. Un ID valide d'une autre faculté ne doit
+        // jamais permettre un rattachement hors périmètre.
+        $programme = null;
+
+        if (isset($cibles['programme_id'])) {
+            $programme = Programme::find((int) $cibles['programme_id']);
+
+            if ($programme === null) {
+                throw new DomainException('Programme cible introuvable.');
+            }
+
+            if ((int) $programme->faculte_id !== (int) $etudiant->faculte_id) {
+                throw new DomainException('Le programme cible n’appartient pas à la faculté de l’étudiant.');
+            }
+        }
+
+        $niveau = null;
+
+        if (isset($cibles['niveau_id'])) {
+            $niveau = Niveau::find((int) $cibles['niveau_id']);
+
+            if ($niveau === null) {
+                throw new DomainException('Niveau cible introuvable.');
+            }
+
+            $programmeNiveau = $niveau->programme;
+
+            if ($programmeNiveau === null || (int) $programmeNiveau->faculte_id !== (int) $etudiant->faculte_id) {
+                throw new DomainException('Le niveau cible n’appartient pas à la faculté de l’étudiant.');
+            }
+
+            if ($programme !== null && (int) $niveau->programme_id !== (int) $programme->id) {
+                throw new DomainException('Le niveau cible doit appartenir au programme cible.');
+            }
         }
 
         $nouvelle = json_encode($cibles, JSON_UNESCAPED_UNICODE);

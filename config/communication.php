@@ -12,6 +12,25 @@
 return [
     'dedup_minutes' => 60,
 
+    /*
+    |--------------------------------------------------------------------------
+    | LOT 02 — reprise de l'outbox : app_notifications.data.statut_envoi est
+    | la file durable d'acheminement externe. Le scan reprend les `echec`,
+    | `echec_definitif` et `en_attente` oubliés (jamais les `envoye`).
+    | Un envoi repris dans cette fenêtre de fraîcheur est ignoré au passage
+    | courant (l'échec vient de se reproduire) — débit borné.
+    |--------------------------------------------------------------------------
+    */
+    'reprise' => [
+        'limite_par_scan' => 200,
+        // Âge minimal d'un statut candidat à la reprise (le défaut vient de
+        // se produire ⇒ on attend le prochain passage).
+        'staleness_minutes' => 60,
+        // Âge maximal : au-delà, l'échec devient une affaire d'opérations
+        // (jamais de martèlement automatique d'une passerelle morte).
+        'anciennete_max_heures' => 48,
+    ],
+
     'evenements' => [
         'deliberation.publiee' => [
             'gabarit' => 'deliberation.publiee',

@@ -51,7 +51,9 @@
         </form>
 
         <p class="mt-5 text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
-            Compte activé par votre scolarité. En cas d'oubli du mot de passe, contactez la scolarité de votre faculté.
+            Compte activé par votre scolarité.
+            <a href="{{ route('enseignant.mot-de-passe.oublie') }}" class="font-bold text-indigo-700 dark:text-indigo-300 underline underline-offset-2">Mot de passe oublié ?</a>
+            Sinon, contactez la scolarité de votre faculté.
         </p>
     </div>
 </div>

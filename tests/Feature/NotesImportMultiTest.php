@@ -391,6 +391,31 @@ class NotesImportMultiTest extends TestCase
         $this->assertSame(1, NoteEpreuve::where('epreuve_id', $epreuve->id)->count());
     }
 
+    public function test_mode_creer_refuse_une_note_existante(): void
+    {
+        $epreuve = $this->creerEpreuve();
+        $etudiant = $this->creerCandidat($epreuve, 'MFMODE001');
+        [$numero] = explode(',', $this->numeros($epreuve, $etudiant));
+
+        app(SaisieNoteService::class)->saisirLot(
+            $epreuve,
+            [['etudiant_id' => $etudiant->id, 'valeur' => 12]],
+            $this->admin->id
+        );
+
+        $fichier = UploadedFile::fake()->createWithContent(
+            'notes.csv', "compostage,note\n{$numero},16\n"
+        );
+
+        $token = $this->extraireToken($this->preview($epreuve, $fichier));
+
+        $this->confirmer($epreuve, $token, 'creer')->assertSessionHasErrors('fichier');
+        $this->assertEquals(
+            12.00,
+            (float) NoteEpreuve::where('epreuve_id', $epreuve->id)->firstOrFail()->valeur
+        );
+    }
+
     // ── XLSX ──────────────────────────────────────────────
 
     public function test_xlsx_valide(): void
@@ -753,6 +778,8 @@ class NotesImportMultiTest extends TestCase
                     'pic_memoire='.round(memory_get_peak_usage(true) / 1048576, 1)."Mo (FILE+JOB)\n"
                 );
 
+                $this->assertLessThan(1500, $requetesConfirm, "Import {$volume} lignes : budget de requêtes dépassé.");
+
                 continue;
             }
 
@@ -768,6 +795,7 @@ class NotesImportMultiTest extends TestCase
                 'pic_memoire='.round(memory_get_peak_usage(true) / 1048576, 1)."Mo\n"
             );
 
+            $this->assertLessThan(1500, $requetesConfirm, "Import {$volume} lignes : budget de requêtes dépassé.");
             $this->assertSame($volume, NoteEpreuve::where('epreuve_id', $epreuve->id)->count());
             $this->assertLessThan(120, $duree, "Import {$volume} lignes trop lent.");
         }

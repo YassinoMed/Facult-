@@ -65,9 +65,10 @@ class ListeEtudiantsService
         $faculteId = $utilisateur?->faculteRestreinteId()
             ?? (isset($filtres['faculte_id']) ? (int) $filtres['faculte_id'] : null);
 
-        if ($faculteId !== null && $utilisateur?->faculteRestreinteId() !== null) {
-            $query->where('faculte_id', $faculteId);
-        } elseif ($faculteId !== null && $utilisateur?->estSuperAdmin()) {
+        // Le filtre faculté s'applique à tous les profils : pour un compte
+        // restreint la valeur est forcée côté contrôleur, pour un compte
+        // central elle reste un simple filtre (sous-ensemble de son accès).
+        if ($faculteId !== null) {
             $query->where('faculte_id', $faculteId);
         }
 

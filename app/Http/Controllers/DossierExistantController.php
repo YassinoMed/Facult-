@@ -16,9 +16,11 @@ use App\Services\PeriodeInscriptionService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Session;
 use Illuminate\View\View;
 use RuntimeException;
+use Symfony\Component\Mailer\Exception\TransportExceptionInterface;
 use Throwable;
 
 /**
@@ -30,8 +32,11 @@ use Throwable;
  * email de confirmation envoyé après commit.
  *
  * Garanties :
- * - aucune donnée du dossier ne quitte le serveur avant la vérification
- *   du code (réponses neutres et identiques, anti-énumération) ;
+ * - aucune donnée SENSIBLE du dossier ne quitte le serveur avant la
+ *   vérification du code : le parcours canonique par redirection reste
+ *   strictement neutre et identique (anti-énumération). Seul le popup
+ *   embarqué reçoit l'email MASQUÉ à l'étape « code » (oracle
+ *   d'existence partiel assumé, voir `rechercher`) ;
  * - pas de session authentifiée générale : uniquement une autorisation
  *   temporaire, liée à CE dossier et à CE parcours, expirante et à
  *   usage unique (consumption atomique en cache) ;
@@ -69,19 +74,36 @@ class DossierExistantController extends Controller
     }
 
     /**
-     * Recherche du dossier : la réponse est STRICTEMENT IDENTIQUE
-     * (message neutre) qu'un dossier corresponde ou non — un tiers ne
-     * peut pas confirmer l'existence d'un dossier à partir de cette
-     * étape. Le code n'est envoyé qu'à l'adresse déjà enregistrée.
+     * Recherche du dossier.
+     *
+     * Parcours canonique (redirection, sans JavaScript) : la réponse
+     * reste STRICTEMENT IDENTIQUE qu'un dossier corresponde ou non,
+     * afin de ne pas offrir d'oracle d'existence.
+     *
+     * Popup embarqué (JSON) : le contrôle CIN + date de naissance est
+     * bloquant AVANT l'étape « code ». Si le couple ne correspond à
+     * aucun dossier, la réponse 422 conserve l'utilisateur sur
+     * l'identification et aucun code n'est envoyé. Ce parcours assume
+     * un oracle d'existence partiel (déjà présent via l'email masqué
+     * de l'étape suivante) ; le parcours canonique reste neutre.
      */
     public function rechercher(VerifierCinRequest $request): RedirectResponse|JsonResponse
     {
         $cin = $request->validated('cin');
         $dateNaissance = $request->validated('date_naissance');
 
-        // Limiteur par identité : au-delà du plafond, réponse identique
-        // et silencieuse (aucun oracle, aucun envoi supplémentaire).
+        // Limiteur par identité : au-delà du plafond, réponse neutre
+        // pour le parcours canonique, 429 explicite pour le popup.
         if ($this->service->rechercheBloquee($cin, $dateNaissance)) {
+            if ($request->wantsJson()) {
+                return response()->json([
+                    'ok' => false,
+                    'etape' => 'identification',
+                    'identite_correspond' => false,
+                    'message' => 'Trop de tentatives de recherche. Patientez quelques minutes avant de réessayer.',
+                ], 429);
+            }
+
             return $this->retourAccueilCodeEnvoye();
         }
 
@@ -100,22 +122,55 @@ class DossierExistantController extends Controller
 
             try {
                 $this->service->envoyerCodeVerification($etudiant);
-            } catch (RuntimeException) {
+            } catch (TransportExceptionInterface $e) {
+                // Panne de transport (SMTP injoignable, authentification
+                // refusée…). Fail-soft : l'utilisateur peut re-demander.
+                // Exception AVANT `RuntimeException` : une exception de
+                // transport Symfony en est une. Jamais le message brut,
+                // qui peut citer le destinataire en clair.
+                Log::warning('dossier_existant.code_transport_echec', ['classe' => $e::class]);
+            } catch (RuntimeException $e) {
                 // Cooldown d'envoi ou dossier sans email exploitable :
                 // réponse inchangée (le message « code envoyé » reste
                 // exact si un code a réellement été émis récemment).
-            } catch (Throwable) {
-                // Fail-soft transport : l'utilisateur peut re-demander.
+                // Trace volontairement minimale (ni CIN, ni adresse).
+                Log::debug('dossier_existant.code_non_emis', ['classe' => $e::class]);
+            } catch (Throwable $e) {
+                // Anomalie non prévue : tracée sans donnée personnelle,
+                // réponse neutre maintenue (anti-oracle).
+                Log::warning('dossier_existant.code_echec_inattendu', ['classe' => $e::class]);
             }
         }
 
-        // Soumission embarquée (modal d'accueil, sans navigation) : même
-        // neutralité stricte en JSON (le message ne varie jamais).
+        // Soumission embarquée (modal d'accueil, sans navigation) : le
+        // message reste neutre. L'adresse d'envoi est transmise MASQUÉE
+        // pour l'étape « code » du popup ; elle n'est renseignée que si un
+        // dossier a été trouvé (oracle d'existence partiel assumé pour ce
+        // parcours embarqué — le parcours canonique par redirection reste,
+        // lui, strictement neutre).
         if ($request->wantsJson()) {
+            if ($etudiant === null) {
+                $message = 'Le CIN et la date de naissance ne correspondent à aucun dossier. Vérifiez votre saisie.';
+
+                return response()->json([
+                    'ok' => false,
+                    'etape' => 'identification',
+                    'identite_correspond' => false,
+                    'message' => $message,
+                    'errors' => ['identite' => [$message]],
+                ], 422);
+            }
+
             return response()->json([
                 'ok' => true,
                 'etape' => 'code',
-                'message' => 'Si un dossier correspondant à ces informations existe, un code de vérification à usage unique vient d\'être envoyé à l\'adresse email enregistrée sur ce dossier. Ce code est valable 10 minutes.',
+                'identite_correspond' => true,
+                // Ne jamais afficher « ****** » pour un dossier sans
+                // adresse exploitable : aucune ligne d'envoi dans ce cas.
+                'email_masque' => str_contains((string) $etudiant->email, '@')
+                    ? $etudiant->email_masque
+                    : null,
+                'message' => 'CIN et date de naissance vérifiés. Un code de vérification à usage unique vient d\'être envoyé à l\'adresse email enregistrée sur ce dossier. Ce code est valable 10 minutes.',
             ]);
         }
 
@@ -183,6 +238,13 @@ class DossierExistantController extends Controller
 
         // Traçabilité de la vérification d'identité (sans PII).
         $this->audit->tracer($etudiant, 'verification_identite_dossier_public', 'etudiant', $etudiant->id);
+
+        // Anti-fixation de session (LOOP-SECURITY-REMEDIATION-01) : la
+        // vérification du code est une ÉLÉVATION (jeton d'accès au dossier
+        // en session). L'identifiant de session est donc renouvelé — un
+        // identifiant fixé par un tiers ne peut pas hériter de
+        // l'autorisation. Les données de session sont conservées.
+        $request->session()->regenerate();
 
         Session::put(self::SESSION_JETON, $jeton);
         Session::forget(self::SESSION_RECHERCHE);
@@ -467,6 +529,11 @@ class DossierExistantController extends Controller
             $resultat['nouvel_email']
         );
 
+        // Hygiène de session après changement d'IDENTIFIANT (email) :
+        // l'email sert d'identifiant de connexion — nouvel ID de session
+        // (même règle que la mise à jour du mot de passe, audit §P3-22).
+        $request->session()->regenerate();
+
         if ($request->wantsJson()) {
             return response()->json([
                 'ok' => true,
@@ -507,6 +574,10 @@ class DossierExistantController extends Controller
         );
 
         if ($jeton !== null) {
+            // Anti-fixation de session : le jeton `email_change` est une
+            // élévation (identité prouvée par CIN + naissance + mot de
+            // passe) → nouvel identifiant de session.
+            $request->session()->regenerate();
             $request->session()->put(self::SESSION_JETON_AUTONOME, $jeton);
         }
 
@@ -578,6 +649,10 @@ class DossierExistantController extends Controller
             $resultat['ancien_email'],
             $resultat['nouvel_email']
         );
+
+        // Hygiène de session après changement d'IDENTIFIANT (email) :
+        // nouvel ID de session (audit §P3-22).
+        $request->session()->regenerate();
 
         if ($request->wantsJson()) {
             return response()->json([
@@ -672,8 +747,13 @@ class DossierExistantController extends Controller
 
         $nbChampsModifies = count($resultat['changements']);
 
-        // Email APRÈS commit uniquement ; échec non bloquant.
-        $emailAccuse = $this->service->notifierConfirmation($resultat['etudiant'], $nbChampsModifies);
+        // Email APRÈS commit uniquement, et uniquement si des champs ont
+        // réellement changé : une demande vide n'engendre aucun email
+        // (rien à confirmer) — l'écran final le dit explicitement.
+        // Échec non bloquant : la demande reste enregistrée.
+        $emailRequis = $nbChampsModifies > 0;
+        $emailAccuse = $emailRequis
+            && $this->service->notifierConfirmation($resultat['etudiant'], $nbChampsModifies);
 
         if ($request->wantsJson()) {
             return response()->json([
@@ -681,7 +761,9 @@ class DossierExistantController extends Controller
                 'confirmation' => [
                     'num_inscription' => $resultat['etudiant']->num_inscription,
                     'nb_champs_modifies' => $nbChampsModifies,
-                    'email_en_attente' => ! $emailAccuse,
+                    'email_requis' => $emailRequis,
+                    'email_envoye' => $emailAccuse,
+                    'email_en_attente' => $emailRequis && ! $emailAccuse,
                 ],
             ]);
         }
@@ -691,7 +773,7 @@ class DossierExistantController extends Controller
             ->with('dossier_existant.confirmation', [
                 'num_inscription' => $resultat['etudiant']->num_inscription,
                 'nb_champs_modifies' => $nbChampsModifies,
-                'email_en_attente' => ! $emailAccuse,
+                'email_en_attente' => $emailRequis && ! $emailAccuse,
             ]);
     }
 

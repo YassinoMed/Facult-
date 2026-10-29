@@ -10,11 +10,13 @@ use App\Http\Controllers\Admin\AuditController;
 use App\Http\Controllers\Admin\AuthController;
 use App\Http\Controllers\Admin\AutomaticAssignmentController;
 use App\Http\Controllers\Admin\BiController;
+use App\Http\Controllers\Admin\CentreTravailController;
 use App\Http\Controllers\Admin\CockpitController;
 use App\Http\Controllers\Admin\ConfigurationAcademiqueController;
 use App\Http\Controllers\Admin\CourrielController;
 use App\Http\Controllers\Admin\DashboardFaculteController;
 use App\Http\Controllers\Admin\DataExchangeController;
+use App\Http\Controllers\Admin\DataMeshController;
 use App\Http\Controllers\Admin\DocumentAcademiqueController;
 use App\Http\Controllers\Admin\DocumentCenterController;
 use App\Http\Controllers\Admin\EnseignantController;
@@ -58,7 +60,9 @@ use App\Http\Controllers\Admin\SystemeController;
 use App\Http\Controllers\Admin\TableauDeBordController;
 use App\Http\Controllers\Admin\VerificationController;
 use App\Http\Controllers\Admin\VueSauvegardeeController;
+use App\Http\Controllers\Auth\PortailMotDePasseController;
 use App\Http\Controllers\DossierExistantController;
+use App\Http\Controllers\Enseignant\CandidaturesRemplacementController;
 use App\Http\Controllers\Enseignant\ConnexionController as EnseignantConnexionController;
 use App\Http\Controllers\Enseignant\DemandeController as EnseignantDemandeController;
 use App\Http\Controllers\Enseignant\DocumentController as EnseignantDocumentController;
@@ -77,6 +81,7 @@ use App\Http\Controllers\Etudiant\SuiviDossierController as EtudiantSuiviDossier
 use App\Http\Controllers\Etudiant\TableauDeBordController as EtudiantTableauDeBordController;
 use App\Http\Controllers\InscriptionController;
 use App\Http\Controllers\NotificationController;
+use App\Http\Controllers\NotificationPreferencesController;
 use App\Http\Controllers\RecherchePortailController;
 use App\Http\Controllers\SuiviPublicController;
 use App\Http\Controllers\VerifyDocumentController;
@@ -276,6 +281,23 @@ Route::prefix('etudiant')->name('etudiant.')->group(function () {
         ->name('connexion.login');
     Route::post('deconnexion', [ConnexionController::class, 'logout'])->name('connexion.logout');
 
+    // Mot de passe oublié (portail étudiant) : token hashé, 60 min, usage
+    // unique, réponse générique et throttle HTTP + limite par e-mail.
+    Route::get('mot-de-passe/oublie', [PortailMotDePasseController::class, 'oublie'])
+        ->defaults('guard', 'etudiant')
+        ->name('mot-de-passe.oublie');
+    Route::post('mot-de-passe/lien', [PortailMotDePasseController::class, 'envoyerLien'])
+        ->middleware('throttle:5,1')
+        ->defaults('guard', 'etudiant')
+        ->name('mot-de-passe.envoyer');
+    Route::get('mot-de-passe/reinitialiser/{token}', [PortailMotDePasseController::class, 'reinitialiser'])
+        ->defaults('guard', 'etudiant')
+        ->name('mot-de-passe.reinitialiser');
+    Route::post('mot-de-passe/reinitialiser', [PortailMotDePasseController::class, 'enregistrer'])
+        ->middleware('throttle:5,1')
+        ->defaults('guard', 'etudiant')
+        ->name('mot-de-passe.enregistrer');
+
     // Espace authentifié : son dossier uniquement (session-scoped, anti-IDOR)
     Route::middleware('etudiant.auth')->group(function () {
         Route::get('tableau-de-bord', [EtudiantTableauDeBordController::class, 'index'])->name('dashboard');
@@ -289,6 +311,14 @@ Route::prefix('etudiant')->name('etudiant.')->group(function () {
         Route::get('notifications', [NotificationController::class, 'indexEtudiant'])->name('notifications.index');
         Route::patch('notifications/{notification}/lire', [NotificationController::class, 'lireEtudiant'])->name('notifications.lire');
         Route::post('notifications/lire-tout', [NotificationController::class, 'toutLireEtudiant'])->name('notifications.lire-tout');
+        // LOT 02 — préférences de notification : exposition HTTP enfin
+        // effective de PreferenceNotificationService::definir(), opt-out
+        // par catégorie, catégories institutionnelles forcées.
+        Route::get('notifications/preferences', [NotificationPreferencesController::class, 'afficher'])
+            ->name('notifications.preferences');
+        Route::post('notifications/preferences', [NotificationPreferencesController::class, 'mettreAJour'])
+            ->middleware('throttle:20,1')
+            ->name('notifications.preferences.update');
         Route::get('profil', [ProfilController::class, 'show'])->name('profil.show');
         Route::get('profil/modifier', [ProfilController::class, 'edit'])->name('profil.edit');
         Route::patch('profil', [ProfilController::class, 'update'])
@@ -369,9 +399,37 @@ Route::prefix('enseignant')->name('enseignant.')->group(function () {
         ->name('connexion.login');
     Route::post('deconnexion', [EnseignantConnexionController::class, 'logout'])->name('connexion.logout');
 
+    // Mot de passe oublié (portail enseignant) — mêmes garanties que côté
+    // étudiant, avec vérification du compte actif à l'envoi et à l'usage.
+    Route::get('mot-de-passe/oublie', [PortailMotDePasseController::class, 'oublie'])
+        ->defaults('guard', 'enseignant')
+        ->name('mot-de-passe.oublie');
+    Route::post('mot-de-passe/lien', [PortailMotDePasseController::class, 'envoyerLien'])
+        ->middleware('throttle:5,1')
+        ->defaults('guard', 'enseignant')
+        ->name('mot-de-passe.envoyer');
+    Route::get('mot-de-passe/reinitialiser/{token}', [PortailMotDePasseController::class, 'reinitialiser'])
+        ->defaults('guard', 'enseignant')
+        ->name('mot-de-passe.reinitialiser');
+    Route::post('mot-de-passe/reinitialiser', [PortailMotDePasseController::class, 'enregistrer'])
+        ->middleware('throttle:5,1')
+        ->defaults('guard', 'enseignant')
+        ->name('mot-de-passe.enregistrer');
+
     // Espace authentifié : ses données uniquement (session-scoped, anti-IDOR)
     Route::middleware('enseignant.auth')->group(function () {
         Route::get('tableau-de-bord', [EnseignantTableauDeBordController::class, 'index'])->name('dashboard');
+
+        // LOT 09 — candidature de remplacement pédagogique : volontariat
+        // par matière, retrait libre (la mutation d'EDT n'a jamais lieu ici).
+        Route::get('remplacement-candidatures', [CandidaturesRemplacementController::class, 'index'])
+            ->name('remplacement-candidatures.index');
+        Route::post('remplacement-candidatures', [CandidaturesRemplacementController::class, 'store'])
+            ->middleware('throttle:10,1')
+            ->name('remplacement-candidatures.store');
+        Route::delete('remplacement-candidatures/{candidature}', [CandidaturesRemplacementController::class, 'destroy'])
+            ->middleware('throttle:10,1')
+            ->name('remplacement-candidatures.destroy');
 
         // Notifications
         Route::get('notifications', [NotificationController::class, 'indexEnseignant'])->name('notifications.index');
@@ -499,7 +557,7 @@ Route::prefix('admin')->name('admin.')->group(function () {
     | middleware `admin` = EnsureBackOffice). L'isolation par faculté
     | est ensuite appliquée par les policies + requêtes scopées.
     */
-    Route::middleware(['auth', 'admin', 'secondaire.verrou'])->group(function () {
+    Route::middleware(['auth', 'admin', 'mfa.obligatoire', 'secondaire.verrou'])->group(function () {
 
         // Recherche globale (§7) : sections scopées + permission-gated.
         Route::get('recherche', [RechercheController::class, 'global'])->name('recherche');
@@ -521,9 +579,32 @@ Route::prefix('admin')->name('admin.')->group(function () {
         Route::patch('preferences', [PreferenceController::class, 'mettreAJour'])
             ->middleware('throttle:20,1')->name('preferences.update');
 
-        // Cockpit (§8) : à traiter, urgences, agenda, activité.
+        // Cockpit (§8) : à traiter, urgences, agenda, activité, KPI scolarité.
         Route::get('cockpit', [CockpitController::class, 'index'])
             ->middleware('can:cockpit.view')->name('cockpit.index');
+        Route::get('cockpit/kpi', [CockpitController::class, 'kpiJson'])
+            ->middleware('can:cockpit.view')->name('cockpit.kpi');
+        Route::get('cockpit/kpi/export', [CockpitController::class, 'exporterKpi'])
+            ->middleware(['can:cockpit.view', 'throttle:10,1'])->name('cockpit.kpi.export');
+
+        // Centre de travail administratif intelligent (Sous-lots B, C & D)
+        Route::get('centre-travail', [CentreTravailController::class, 'index'])
+            ->name('centre-travail.index');
+        Route::post('centre-travail/actions-groupees', [CentreTravailController::class, 'actionsGroupees'])
+            ->name('centre-travail.actions-groupees');
+        Route::get('centre-travail/{inscription}', [CentreTravailController::class, 'show'])
+            ->whereNumber('inscription')
+            ->name('centre-travail.show');
+        Route::post('centre-travail/{inscription}/valider', [CentreTravailController::class, 'validerInscription'])
+            ->whereNumber('inscription')
+            ->name('centre-travail.valider');
+        Route::post('centre-travail/{inscription}/rejeter', [CentreTravailController::class, 'rejeterInscription'])
+            ->whereNumber('inscription')
+            ->name('centre-travail.rejeter');
+        Route::post('centre-travail/{inscription}/corrections/{correction}/decider', [CentreTravailController::class, 'deciderCorrection'])
+            ->whereNumber('inscription')
+            ->whereNumber('correction')
+            ->name('centre-travail.corrections.decider');
 
         // Centre documentaire (Phase 16 §16.8) : tableau de bord,
         // vue document + historique, génération, révocation, lots.
@@ -821,8 +902,11 @@ Route::prefix('admin')->name('admin.')->group(function () {
         Route::patch('etudiants/{etudiant}/statut', [EtudiantController::class, 'updateStatut'])
             ->middleware(['can:archives.update', 'throttle:20,1'])
             ->name('etudiants.updateStatut');
-        // Trappe « mot de passe perdu » (LOOP 10) : la scolarité est
-        // l'unique porte de secours (aucun canal email étudiant).
+        // Réinitialisation administrateur (LOOP 10) : secours lorsque
+        // l'étudiant n'a plus accès à son adresse e-mail. Le self-service
+        // par e-mail (token hashé, 60 min, usage unique) est disponible
+        // publiquement plus haut ; ce point reste une voie de secours
+        // tracée et réservée à `archives.update`.
         Route::post('etudiants/{etudiant}/reinitialiser-mot-de-passe', [EtudiantController::class, 'reinitialiserMotDePasse'])
             ->middleware(['can:archives.update', 'throttle:10,1'])
             ->name('etudiants.reinitialiserMotDePasse');
@@ -844,14 +928,16 @@ Route::prefix('admin')->name('admin.')->group(function () {
         // ── Vérification intelligente du dossier étudiant (§14-18) ──
         // ── Centre des inscriptions bloquées (file de traitement) ──
         Route::get('verification/bloquees', [VerificationController::class, 'index'])
+            ->middleware('can:archives.view')
             ->name('verification.index');
         Route::post('inscriptions/{inscription}/corriger', [VerificationController::class, 'corrigerInscription'])
             ->middleware(['can:archives.update', 'throttle:20,1'])
             ->name('inscriptions.corriger');
         Route::get('etudiants/{etudiant}/verification', [VerificationController::class, 'show'])
+            ->middleware('can:archives.view')
             ->name('verification.show');
         Route::post('etudiants/{etudiant}/verification', [VerificationController::class, 'verifier'])
-            ->middleware('throttle:30,1')
+            ->middleware(['can:archives.update', 'throttle:30,1'])
             ->name('verification.verifier');
         Route::post('etudiants/{etudiant}/verification/corriger', [VerificationController::class, 'corriger'])
             ->middleware(['can:archives.update', 'throttle:30,1'])
@@ -869,7 +955,7 @@ Route::prefix('admin')->name('admin.')->group(function () {
             ->middleware(['can:archives.update', 'throttle:30,1'])
             ->name('verification.decider');
         Route::post('etudiants/verification/bulk', [VerificationController::class, 'bulk'])
-            ->middleware('throttle:10,1')
+            ->middleware(['can:archives.update', 'throttle:10,1'])
             ->name('verification.bulk');
 
         // Phase 2 — Population : affectations, situations, inscriptions.
@@ -1216,6 +1302,22 @@ Route::prefix('admin')->name('admin.')->group(function () {
             ->middleware(['can:qualite.manage', 'throttle:20,1'])->name('qualite.assigner');
         Route::get('statistiques/export', [StatistiquesController::class, 'exporter'])
             ->middleware(['can:statistiques.export', 'throttle:10,1'])->name('statistiques.export');
+        // ── Data Mesh Observability Center : lecture seule, périmètre serveur ──
+        Route::get('data-mesh', [DataMeshController::class, 'index'])
+            ->middleware('can:statistiques.view')->name('datamesh.index');
+        Route::get('data-mesh/graphe', [DataMeshController::class, 'graphe'])
+            ->middleware(['can:statistiques.view', 'throttle:60,1'])->name('datamesh.graphe');
+        Route::get('data-mesh/apercu', [DataMeshController::class, 'apercu'])
+            ->middleware(['can:statistiques.view', 'throttle:60,1'])->name('datamesh.apercu');
+        Route::get('data-mesh/flux', [DataMeshController::class, 'flux'])
+            ->middleware(['can:statistiques.view', 'throttle:60,1'])->name('datamesh.flux');
+        Route::get('data-mesh/qualite', [DataMeshController::class, 'qualite'])
+            ->middleware(['can:statistiques.view', 'throttle:60,1'])->name('datamesh.qualite');
+        Route::get('data-mesh/outbox', [DataMeshController::class, 'outbox'])
+            ->middleware(['can:statistiques.view', 'throttle:60,1'])->name('datamesh.outbox');
+        Route::get('data-mesh/noeud/{id}', [DataMeshController::class, 'noeud'])
+            ->where('id', '[A-Za-z_]+:[A-Za-z0-9_.\\-]+')
+            ->middleware(['can:statistiques.view', 'throttle:60,1'])->name('datamesh.noeud');
         Route::get('parametres', [ParametreController::class, 'index'])
             ->middleware('can:settings.view')->name('parametres.index');
         Route::patch('parametres/{parametre}', [ParametreController::class, 'update'])

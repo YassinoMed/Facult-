@@ -125,3 +125,129 @@ Recherche → code OTP → vérification → dossier ; triple preuve e-mail ; au
 confirmation post-commit ; anti-énumération — couverts par `DossierExistant*Test`,
 `LoopPopupHomeOnly04Test` (verts au dernier run large : 353/355, 2 N+1 admin hors sujet).
 **Interdictionformelle pour la suite : modifier ces parcours sans preuve de non-régression rejouée.**
+
+## 8. Mise à jour 17/10/2026 — pilotage SMTP rendu opérant (post-baseline)
+
+Écart corrigé, constaté en exploitation : la table `smtp_configurations` était
+**inerte** — rien n'appliquait la ligne active au mailer Laravel, l'écran admin
+donnait donc l'illusion d'un réglage sans effet (constat reproduit : `.env`
+`MAIL_MAILER=log` ⇒ aucun courriel ne quittait la machine, OTP compris).
+
+- `App\Services\ConfigurationSmtpService` + `App\Providers\ConfigurationSmtpServiceProvider`
+  (enregistré dans `bootstrap/providers.php`) : la ligne **active** est la source de
+  vérité (HTTP, commandes, workers) ; sans ligne active, `.env` fait foi ; table
+  absente/base indisponible ou secret indéchiffrable ⇒ repli silencieux, jamais de
+  fuite (seul `configuration_id` est journalisé).
+- Durcissements au passage : `ssl` ⇒ `smtps`, `tls` ⇒ STARTTLS **exigé**
+  (`require_tls`, aucun repli en clair avec identifiants), `aucun` ⇒ clair assumé
+  explicitement ; `verify_peer` jamais désactivé ; `timeout` borné à 10 s
+  (**réserve n° 3** : l'attente SMTP d'une requête publique est désormais plafonnée).
+- Échecs d'envoi tracés **sans donnée personnelle** (classe seule) :
+  `dossier_existant.code_transport_echec`, `code_non_emis` (debug), `code_echec_inattendu`,
+  `code_email_transport_echec`, `code_email_nouvelle_adresse_echec`,
+  `code_autonome_transport_echec`, `smtp.configuration_indechiffrable`.
+  Point technique : `Symfony\…\TransportException` étend `RuntimeException` —
+  la discrimination se fait donc par `TransportExceptionInterface`, sinon une panne
+  SMTP réelle était classée « refus métier » et restait muette en production.
+- Preuves exécutées : `ConfigurationSmtpPilotageTest` (7 tests : primauté sur `.env`,
+  cartographie des chiffrements, secret illisible sans fuite, base indisponible,
+  provider branché) ; `DossierExistantParcoursTest` 34/34 ; lot messagerie + parcours
+  + notifications **137/137**. Envoi réel via une ligne de base (STARTTLS exigé) :
+  accepté par le serveur. Table **laissée vide** en dev ⇒ repli `.env` (`smtp`).
+- Réserves restantes (inchangées) : worker de file non supervisé (les notifications
+  `ShouldQueue` restent en attente sans `queue:work`), `mail.logs.view` sans UI,
+  réserve n° 2 (`AcheminerNotificationExterneJob:56`).
+
+## 9. Mise à jour 17/10/2026 (soir) — refus avant envoi rendus traçables
+
+Incident réel diagnostiqué sur le serveur de dev : « je ne reçois pas le code » sur le
+parcours **autonome**. Trois causes, toutes distinctes :
+
+- Cause 1 (corrigée en amont) : avant 20:53, `MAIL_MAILER=log` — les courriels étaient
+  écrits dans `storage/logs/laravel.log`, jamais transmis (code complet retrouvé dans
+  le journal, destinataire compris).
+- Cause 2 (par conception) : le code du parcours « dossier existant » part **uniquement**
+  vers l'adresse enregistrée du dossier ; pour les dossiers de démonstration
+  (`…@demo.test`), cette adresse est **factice** ⇒ tout serveur SMTP la refuse (550) ⇒
+  aucun code ne peut arriver, quelle que soit la configuration d'envoi.
+- Cause 3 (l'angle mort) : deux soumissions autonomes (21:11, 21:19) avec un couple
+  CIN + naissance **introuvable** (empreinte du limiteur ne correspondant à aucun
+  dossier) étaient refusées **en silence total** : réponse neutre (anti-oracle, correct)
+  mais **aucune trace** — ni envoi, ni journal. Vingt minutes de diagnostic à l'aveugle.
+- Correctif : chaque refus **avant envoi** est tracé avec un motif fermé et zéro donnée
+  personnelle — `dossier_existant.refus {"flux":"…","motif":"…"}` (flux : `autonome`,
+  `changement`, `nouvelle_adresse`, `recherche` ; motifs : `limite_demandes`,
+  `dossier_introuvable`, `ancienne_adresse`, `mot_de_passe`,
+  `nouvelle_adresse_invalide`, `nouvelle_adresse_identique`, `statut`,
+  `periode_fermee`, `adresse_deja_utilisee`, `cooldown_dossier`, `cooldown_candidat`,
+  `cooldown`, `adresse_absente`). La réponse au client ne change pas d'un caractère.
+- Aide corrigée : l'étape code du parcours autonome invite désormais à vérifier
+  **toutes** les informations saisies ; elle ne désignait que « la nouvelle adresse »,
+  ce qui orientait vers la mauvaise piste.
+- Preuves exécutées : `DossierExistantAutonomeTest` + `DossierExistantParcoursTest`
+  **59/59** (3 nouveaux tests : motifs `dossier_introuvable`, `mot_de_passe`, et gardes
+  `adresse_deja_utilisee` / `statut`, chacun avec contexte attendu **exact** — l'ajout
+  d'une donnée personnelle ferait échouer l'assertion) ; lot popup + strict **66/66**
+  (`SaisieIdentificationStricteTest` : 4 échecs préexistants, identiques sur `HEAD`
+  propre).
+- Vérification d'ensemble (suite complète, provider actif) : **3525 tests, 14 échecs**
+  = 12 préexistants prouvés sur `HEAD` + 2 d'autres chantiers en vol (versionnage API,
+  supervision qualité) — aucune régression attribuable à cette mise à jour.
+- Parcours autonome mené **de bout en bout** en dev : émission, acceptation SMTP par
+  Gmail, puis confirmation appliquée en base (l'adresse du dossier passe à l'adresse
+  candidate). Réserve de file inchangée : les deux notifications de confirmation
+  (`AlerteChangementEmail`, `ConfirmationChangementEmail`) restent en attente dans
+  `jobs` tant qu'aucun worker ne tourne.
+
+## 10. Mise à jour 17/10/2026 (nuit) — emails aux moments clés du dossier
+
+Demande produit : « envoie de mail si l'inscription était effectuée ». Trois moments
+couverts, plus une condition — le tout **sans worker de file** (constat : 7 jobs
+dormants dans `jobs`, dont des emails de confirmation jamais remis).
+
+- **Dépôt d'une nouvelle inscription** (`POST /inscription` → `StudentRegistered`,
+  après commit) : nouvel email `ConfirmationDepotInscription` — accusé de réception
+  avec référence de dossier, envoyé à l'adresse saisie par l'étudiant. Auparavant :
+  notification in-app seulement, aucun email.
+- **Décision administrative** (`DossierDecisionPrise`, statuts `valide` / `rejete`) :
+  nouvel email `DecisionDossierInscription` — décision, référence, motif saisi par la
+  scolarité le cas échéant. Auparavant : notification in-app seulement.
+- **Mise à jour « dossier existant »** : l'email
+  `ConfirmationMiseAJourDossierExistant` n'est envoyé **que si au moins un champ a
+  réellement changé** (`nb_champs_modifies > 0`) ; une demande vide n'engendre aucun
+  email et l'écran final le dit explicitement (« aucun email de confirmation n'était
+  nécessaire »). L'écran d'échec parle désormais d'un envoi « échoué » — plus de
+  « en attente de nouvelle tentative » (aucun retry automatique n'existe).
+
+Règle d'envoi : **synchrone, fail-soft, idempotent, zéro PII**.
+- Synchrone (pas de `ShouldQueue`) : la file `notifications` n'étant pas servie en
+  permanence, un email « en attente » serait un email perdu ; le contrat « planifié en
+  file » décrit par le rapport de consolidation d'inscription est **remplacé** par
+  « envoyé immédiatement ». Les notifications de dépôt / décision / confirmation
+  partent dans la requête, comme les codes OTP.
+- Fail-soft : toute panne de transport est neutralisée — l'inscription ou la décision
+  déjà commise n'est jamais remise en cause ; trace neutre sans PII
+  (`Email … non envoyé (… conservée)`) ; jamais le message brut du transport (il cite
+  l'adresse du destinataire).
+- Idempotent : l'email suit la clé de déduplication de la notification in-app
+  (`dossier.depot:{id}`, `decision:{id}:{statut}`) — un rejeu d'événement ne double
+  jamais l'envoi.
+- Contenus sans donnée sensible : référence de dossier, statut, motif scolarité —
+  jamais CIN, date de naissance, mot de passe ni code.
+
+Preuves exécutées :
+- `InscriptionNotificationsEcheancesTest` **12/12** — 3 nouveaux tests : email de dépôt
+  (référence, zéro PII, rejeu sans double émission) ; email de validation (rejeu sans
+  double) ; email de rejet (motif) + panne transport fail-soft décision conservée.
+- Lot dossier-existant + notifications **125/125** — 2 tests adaptés car ils encodaient
+  l'ancien contrat (« planifié en file » → « envoi immédiat sans worker » ; « email
+  même sans changement » → « aucun email sans changement » + écran honnête).
+- Preuve moteur en environnement dev (config réelle, transport array pour neutraliser
+  SMTP) : les **3 emails** sortent immédiatement — sujets et destinataires exacts — et
+  **aucune mise en file** (`jobs` : 7 avant = 7 après). Le transport SMTP réel a été
+  prouvé en §8 (mail:tester + OTP réellement reçus).
+- Réserve assumée (n° 4) : l'envoi synchrone rend la latence proportionnelle au nombre
+  de destinataires — une validation en lot (`bulkStatut`, jusqu'à 200 dossiers) envoie
+  N emails séquentiellement dans la requête d'administration. Bascule vers la file dès
+  qu'un worker supervisé existe ; le comportement actuel reste correct et diagnosticable
+  (échec = trace neutre, jamais de blocage).

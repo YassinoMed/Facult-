@@ -53,6 +53,23 @@ class GeneratePopulationExport implements ShouldQueue
         }
 
         $debut = microtime(true);
+
+        // Autorisation réévaluée à l'exécution (même convention que
+        // ExecuterAffectationMasseLot) : le demandeur doit toujours
+        // exister, être actif et conserver `data.export`. Sinon aucun
+        // export sensible n'est produit et le rapport passe en échec
+        // (message générique, sans PII ni détail de filtres).
+        $utilisateur = User::find($this->userId);
+        if ($utilisateur === null || ! $utilisateur->estActif() || ! $utilisateur->hasPermission('data.export')) {
+            $rapport->update([
+                'status' => 'failed',
+                'errors' => ['Demandeur introuvable, désactivé ou permission data.export retirée.'],
+                'duration_ms' => (int) ((microtime(true) - $debut) * 1000),
+            ]);
+
+            return;
+        }
+
         $rapport->update(['status' => 'processing']);
 
         try {
@@ -65,7 +82,6 @@ class GeneratePopulationExport implements ShouldQueue
                 ? PopulationDataset::colonnesPour($this->dataset, $this->contexte)
                 : $this->colonnes;
 
-            $utilisateur = User::find($this->userId);
             $query = $listes->requete($filtres, $utilisateur);
 
             if ($this->regroupement !== null) {

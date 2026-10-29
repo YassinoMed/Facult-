@@ -1,4 +1,10 @@
 import { Livewire, Alpine } from '../../vendor/livewire/livewire/dist/livewire.esm';
+import './motion-loader';
+import './etudiant-theme';
+import './form-guard';
+// Aide de navigation du bandeau des examens : dépendance nulle, chargée même
+// quand `prefers-reduced-motion` empêche le socle GSAP de démarrer.
+import './bandeau-examens';
 
 window.Alpine = Alpine;
 window.Livewire = Livewire;
@@ -1151,6 +1157,8 @@ Alpine.data('parcoursAccueil', () => ({
     declencheurPrecedent: null,
     // Existant.
     dossier: null,
+    /** Adresse masquée d'envoi du code, affichée à l'étape « code ». */
+    emailDestinataire: '',
     dossierFlags: {},
     coordsSucces: null,
     emailEtape: 'saisie',
@@ -1165,6 +1173,11 @@ Alpine.data('parcoursAccueil', () => ({
     identMessage: '',
     identErreurs: {},
     nouvellePrete: false,
+    /** Résultat d'identification MENS (miroir du scope de la page canonique) :
+     *  le wizard embarqué lit `identification.mensIndisponible/source/certitude`
+     *  pour ses bandeaux. Sans cet état, Alpine lève une ReferenceError à
+     *  chaque rendu et les bandeaux ne reflètent jamais la réalité. */
+    identification: { source: '', certitude: '', mensIndisponible: false },
     // Wizard embarqué.
     inscriptionOk: null,
     // Période (miroir du scope `periodeInscription` de la page canonique :
@@ -1242,7 +1255,16 @@ Alpine.data('parcoursAccueil', () => ({
 
     donnerFocus(vue) {
         const cible = (this.ciblesFocus()[vue] || 'titre-parcours-accueil');
-        this.$nextTick(() => document.getElementById(cible)?.focus?.({ preventScroll: true }));
+        this.$nextTick(() => {
+            this.remonterPanneau();
+            document.getElementById(cible)?.focus?.({ preventScroll: true });
+        });
+    },
+
+    /** Chaque état du parcours repart du haut du panneau défilant. */
+    remonterPanneau() {
+        const panneau = this.$refs.panneau;
+        if (panneau) panneau.scrollTop = 0;
     },
 
     ouvrir(vueInitiale = 'choix') {
@@ -1251,6 +1273,7 @@ Alpine.data('parcoursAccueil', () => ({
         this.vue = 'choix';
         this.message = '';
         this.erreurs = {};
+        this.emailDestinataire = '';
         this.suivi = null;
         this.suiviMessage = '';
         this.suiviErreurs = {};
@@ -1263,16 +1286,26 @@ Alpine.data('parcoursAccueil', () => ({
             }
         }
         this.ouvert = true;
-        this.$nextTick(() => document.getElementById('titre-parcours-accueil')?.focus());
+        this.$nextTick(() => {
+            this.remonterPanneau();
+            document.getElementById('titre-parcours-accueil')?.focus();
+        });
         document.body.style.overflow = 'hidden';
+        // Lenis déplace la page par `window.scrollTo` : `overflow: hidden`
+        // ne suffit pas à geler la page mère. Le socle cinématique écoute ces
+        // événements pour arrêter puis relancer son moteur inertiel.
+        window.dispatchEvent(new CustomEvent('mouvement:suspendre'));
     },
 
     fermer() {
+        if (!this.ouvert) return;
         this.ouvert = false;
         this.vue = 'choix';
         this.retour = [];
         this.message = '';
+        this.emailDestinataire = '';
         document.body.style.overflow = '';
+        window.dispatchEvent(new CustomEvent('mouvement:reprendre'));
         this.$nextTick(() => {
             const cible = this.declencheurPrecedent && document.contains(this.declencheurPrecedent)
                 ? this.declencheurPrecedent
@@ -1303,10 +1336,17 @@ Alpine.data('parcoursAccueil', () => ({
 
     /* ── Branche existante (endpoints canoniques, JSON) ── */
 
+    /** Première erreur de champ à afficher (CIN, date, identité). */
+    premiereErreur() {
+        const valeurs = Object.values(this.erreurs || {}).flat().filter(Boolean);
+        return valeurs.length ? valeurs[0] : '';
+    },
+
     async rechercherDossier(form) {
         if (!form.reportValidity()) return;
         this.erreurs = {};
         this.message = '';
+        this.emailDestinataire = '';
         this.envoi = true;
         try {
             const { statut, corps } = await this.postJSON(form.action, new FormData(form));
@@ -1314,8 +1354,21 @@ Alpine.data('parcoursAccueil', () => ({
                 this.message = 'Trop de tentatives. Patientez une minute avant de réessayer.';
                 return;
             }
+            if (statut === 422) {
+                this.erreurs = corps.errors || {};
+                this.message = Object.keys(this.erreurs).length ? '' : (corps.message || '');
+                return;
+            }
+            // Contrôle bloquant : le popup ne passe à l'étape « code » que
+            // lorsque le serveur confirme que le CIN ET la date de naissance
+            // correspondent au même dossier en base.
+            if (corps.identite_correspond !== true || corps.etape !== 'code') {
+                this.message = corps.message || 'Le CIN et la date de naissance ne correspondent à aucun dossier.';
+                return;
+            }
             this.message = corps.message || '';
-            if (corps.etape === 'code') this.aller('existant-code');
+            this.emailDestinataire = corps.email_masque || '';
+            this.aller('existant-code');
         } catch (e) {
             this.message = 'Erreur réseau. Vérifiez votre connexion et réessayez.';
         } finally {
@@ -1517,12 +1570,18 @@ Alpine.data('parcoursAccueil', () => ({
                 return;
             }
             if (statutDossier === 'MENS_FOUND' && corps.prefill) {
+                this.identification.source = corps.source || 'MENS';
+                this.identification.certitude = corps.certitude || 'certaine';
+                this.identification.mensIndisponible = false;
                 this.appliquerPrefillModal(corps.prefill);
                 if (corps.prefill.sexe) {
                     window.dispatchEvent(new CustomEvent('sexe-identifie', { detail: { sexe: corps.prefill.sexe } }));
                 }
             }
             if (statutDossier === 'MENS_UNAVAILABLE' || statutDossier === 'AMBIGUOUS') {
+                this.identification.mensIndisponible = statutDossier === 'MENS_UNAVAILABLE';
+                this.identification.source = statutDossier === 'MENS_UNAVAILABLE' ? 'MANUELLE' : '';
+                this.identification.certitude = '';
                 this.identMessage = corps.message || '';
             }
             this.nouvellePrete = true;

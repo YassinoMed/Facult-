@@ -139,7 +139,7 @@ class DecisionJuryDefinition implements ExportDefinitionInterface, ImportDefinit
         $donnees = [
             'inscription_academique_id' => $inscription?->id,
             'moyenne' => ! empty($ligne['moyenne']) ? (float) $ligne['moyenne'] : null,
-            'credits_obtenus' => ! empty($ligne['credits_obtenus']) ? (int) $ligne['credits_obtenus'] : null,
+            'credits_obtenus' => (int) ($ligne['credits_obtenus'] ?? 0),
             'decision' => $decision,
             // LOOP saisies §10 : PAS de `'publie' => true` via l'import —
             // la publication officielle d'une décision passe par le

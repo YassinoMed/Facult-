@@ -14,6 +14,13 @@ class QualitePolicy
 
     public function update(User $user, AnomalieQualite $anomalie): bool
     {
-        return $user->hasPermission('qualite.manage');
+        if (! $user->hasPermission('qualite.manage')) {
+            return false;
+        }
+
+        $faculteRestreinte = $user->faculteRestreinteId();
+
+        return $faculteRestreinte === null
+            || (int) $anomalie->faculte_id === $faculteRestreinte;
     }
 }

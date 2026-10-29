@@ -151,9 +151,14 @@ class ArchiveController extends Controller
      */
     public function show(DossierAcademique $dossier): View
     {
+        // La policy lit l'étudiant/faculté : charger une seule fois AVANT
+        // l'autorisation évite que la policy puis l'eager-loading de la
+        // vue ne rechargent le même étudiant (N+1 de fiche).
+        $dossier->loadMissing('etudiant.faculte');
+
         Gate::authorize('view', $dossier);
 
-        $dossier->load([
+        $dossier->loadMissing([
             'etudiant.faculte',
             'inscriptions' => fn ($q) => $q->with([
                 'anneeUniversitaire',

@@ -26,7 +26,7 @@ class RendezVousScolariteController extends Controller
         $etudiant = $this->etudiantConnecte($request);
 
         $dateParDefaut = Carbon::tomorrow()->isWeekend()
-            ? Carbon::next(Carbon::MONDAY)->format('Y-m-d')
+            ? Carbon::now()->next(Carbon::MONDAY)->format('Y-m-d')
             : Carbon::tomorrow()->format('Y-m-d');
 
         $creneauxInitiaux = $service->obtenirCreneauxDisponibles($dateParDefaut, $etudiant->faculte_id);
@@ -101,6 +101,7 @@ class RendezVousScolariteController extends Controller
     public function annuler(Request $request, OnlineRequest $demande, RendezVousScolariteService $service): RedirectResponse
     {
         $etudiant = $this->etudiantConnecte($request);
+        abort_if((int) $demande->etudiant_id !== (int) $etudiant->id, 404);
 
         $service->annuler($demande, $etudiant);
 
@@ -114,6 +115,7 @@ class RendezVousScolariteController extends Controller
     public function deplacer(Request $request, OnlineRequest $demande, RendezVousScolariteService $service): RedirectResponse
     {
         $etudiant = $this->etudiantConnecte($request);
+        abort_if((int) $demande->etudiant_id !== (int) $etudiant->id, 404);
 
         $donnees = $request->validate([
             'nouvelle_date' => ['required', 'date'],

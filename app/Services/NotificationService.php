@@ -2,11 +2,13 @@
 
 namespace App\Services;
 
+use App\Contracts\CanalNotificationExterneInterface;
 use App\Jobs\AcheminerNotificationExterneJob;
 use App\Models\AppNotification;
 use App\Models\Etudiant;
 use App\Models\User;
 use App\Modules\Schedule\Models\Teacher;
+use Illuminate\Database\Eloquent\Collection;
 
 /**
  * Centre de notifications (§4-6) : création typée pour users,
@@ -92,6 +94,53 @@ class NotificationService
         $notification->update(['data' => $data]);
 
         $this->acheminerExterne($notification);
+    }
+
+    /**
+     * LOT 02 — outbox durable et scan de reprise.
+     * La colonne `data.statut_envoi` de app_notifications EST l'outbox :
+     * elle est écrite en base AVANT le dispatch du job (pattern
+     * transactional outbox), donc aucun envoi ne peut être perdu par une
+     * panne de la file. Ce scan reprend :
+     *   - `echec` / `echec_definitif` : canal déjà en échec (3 tries du job
+     *     épuisées dans le second cas) ;
+     *   - `en_attente` oublié (staleness) : job jamais consommé (file
+     *     indisponible) ;
+     * et ignore STRICTEMENT les `envoye` (idempotence, jamais de doublon
+     * d'acheminement chez le destinataire).
+     * Sémantique au-moins-une-fois : le canal doit tolérer une reprise.
+     * Fraîchement mis à jour = on attend le prochain passage (l'échec vient
+     * de se reproduire), ce qui borne le débit par staleness.
+     *
+     * @return int Nombre d'envois repris (replanifiés).
+     */
+    public function reprendreEchecsExterieurs(?int $limite = null, ?int $minutesStale = null): int
+    {
+        $limite ??= (int) config('communication.reprise.limite_par_scan', 200);
+        $minutesStale ??= (int) config('communication.reprise.staleness_minutes', 60);
+        $ancienneteMaxHeures = (int) config('communication.reprise.anciennete_max_heures', 48);
+
+        /** @var Collection<int, AppNotification> $cibles */
+        $cibles = AppNotification::query()
+            ->whereIn('data->statut_envoi', [
+                CanalNotificationExterneInterface::STATUT_ECHEC,
+                CanalNotificationExterneInterface::STATUT_ECHEC_DEFINITIF,
+                CanalNotificationExterneInterface::STATUT_EN_ATTENTE,
+            ])
+            ->where('updated_at', '<', now()->subMinutes($minutesStale))
+            // Fenêtre bornée : au-delà de l'ancienneté max, l'échec devient
+            // une affaire d'opérations manuelles — jamais de martèlement
+            // automatique d'une passerelle morte.
+            ->where('updated_at', '>=', now()->subHours($ancienneteMaxHeures))
+            ->orderBy('updated_at')
+            ->limit($limite)
+            ->get();
+
+        foreach ($cibles as $notification) {
+            $this->retenterEnvoiExterne($notification);
+        }
+
+        return $cibles->count();
     }
 
     /**

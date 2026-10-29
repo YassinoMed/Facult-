@@ -7,6 +7,7 @@ use App\Modules\Evaluation\Models\Candidat;
 use App\Modules\Evaluation\Models\Deliberation;
 use App\Modules\Evaluation\Models\Epreuve;
 use App\Modules\Evaluation\Models\NoteEpreuve;
+use Illuminate\Support\Facades\DB;
 
 /**
  * Suite de contrôles des notes (Phase 14 §14.4) : anomalies
@@ -44,12 +45,37 @@ class GradeCheckSuite
 
         $candidatsSansNote = Candidat::where('statut', 'present')
             ->whereHas('epreuve', fn ($q) => $q->where('annee_universitaire_id', $anneeId))
-            ->whereDoesntHave('note')
+            ->whereNotExists(function ($q) {
+                $q->select(DB::raw(1))
+                    ->from('evaluation_notes')
+                    ->where(function ($sub) {
+                        $sub->whereColumn('evaluation_notes.candidat_id', 'evaluation_candidats.id')
+                            ->orWhere(function ($sub2) {
+                                $sub2->whereColumn('evaluation_notes.epreuve_id', 'evaluation_candidats.epreuve_id')
+                                    ->whereColumn('evaluation_notes.etudiant_id', 'evaluation_candidats.etudiant_id');
+                            });
+                    });
+            })
             ->count();
 
         if ($candidatsSansNote > 0) {
             $anomalies[] = $this->anomalie(null, 'candidat_sans_note',
                 "{$candidatsSansNote} candidat(s) présent(s) sans note saisie.");
+        }
+
+        // Barème libre (note_max) : une note d'épreuve au-delà du
+        // maximum autorisé est une vraie anomalie, quel que soit le
+        // barème (lot 2 — le CHECK 0..20 ne couvre que `notes`).
+        $horsBareme = NoteEpreuve::whereNotNull('valeur')
+            ->whereHas('epreuve', fn ($q) => $q->where('annee_universitaire_id', $anneeId))
+            ->where(fn ($q) => $q
+                ->whereColumn('valeur', '<', 0)
+                ->orWhereColumn('valeur', '>', 'note_max'))
+            ->count();
+
+        if ($horsBareme > 0) {
+            $anomalies[] = $this->anomalie(null, 'note_epreuve_hors_bareme',
+                "{$horsBareme} note(s) d'épreuve hors barème (0..note_max) : corrigez avant publication.");
         }
 
         foreach ($this->epreuvesAnormales($anneeId) as $alerte) {
@@ -68,13 +94,21 @@ class GradeCheckSuite
     {
         $alertes = [];
 
-        $stats = NoteEpreuve::whereNotNull('valeur')
-            ->whereHas('epreuve', fn ($q) => $q->where('annee_universitaire_id', $anneeId))
-            ->selectRaw('epreuve_id, AVG(valeur) as moyenne, COUNT(*) as total, SUM(valeur = 0) as zeros, SUM(valeur = 20) as vingts')
-            ->groupBy('epreuve_id')
+        // Barème libre (lot 2) : la moyenne est jugée en RATIO du
+        // note_max de l'épreuve (25–80 %), plus de plage 5–16 codée
+        // en dur qui générait des faux positifs hors barème /20.
+        $stats = NoteEpreuve::query()
+            ->join('evaluation_epreuves as epreuve', 'epreuve.id', '=', 'evaluation_notes.epreuve_id')
+            ->whereNotNull('evaluation_notes.valeur')
+            ->where('epreuve.annee_universitaire_id', $anneeId)
+            ->selectRaw('evaluation_notes.epreuve_id, AVG(evaluation_notes.valeur) as moyenne, COUNT(*) as total, SUM(evaluation_notes.valeur = 0) as zeros, SUM(evaluation_notes.valeur >= epreuve.note_max) as maxs, MAX(epreuve.note_max) as note_max')
+            ->groupBy('evaluation_notes.epreuve_id')
             ->get();
 
-        $epreuves = Epreuve::with('matiere')->findMany($stats->pluck('epreuve_id'))->keyBy('id');
+        $epreuveIds = $stats->pluck('epreuve_id')->filter()->values();
+        $epreuves = $epreuveIds->isNotEmpty()
+            ? Epreuve::with('matiere')->findMany($epreuveIds)->keyBy('id')
+            : collect();
 
         foreach ($stats as $ligne) {
             $epreuve = $epreuves->get($ligne->epreuve_id);
@@ -84,13 +118,15 @@ class GradeCheckSuite
             }
 
             $libelle = $epreuve->matiere?->code ?? "épreuve #{$epreuve->id}";
+            $noteMax = (float) $ligne->note_max;
+            $ratio = $noteMax > 0 ? (float) $ligne->moyenne / $noteMax : null;
 
-            if ((float) $ligne->moyenne < 5 || (float) $ligne->moyenne > 16) {
-                $alertes[] = "{$libelle} : moyenne ".round((float) $ligne->moyenne, 2).' hors plage 5–16.';
+            if ($ratio !== null && ($ratio < 0.25 || $ratio > 0.8)) {
+                $alertes[] = "{$libelle} : moyenne ".round((float) $ligne->moyenne, 2)." sur {$noteMax} hors plage neutre (25–80 % du barème).";
             }
 
-            if ((int) $ligne->zeros === (int) $ligne->total || (int) $ligne->vingts === (int) $ligne->total) {
-                $alertes[] = "{$libelle} : toutes les notes sont identiques (0 ou 20).";
+            if ((int) $ligne->zeros === (int) $ligne->total || (int) $ligne->maxs === (int) $ligne->total) {
+                $alertes[] = "{$libelle} : toutes les notes sont identiques (0 ou maximum du barème).";
             }
         }
 

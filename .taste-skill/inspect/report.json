@@ -1,0 +1,1159 @@
+{
+ "url": "public/preview-etudiant.html",
+ "at": "2026-10-17T17:42:48.578Z",
+ "allow": [
+  "few-pictures",
+  "no-footage"
+ ],
+ "viewports": [
+  {
+   "width": 1440,
+   "height": 900,
+   "load": "load",
+   "screens": 5,
+   "filled": [
+    0.76,
+    0.4,
+    0.69,
+    0.7,
+    0.45
+   ],
+   "motion": {
+    "elements": 16,
+    "css": 16,
+    "transitions": 0,
+    "scripted": 0,
+    "videos": 0,
+    "playingVideos": 0
+   },
+   "metrics": {
+    "viewport": {
+     "w": 1440,
+     "h": 900
+    },
+    "page": {
+     "height": 4052,
+     "screens": 4.5,
+     "words": 478,
+     "img": 0,
+     "video": 0,
+     "canvas": 0,
+     "svg": 130,
+     "sections": 14,
+     "horizontalOverflow": 0,
+     "overflowCulprits": [],
+     "uiFragments": 0,
+     "uiAbuse": false,
+     "realPictures": 0,
+     "videoCount": 0,
+     "uiPictures": 0,
+     "pictureSamples": [],
+     "blendText": 0,
+     "sideScrollers": 0,
+     "brokenImages": [],
+     "emoji": []
+    },
+    "hero": {
+     "text": "Ines Ben Salah",
+     "words": 3,
+     "chars": 14,
+     "lines": 1,
+     "size": 80,
+     "vw": 5.6,
+     "font": "Inter",
+     "weight": 900,
+     "tracking": -0.025,
+     "leading": 0.98,
+     "upper": false,
+     "italic": false,
+     "mono": false,
+     "align": "left",
+     "position": "left",
+     "widthRatio": 0.38,
+     "top": 229,
+     "tag": "h1",
+     "kind": "heading"
+    },
+    "h1": {
+     "text": "Ines Ben Salah",
+     "words": 3,
+     "lines": 1,
+     "size": 80,
+     "font": "Inter"
+    },
+    "headings": [
+     {
+      "text": "Ines Ben Salah",
+      "words": 3,
+      "chars": 14,
+      "lines": 1,
+      "size": 80,
+      "vw": 5.6,
+      "font": "Inter",
+      "weight": 900,
+      "tracking": -0.025,
+      "leading": 0.98,
+      "upper": false,
+      "italic": false,
+      "mono": false,
+      "align": "left",
+      "position": "left",
+      "widthRatio": 0.38,
+      "top": 229,
+      "tag": "h1",
+      "kind": "heading"
+     },
+     {
+      "text": "INS-2025-04172",
+      "words": 1,
+      "chars": 14,
+      "lines": 1,
+      "size": 30,
+      "vw": 2.1,
+      "font": "Inter",
+      "weight": 900,
+      "tracking": 0,
+      "leading": 1.2,
+      "upper": true,
+      "italic": false,
+      "mono": false,
+      "align": "right",
+      "position": "right",
+      "widthRatio": 0.18,
+      "top": 283,
+      "tag": "span",
+      "kind": "statement"
+     },
+     {
+      "text": "—",
+      "words": 1,
+      "chars": 1,
+      "lines": 1,
+      "size": 30,
+      "vw": 2.1,
+      "font": "Inter",
+      "weight": 900,
+      "tracking": 0,
+      "leading": 1.2,
+      "upper": false,
+      "italic": false,
+      "mono": false,
+      "align": "left",
+      "position": "left",
+      "widthRatio": 0.17,
+      "top": 578,
+      "tag": "p",
+      "kind": "statement"
+     },
+     {
+      "text": "0 / 0",
+      "words": 3,
+      "chars": 5,
+      "lines": 1,
+      "size": 30,
+      "vw": 2.1,
+      "font": "Inter",
+      "weight": 900,
+      "tracking": 0,
+      "leading": 1.2,
+      "upper": false,
+      "italic": false,
+      "mono": false,
+      "align": "left",
+      "position": "center",
+      "widthRatio": 0.17,
+      "top": 578,
+      "tag": "p",
+      "kind": "statement"
+     },
+     {
+      "text": "0",
+      "words": 1,
+      "chars": 1,
+      "lines": 1,
+      "size": 30,
+      "vw": 2.1,
+      "font": "Inter",
+      "weight": 900,
+      "tracking": 0,
+      "leading": 1.2,
+      "upper": false,
+      "italic": false,
+      "mono": false,
+      "align": "left",
+      "position": "right",
+      "widthRatio": 0.17,
+      "top": 578,
+      "tag": "p",
+      "kind": "statement"
+     },
+     {
+      "text": "0",
+      "words": 1,
+      "chars": 1,
+      "lines": 1,
+      "size": 30,
+      "vw": 2.1,
+      "font": "Inter",
+      "weight": 900,
+      "tracking": 0,
+      "leading": 1.2,
+      "upper": false,
+      "italic": false,
+      "mono": false,
+      "align": "left",
+      "position": "right",
+      "widthRatio": 0.17,
+      "top": 578,
+      "tag": "p",
+      "kind": "statement"
+     }
+    ],
+    "headingSummary": {
+     "count": 6,
+     "maxLines": 1,
+     "over2Lines": 0,
+     "statements": 5,
+     "centered": 0,
+     "medianWords": 1,
+     "mixedFontHeadings": 0
+    },
+    "type": {
+     "families": [
+      {
+       "family": "Inter",
+       "share": 1,
+       "mono": false
+      }
+     ],
+     "familyCount": 1,
+     "sizes": [
+      11,
+      12,
+      13,
+      14,
+      16,
+      20,
+      30,
+      80
+     ],
+     "sizeCount": 8,
+     "notLoaded": [],
+     "body": {
+      "font": "Inter",
+      "size": 16,
+      "leading": 1.5,
+      "weight": 400,
+      "tracking": 0,
+      "contrast": 13
+     },
+     "measureChars": 72,
+     "max": {
+      "size": 80,
+      "vw": 5.6,
+      "font": "Inter",
+      "text": "Ines Ben Salah"
+     },
+     "monoShare": 0,
+     "monoProseShare": 0,
+     "monoFamilies": [],
+     "monoSamples": [],
+     "microLabels": 0,
+     "microLabelShare": 0,
+     "microSamples": [],
+     "upperShare": 0.02,
+     "centerShare": 0.1,
+     "smallText": 0
+    },
+    "eyebrows": [],
+    "numbered": [],
+    "color": {
+     "bodyBg": "#1e293b",
+     "bodyBgHsl": {
+      "h": 217,
+      "s": 0.33,
+      "l": 0.17
+     },
+     "dark": true,
+     "sectionBgs": [
+      {
+       "color": "#0f172a",
+       "top": 0,
+       "hsl": {
+        "h": 222,
+        "s": 0.47,
+        "l": 0.11
+       }
+      },
+      {
+       "color": "#1e1b4b",
+       "top": 128,
+       "hsl": {
+        "h": 244,
+        "s": 0.47,
+        "l": 0.2
+       }
+      }
+     ],
+     "textColors": [
+      {
+       "color": "#94a3b8",
+       "share": 0.43
+      },
+      {
+       "color": "#f1f5f9",
+       "share": 0.16
+      },
+      {
+       "color": "#cbd5e1",
+       "share": 0.13
+      },
+      {
+       "color": "#e2e8f0",
+       "share": 0.07
+      },
+      {
+       "color": "#c7d2fe",
+       "share": 0.05
+      }
+     ],
+     "button": {
+      "bg": "#0f172a",
+      "hsl": {
+       "h": 222,
+       "s": 0.47,
+       "l": 0.11
+      },
+      "fg": "#ffffff"
+     },
+     "lowContrast": []
+    },
+    "buttons": {
+     "count": 10,
+     "inHero": 5,
+     "radius": 12,
+     "height": 44,
+     "withShadow": 0,
+     "withGradient": 0,
+     "mono": 0,
+     "upper": 0,
+     "heroLabels": [
+      "Registre des étudiants",
+      "S Scolarité",
+      "Valider la candidature",
+      "Rejeter le dossier",
+      "Réinitialiser le mot de passe"
+     ]
+    },
+    "surfaces": {
+     "shadowStatic": 0,
+     "shadowOverlay": 0,
+     "shadowSamples": [],
+     "gradients": 0,
+     "scrims": 0,
+     "gradientSamples": [],
+     "gradientText": 0,
+     "hairlines": 0,
+     "hairlineSamples": [],
+     "outlinedBoxes": 0,
+     "dashed": 0,
+     "blurred": 1,
+     "roundedBoxes": 7,
+     "boxRadius": 24,
+     "squareMedia": 0,
+     "roundedMedia": 0,
+     "mediaRadius": 0,
+     "textShadow": 0,
+     "cardRows": []
+    },
+    "heroMedia": [],
+    "nav": {
+     "links": 1,
+     "fixed": false,
+     "height": 3937,
+     "floatingPill": false,
+     "blur": false
+    },
+    "fontsLoaded": [
+     "inter"
+    ]
+   },
+   "consoleErrors": []
+  },
+  {
+   "width": 768,
+   "height": 1024,
+   "load": "load",
+   "screens": 5,
+   "filled": [
+    0.8,
+    0.26,
+    0.66,
+    0.83,
+    0.61
+   ],
+   "motion": {
+    "elements": 16,
+    "css": 16,
+    "transitions": 0,
+    "scripted": 0,
+    "videos": 0,
+    "playingVideos": 0
+   },
+   "metrics": {
+    "viewport": {
+     "w": 768,
+     "h": 1024
+    },
+    "page": {
+     "height": 4831,
+     "screens": 4.7,
+     "words": 377,
+     "img": 0,
+     "video": 0,
+     "canvas": 0,
+     "svg": 130,
+     "sections": 14,
+     "horizontalOverflow": 0,
+     "overflowCulprits": [],
+     "uiFragments": 0,
+     "uiAbuse": false,
+     "realPictures": 0,
+     "videoCount": 0,
+     "uiPictures": 0,
+     "pictureSamples": [],
+     "blendText": 0,
+     "sideScrollers": 0,
+     "brokenImages": [],
+     "emoji": []
+    },
+    "hero": {
+     "text": "Ines Ben Salah",
+     "words": 3,
+     "chars": 14,
+     "lines": 1,
+     "size": 49.9,
+     "vw": 6.5,
+     "font": "Inter",
+     "weight": 900,
+     "tracking": -0.025,
+     "leading": 0.98,
+     "upper": false,
+     "italic": false,
+     "mono": false,
+     "align": "left",
+     "position": "center",
+     "widthRatio": 0.88,
+     "top": 229,
+     "tag": "h1",
+     "kind": "heading"
+    },
+    "h1": {
+     "text": "Ines Ben Salah",
+     "words": 3,
+     "lines": 1,
+     "size": 49.9,
+     "font": "Inter"
+    },
+    "headings": [
+     {
+      "text": "Ines Ben Salah",
+      "words": 3,
+      "chars": 14,
+      "lines": 1,
+      "size": 49.9,
+      "vw": 6.5,
+      "font": "Inter",
+      "weight": 900,
+      "tracking": -0.025,
+      "leading": 0.98,
+      "upper": false,
+      "italic": false,
+      "mono": false,
+      "align": "left",
+      "position": "center",
+      "widthRatio": 0.88,
+      "top": 229,
+      "tag": "h1",
+      "kind": "heading"
+     },
+     {
+      "text": "INS-2025-04172",
+      "words": 1,
+      "chars": 14,
+      "lines": 1,
+      "size": 30,
+      "vw": 3.9,
+      "font": "Inter",
+      "weight": 900,
+      "tracking": 0,
+      "leading": 1.2,
+      "upper": true,
+      "italic": false,
+      "mono": false,
+      "align": "left",
+      "position": "center",
+      "widthRatio": 0.82,
+      "top": 427,
+      "tag": "span",
+      "kind": "statement"
+     },
+     {
+      "text": "—",
+      "words": 1,
+      "chars": 1,
+      "lines": 1,
+      "size": 30,
+      "vw": 3.9,
+      "font": "Inter",
+      "weight": 900,
+      "tracking": 0,
+      "leading": 1.2,
+      "upper": false,
+      "italic": false,
+      "mono": false,
+      "align": "left",
+      "position": "left",
+      "widthRatio": 0.42,
+      "top": 774,
+      "tag": "p",
+      "kind": "statement"
+     },
+     {
+      "text": "0 / 0",
+      "words": 3,
+      "chars": 5,
+      "lines": 1,
+      "size": 30,
+      "vw": 3.9,
+      "font": "Inter",
+      "weight": 900,
+      "tracking": 0,
+      "leading": 1.2,
+      "upper": false,
+      "italic": false,
+      "mono": false,
+      "align": "left",
+      "position": "right",
+      "widthRatio": 0.42,
+      "top": 774,
+      "tag": "p",
+      "kind": "statement"
+     },
+     {
+      "text": "0",
+      "words": 1,
+      "chars": 1,
+      "lines": 1,
+      "size": 30,
+      "vw": 3.9,
+      "font": "Inter",
+      "weight": 900,
+      "tracking": 0,
+      "leading": 1.2,
+      "upper": false,
+      "italic": false,
+      "mono": false,
+      "align": "left",
+      "position": "left",
+      "widthRatio": 0.42,
+      "top": 859,
+      "tag": "p",
+      "kind": "statement"
+     },
+     {
+      "text": "0",
+      "words": 1,
+      "chars": 1,
+      "lines": 1,
+      "size": 30,
+      "vw": 3.9,
+      "font": "Inter",
+      "weight": 900,
+      "tracking": 0,
+      "leading": 1.2,
+      "upper": false,
+      "italic": false,
+      "mono": false,
+      "align": "left",
+      "position": "right",
+      "widthRatio": 0.42,
+      "top": 859,
+      "tag": "p",
+      "kind": "statement"
+     }
+    ],
+    "headingSummary": {
+     "count": 6,
+     "maxLines": 1,
+     "over2Lines": 0,
+     "statements": 5,
+     "centered": 0,
+     "medianWords": 1,
+     "mixedFontHeadings": 0
+    },
+    "type": {
+     "families": [
+      {
+       "family": "Inter",
+       "share": 1,
+       "mono": false
+      }
+     ],
+     "familyCount": 1,
+     "sizes": [
+      11,
+      12,
+      13,
+      14,
+      16,
+      20,
+      30,
+      50
+     ],
+     "sizeCount": 8,
+     "notLoaded": [],
+     "body": {
+      "font": "Inter",
+      "size": 16,
+      "leading": 1.5,
+      "weight": 400,
+      "tracking": 0,
+      "contrast": 13
+     },
+     "measureChars": 64,
+     "max": {
+      "size": 49.9,
+      "vw": 6.5,
+      "font": "Inter",
+      "text": "Ines Ben Salah"
+     },
+     "monoShare": 0,
+     "monoProseShare": 0,
+     "monoFamilies": [],
+     "monoSamples": [],
+     "microLabels": 0,
+     "microLabelShare": 0,
+     "microSamples": [],
+     "upperShare": 0.02,
+     "centerShare": 0.11,
+     "smallText": 0
+    },
+    "eyebrows": [],
+    "numbered": [],
+    "color": {
+     "bodyBg": "#1e293b",
+     "bodyBgHsl": {
+      "h": 217,
+      "s": 0.33,
+      "l": 0.17
+     },
+     "dark": true,
+     "sectionBgs": [
+      {
+       "color": "#1e1b4b",
+       "top": 128,
+       "hsl": {
+        "h": 244,
+        "s": 0.47,
+        "l": 0.2
+       }
+      },
+      {
+       "color": "#0f172a",
+       "top": 2532,
+       "hsl": {
+        "h": 222,
+        "s": 0.47,
+        "l": 0.11
+       }
+      }
+     ],
+     "textColors": [
+      {
+       "color": "#94a3b8",
+       "share": 0.25
+      },
+      {
+       "color": "#f1f5f9",
+       "share": 0.22
+      },
+      {
+       "color": "#cbd5e1",
+       "share": 0.17
+      },
+      {
+       "color": "#e2e8f0",
+       "share": 0.09
+      },
+      {
+       "color": "#c7d2fe",
+       "share": 0.07
+      }
+     ],
+     "button": {
+      "bg": "#0f172a",
+      "hsl": {
+       "h": 222,
+       "s": 0.47,
+       "l": 0.11
+      },
+      "fg": "#ffffff"
+     },
+     "lowContrast": []
+    },
+    "buttons": {
+     "count": 9,
+     "inHero": 4,
+     "radius": 12,
+     "height": 44,
+     "withShadow": 0,
+     "withGradient": 0,
+     "mono": 0,
+     "upper": 0,
+     "heroLabels": [
+      "S Scolarité",
+      "Valider la candidature",
+      "Rejeter le dossier",
+      "Réinitialiser le mot de passe"
+     ]
+    },
+    "surfaces": {
+     "shadowStatic": 0,
+     "shadowOverlay": 0,
+     "shadowSamples": [],
+     "gradients": 0,
+     "scrims": 0,
+     "gradientSamples": [],
+     "gradientText": 0,
+     "hairlines": 0,
+     "hairlineSamples": [],
+     "outlinedBoxes": 0,
+     "dashed": 0,
+     "blurred": 1,
+     "roundedBoxes": 7,
+     "boxRadius": 24,
+     "squareMedia": 0,
+     "roundedMedia": 0,
+     "mediaRadius": 0,
+     "textShadow": 0,
+     "cardRows": []
+    },
+    "heroMedia": [],
+    "nav": {
+     "links": 0,
+     "fixed": false,
+     "height": 0,
+     "floatingPill": false,
+     "blur": false
+    },
+    "fontsLoaded": [
+     "inter"
+    ]
+   },
+   "consoleErrors": []
+  },
+  {
+   "width": 390,
+   "height": 844,
+   "load": "load",
+   "screens": 8,
+   "filled": [
+    0.86,
+    0.56,
+    0.35,
+    0.45,
+    0.84,
+    0.64,
+    0.79,
+    0.64
+   ],
+   "motion": {
+    "elements": 16,
+    "css": 16,
+    "transitions": 0,
+    "scripted": 0,
+    "videos": 0,
+    "playingVideos": 0
+   },
+   "metrics": {
+    "viewport": {
+     "w": 390,
+     "h": 844
+    },
+    "page": {
+     "height": 6446,
+     "screens": 7.6,
+     "words": 368,
+     "img": 0,
+     "video": 0,
+     "canvas": 0,
+     "svg": 130,
+     "sections": 14,
+     "horizontalOverflow": 0,
+     "overflowCulprits": [],
+     "uiFragments": 0,
+     "uiAbuse": false,
+     "realPictures": 0,
+     "videoCount": 0,
+     "uiPictures": 0,
+     "pictureSamples": [],
+     "blendText": 0,
+     "sideScrollers": 0,
+     "brokenImages": [],
+     "emoji": []
+    },
+    "hero": {
+     "text": "INS-2025-04172",
+     "words": 1,
+     "chars": 14,
+     "lines": 1,
+     "size": 30,
+     "vw": 7.7,
+     "font": "Inter",
+     "weight": 900,
+     "tracking": 0,
+     "leading": 1.2,
+     "upper": true,
+     "italic": false,
+     "mono": false,
+     "align": "left",
+     "position": "center",
+     "widthRatio": 0.73,
+     "top": 430,
+     "tag": "span",
+     "kind": "heading"
+    },
+    "h1": {
+     "text": "Ines Ben Salah",
+     "words": 3,
+     "lines": 1,
+     "size": 28,
+     "font": "Inter"
+    },
+    "headings": [
+     {
+      "text": "Ines Ben Salah",
+      "words": 3,
+      "chars": 14,
+      "lines": 1,
+      "size": 28,
+      "vw": 7.2,
+      "font": "Inter",
+      "weight": 900,
+      "tracking": -0.025,
+      "leading": 0.98,
+      "upper": false,
+      "italic": false,
+      "mono": false,
+      "align": "left",
+      "position": "center",
+      "widthRatio": 0.84,
+      "top": 205,
+      "tag": "h1",
+      "kind": "heading"
+     },
+     {
+      "text": "INS-2025-04172",
+      "words": 1,
+      "chars": 14,
+      "lines": 1,
+      "size": 30,
+      "vw": 7.7,
+      "font": "Inter",
+      "weight": 900,
+      "tracking": 0,
+      "leading": 1.2,
+      "upper": true,
+      "italic": false,
+      "mono": false,
+      "align": "left",
+      "position": "center",
+      "widthRatio": 0.73,
+      "top": 430,
+      "tag": "span",
+      "kind": "heading"
+     },
+     {
+      "text": "—",
+      "words": 1,
+      "chars": 1,
+      "lines": 1,
+      "size": 30,
+      "vw": 7.7,
+      "font": "Inter",
+      "weight": 900,
+      "tracking": 0,
+      "leading": 1.2,
+      "upper": false,
+      "italic": false,
+      "mono": false,
+      "align": "left",
+      "position": "left",
+      "widthRatio": 0.38,
+      "top": 869,
+      "tag": "p",
+      "kind": "statement"
+     },
+     {
+      "text": "0 / 0",
+      "words": 3,
+      "chars": 5,
+      "lines": 1,
+      "size": 30,
+      "vw": 7.7,
+      "font": "Inter",
+      "weight": 900,
+      "tracking": 0,
+      "leading": 1.2,
+      "upper": false,
+      "italic": false,
+      "mono": false,
+      "align": "left",
+      "position": "right",
+      "widthRatio": 0.38,
+      "top": 869,
+      "tag": "p",
+      "kind": "statement"
+     },
+     {
+      "text": "0",
+      "words": 1,
+      "chars": 1,
+      "lines": 1,
+      "size": 30,
+      "vw": 7.7,
+      "font": "Inter",
+      "weight": 900,
+      "tracking": 0,
+      "leading": 1.2,
+      "upper": false,
+      "italic": false,
+      "mono": false,
+      "align": "left",
+      "position": "left",
+      "widthRatio": 0.38,
+      "top": 954,
+      "tag": "p",
+      "kind": "statement"
+     },
+     {
+      "text": "0",
+      "words": 1,
+      "chars": 1,
+      "lines": 1,
+      "size": 30,
+      "vw": 7.7,
+      "font": "Inter",
+      "weight": 900,
+      "tracking": 0,
+      "leading": 1.2,
+      "upper": false,
+      "italic": false,
+      "mono": false,
+      "align": "left",
+      "position": "right",
+      "widthRatio": 0.38,
+      "top": 954,
+      "tag": "p",
+      "kind": "statement"
+     }
+    ],
+    "headingSummary": {
+     "count": 6,
+     "maxLines": 1,
+     "over2Lines": 0,
+     "statements": 4,
+     "centered": 0,
+     "medianWords": 1,
+     "mixedFontHeadings": 0
+    },
+    "type": {
+     "families": [
+      {
+       "family": "Inter",
+       "share": 1,
+       "mono": false
+      }
+     ],
+     "familyCount": 1,
+     "sizes": [
+      12,
+      13,
+      14,
+      16,
+      20,
+      28,
+      30
+     ],
+     "sizeCount": 7,
+     "notLoaded": [],
+     "body": {
+      "font": "Inter",
+      "size": 16,
+      "leading": 1.5,
+      "weight": 400,
+      "tracking": 0,
+      "contrast": 13
+     },
+     "measureChars": 55,
+     "max": {
+      "size": 30,
+      "vw": 7.7,
+      "font": "Inter",
+      "text": "INS-2025-04172"
+     },
+     "monoShare": 0,
+     "monoProseShare": 0,
+     "monoFamilies": [],
+     "monoSamples": [],
+     "microLabels": 0,
+     "microLabelShare": 0,
+     "microSamples": [],
+     "upperShare": 0.02,
+     "centerShare": 0.11,
+     "smallText": 0
+    },
+    "eyebrows": [],
+    "numbered": [],
+    "color": {
+     "bodyBg": "#1e293b",
+     "bodyBgHsl": {
+      "h": 217,
+      "s": 0.33,
+      "l": 0.17
+     },
+     "dark": true,
+     "sectionBgs": [
+      {
+       "color": "#1e1b4b",
+       "top": 120,
+       "hsl": {
+        "h": 244,
+        "s": 0.47,
+        "l": 0.2
+       }
+      },
+      {
+       "color": "#0f172a",
+       "top": 3184,
+       "hsl": {
+        "h": 222,
+        "s": 0.47,
+        "l": 0.11
+       }
+      }
+     ],
+     "textColors": [
+      {
+       "color": "#94a3b8",
+       "share": 0.25
+      },
+      {
+       "color": "#f1f5f9",
+       "share": 0.22
+      },
+      {
+       "color": "#cbd5e1",
+       "share": 0.17
+      },
+      {
+       "color": "#e2e8f0",
+       "share": 0.09
+      },
+      {
+       "color": "#c7d2fe",
+       "share": 0.07
+      }
+     ],
+     "button": {
+      "bg": "#0f172a",
+      "hsl": {
+       "h": 222,
+       "s": 0.47,
+       "l": 0.11
+      },
+      "fg": "#ffffff"
+     },
+     "lowContrast": []
+    },
+    "buttons": {
+     "count": 8,
+     "inHero": 3,
+     "radius": 12,
+     "height": 44,
+     "withShadow": 0,
+     "withGradient": 0,
+     "mono": 0,
+     "upper": 0,
+     "heroLabels": [
+      "Valider la candidature",
+      "Rejeter le dossier",
+      "Réinitialiser le mot de passe"
+     ]
+    },
+    "surfaces": {
+     "shadowStatic": 0,
+     "shadowOverlay": 0,
+     "shadowSamples": [],
+     "gradients": 0,
+     "scrims": 0,
+     "gradientSamples": [],
+     "gradientText": 0,
+     "hairlines": 0,
+     "hairlineSamples": [],
+     "outlinedBoxes": 0,
+     "dashed": 0,
+     "blurred": 1,
+     "roundedBoxes": 7,
+     "boxRadius": 24,
+     "squareMedia": 0,
+     "roundedMedia": 0,
+     "mediaRadius": 0,
+     "textShadow": 0,
+     "cardRows": []
+    },
+    "heroMedia": [],
+    "nav": {
+     "links": 0,
+     "fixed": false,
+     "height": 0,
+     "floatingPill": false,
+     "blur": false
+    },
+    "fontsLoaded": [
+     "inter"
+    ]
+   },
+   "consoleErrors": []
+  }
+ ],
+ "findings": [],
+ "images": [
+  {
+   "viewport": "desktop",
+   "width": 1440,
+   "fold": "/Users/mohamedyassine/Desktop/PFE/inscription-etudiants/.taste-skill/inspect/desktop-fold.jpg",
+   "pages": [
+    "/Users/mohamedyassine/Desktop/PFE/inscription-etudiants/.taste-skill/inspect/desktop-page-01.jpg",
+    "/Users/mohamedyassine/Desktop/PFE/inscription-etudiants/.taste-skill/inspect/desktop-page-02.jpg"
+   ]
+  },
+  {
+   "viewport": "tablet",
+   "width": 768,
+   "fold": "/Users/mohamedyassine/Desktop/PFE/inscription-etudiants/.taste-skill/inspect/tablet-fold.jpg",
+   "pages": [
+    "/Users/mohamedyassine/Desktop/PFE/inscription-etudiants/.taste-skill/inspect/tablet-page-01.jpg"
+   ]
+  },
+  {
+   "viewport": "mobile",
+   "width": 390,
+   "fold": "/Users/mohamedyassine/Desktop/PFE/inscription-etudiants/.taste-skill/inspect/mobile-fold.jpg",
+   "pages": [
+    "/Users/mohamedyassine/Desktop/PFE/inscription-etudiants/.taste-skill/inspect/mobile-page-01.jpg"
+   ]
+  }
+ ]
+}

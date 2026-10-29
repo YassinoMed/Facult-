@@ -45,6 +45,13 @@ class DossierComplementController extends Controller
      */
     public function store(Request $request, DossierComplementService $service): RedirectResponse|JsonResponse
     {
+        $request->validate([
+            'attestation_honneur' => ['required', 'accepted'],
+        ], [
+            'attestation_honneur.accepted' => 'Vous devez certifier sur l’honneur l’exactitude des informations et documents transmis.',
+            'attestation_honneur.required' => 'Vous devez certifier sur l’honneur l’exactitude des informations et documents transmis.',
+        ]);
+
         $etudiantId = (int) $request->session()->get('etudiant_auth_id');
         $etudiant = Etudiant::findOrFail($etudiantId);
 

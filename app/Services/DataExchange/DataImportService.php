@@ -9,8 +9,10 @@ use App\Models\ImportReport;
 use App\Models\IntegrationLog;
 use App\Services\DataExchange\Contracts\ImportContextuel;
 use App\Services\DataExchange\Contracts\ImportDefinitionInterface;
+use App\Services\DataExchange\Contracts\ImportLotInterface;
 use App\Services\DataExchange\Contracts\ImportSansPii;
 use App\Services\DataExchange\Contracts\ImportValidationAvancee;
+use App\Services\DisponibiliteWorkerService;
 use App\Services\Io\IoException;
 use App\Services\Io\IoFactory;
 use App\Services\Io\NormaliseurEnTetes;
@@ -35,6 +37,7 @@ class DataImportService
         private readonly ?ImportDependencyService $dependencies = null,
         private readonly ?CorrecteurImportService $correcteur = null,
         private readonly ?DetecteurDoublonsService $doublons = null,
+        private readonly ?DisponibiliteWorkerService $disponibiliteWorker = null,
     ) {}
 
     /**
@@ -355,7 +358,9 @@ class DataImportService
         // C2 (LOT 3) : gros volume → file d'attente (staging Phase 17
         // sur tables, jamais de requête HTTP de plusieurs minutes ;
         // notification au responsable en fin de traitement).
-        if (count($payload['lignes']) > (int) config('integrations.queue_threshold', 500)) {
+        // Détection dynamique (§52) : repli synchrone si aucun worker actif.
+        $arbitre = $this->disponibiliteWorker ?? app(DisponibiliteWorkerService::class);
+        if ($arbitre->doitBasculerEnFile(count($payload['lignes']), (int) config('integrations.queue_threshold', 500))) {
             $job = $this->mettreEnFile($payload, $mode, $auteurId, $integration);
 
             session()->forget("data_imports.{$token}");
@@ -576,6 +581,12 @@ class DataImportService
 
                 $importes = 0;
                 foreach (array_chunk($lignes, 500) as $paquet) {
+                    if ($definition instanceof ImportLotInterface) {
+                        $importes += $definition->persisterLot($paquet, $mode, $auteurId);
+
+                        continue;
+                    }
+
                     foreach ($paquet as $ligne) {
                         $definition->persister($ligne, $mode, $auteurId);
                         $importes++;

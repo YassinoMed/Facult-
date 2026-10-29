@@ -9,6 +9,7 @@ use App\Modules\Referentiel\Models\Departement;
 use App\Modules\Referentiel\Models\Programme;
 use App\Modules\Referentiel\Models\Specialite;
 use App\Services\ResolutionDestinatairesService;
+use App\Support\CampagnePerimetre;
 use Illuminate\View\View;
 use Livewire\Attributes\Layout;
 use Livewire\Attributes\Url;
@@ -92,6 +93,12 @@ class GestionGroupesDestinataires extends Component
 
         $this->type = GroupeDestinataires::TYPE_DYNAMIQUE_ETUDIANTS;
         $this->audience = GroupeDestinataires::AUDIENCE_ETUDIANTS;
+
+        // Faculté imposée par le rôle : jamais modifiable côté client.
+        if (($faculte = CampagnePerimetre::faculteAutorisee()) !== null) {
+            $this->filtreFaculteId = $faculte;
+        }
+
         $this->actualiserEstimation();
         $this->modalOuverte = true;
     }
@@ -101,6 +108,10 @@ class GestionGroupesDestinataires extends Component
         $this->authorize('campagnes.manage');
 
         $groupe = GroupeDestinataires::findOrFail($id);
+
+        // Périmètre faculté : groupe hors faculté introuvable (anti-IDOR).
+        abort_unless(CampagnePerimetre::groupeAutorise($groupe, CampagnePerimetre::faculteAutorisee()), 404);
+
         $this->groupeEnCoursId = $groupe->id;
         $this->nom = $groupe->nom;
         $this->description = (string) $groupe->description;
@@ -118,6 +129,10 @@ class GestionGroupesDestinataires extends Component
         $this->filtreGradeId = $c['grade_id'] ?? null;
         $this->filtreSpecialiteId = $c['specialite_id'] ?? null;
 
+        if (($faculte = CampagnePerimetre::faculteAutorisee()) !== null) {
+            $this->filtreFaculteId = $faculte;
+        }
+
         $this->actualiserEstimation();
         $this->modalOuverte = true;
     }
@@ -125,24 +140,25 @@ class GestionGroupesDestinataires extends Component
     public function actualiserEstimation(): void
     {
         $service = app(ResolutionDestinatairesService::class);
+        $faculte = CampagnePerimetre::faculteAutorisee();
 
         try {
             if ($this->type === GroupeDestinataires::TYPE_DYNAMIQUE_ETUDIANTS) {
                 $filtres = array_filter([
-                    'faculte_id' => $this->filtreFaculteId,
+                    'faculte_id' => $faculte ?? $this->filtreFaculteId,
                     'programme_id' => $this->filtreProgrammeId,
                     'niveau' => $this->filtreNiveau,
                     'annee_academique' => $this->filtreAnneeAcademique,
                     'statut' => $this->filtreStatutEtudiant,
                 ]);
-                $this->estimationMembres = $service->requeteEtudiants($filtres)->count();
+                $this->estimationMembres = $service->requeteEtudiants($filtres, $faculte)->count();
             } elseif ($this->type === GroupeDestinataires::TYPE_DYNAMIQUE_ENSEIGNANTS) {
                 $filtres = array_filter([
                     'departement_id' => $this->filtreDepartementId,
                     'grade_id' => $this->filtreGradeId,
                     'specialite_id' => $this->filtreSpecialiteId,
                 ]);
-                $this->estimationMembres = $service->requeteEnseignants($filtres)->count();
+                $this->estimationMembres = $service->requeteEnseignants($filtres, $faculte)->count();
             } else {
                 $this->estimationMembres = 0;
             }
@@ -233,12 +249,13 @@ class GestionGroupesDestinataires extends Component
             'description' => trim($this->description) ?: null,
             'type' => $this->type,
             'audience' => $this->audience,
-            'criteres' => ! empty($criteres) ? $criteres : null,
+            'criteres' => CampagnePerimetre::marquerFaculte($criteres, CampagnePerimetre::faculteAutorisee()) ?: null,
             'auteur_id' => auth()->id(),
         ];
 
         if ($this->groupeEnCoursId) {
             $groupe = GroupeDestinataires::findOrFail($this->groupeEnCoursId);
+            abort_unless(CampagnePerimetre::groupeAutorise($groupe, CampagnePerimetre::faculteAutorisee()), 404);
             $groupe->update($donnees);
             $this->messageSucces = "Le groupe « {$groupe->nom} » a été mis à jour.";
         } else {
@@ -254,6 +271,7 @@ class GestionGroupesDestinataires extends Component
         $this->authorize('campagnes.manage');
 
         $groupe = GroupeDestinataires::findOrFail($id);
+        abort_unless(CampagnePerimetre::groupeAutorise($groupe, CampagnePerimetre::faculteAutorisee()), 404);
         $groupe->update(['est_archive' => ! $groupe->est_archive]);
 
         $etat = $groupe->est_archive ? 'archivé' : 'restauré';
@@ -265,6 +283,7 @@ class GestionGroupesDestinataires extends Component
         $this->authorize('campagnes.manage');
 
         $source = GroupeDestinataires::findOrFail($id);
+        abort_unless(CampagnePerimetre::groupeAutorise($source, CampagnePerimetre::faculteAutorisee()), 404);
         $copie = $source->replicate([
             'nom' => $source->nom.' (Copie)',
             'est_archive' => false,
@@ -281,7 +300,13 @@ class GestionGroupesDestinataires extends Component
     {
         $this->authorize('campagnes.view');
 
+        $faculte = CampagnePerimetre::faculteAutorisee();
+
         $query = GroupeDestinataires::query()->latest('id');
+
+        if ($faculte !== null) {
+            $query->where('criteres->faculte_id', $faculte);
+        }
 
         if (! $this->afficherArchives) {
             $query->where('est_archive', false);
@@ -297,9 +322,13 @@ class GestionGroupesDestinataires extends Component
 
         return view('livewire.admin.campagnes.gestion-groupes', [
             'groupes' => $query->paginate(15),
-            'facultes' => Faculte::orderBy('nom')->get(),
+            'facultes' => $faculte === null
+                ? Faculte::orderBy('nom')->get()
+                : Faculte::whereKey($faculte)->get(),
             'programmes' => Programme::orderBy('nom')->get(),
-            'departements' => Departement::orderBy('nom')->get(),
+            'departements' => $faculte === null
+                ? Departement::orderBy('nom')->get()
+                : Departement::where('faculte_id', $faculte)->orderBy('nom')->get(),
             'grades' => GradeEnseignant::orderBy('nom')->get(),
             'specialites' => Specialite::orderBy('nom')->get(),
         ]);

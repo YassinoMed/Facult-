@@ -11,7 +11,8 @@ class RejectOnlineRequestRequest extends FormRequest
 {
     public function authorize(): bool
     {
-        return $this->user() !== null && $this->user()->hasPermission('demandes.reject');
+        // LOT 01 : Gate (RBAC + délégation active de l'autorité de validation).
+        return $this->user() !== null && $this->user()->can('demandes.reject');
     }
 
     /**

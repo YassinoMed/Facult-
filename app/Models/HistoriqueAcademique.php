@@ -81,6 +81,9 @@ class HistoriqueAcademique extends Model
             self::ACTION_ENSEIGNANT_CREATION => 'Création d’un enseignant',
             self::ACTION_ENSEIGNANT_MODIFICATION => 'Modification d’un enseignant',
             self::ACTION_ENSEIGNANT_SUPPRESSION => 'Suppression d’un enseignant',
+            self::ACTION_MENS_CREATION => 'Création d’une référence MENS',
+            self::ACTION_MENS_MODIFICATION => 'Modification d’une référence MENS',
+            self::ACTION_MENS_SUPPRESSION => 'Suppression d’une référence MENS',
             'export_dossier' => 'Export du dossier',
             'student_document.rejected' => 'Pièce du dossier rejetée par la scolarité',
             'student_document.downloaded' => 'Pièce du dossier téléchargée',
@@ -168,4 +171,10 @@ class HistoriqueAcademique extends Model
     public const ACTION_ENSEIGNANT_MODIFICATION = 'enseignant.modifie';
 
     public const ACTION_ENSEIGNANT_SUPPRESSION = 'enseignant.supprime';
+
+    public const ACTION_MENS_CREATION = 'mens.cree';
+
+    public const ACTION_MENS_MODIFICATION = 'mens.modifie';
+
+    public const ACTION_MENS_SUPPRESSION = 'mens.supprime';
 }

@@ -76,6 +76,11 @@ class ParametreController extends Controller
                 'icone' => '🎓',
                 'description' => 'Seuil de validation de moyenne et alertes d\'assiduité des étudiants.',
             ],
+            'planning' => [
+                'nom' => 'Emplois du temps & Génération',
+                'icone' => '🗓️',
+                'description' => 'Pondérations et garde-fous du moteur de génération des emplois du temps.',
+            ],
             'sentinel' => [
                 'nom' => 'Surveillance Sentinel',
                 'icone' => '👁️',

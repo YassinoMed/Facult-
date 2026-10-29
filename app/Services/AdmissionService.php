@@ -9,6 +9,7 @@ use App\Modules\Referentiel\Models\Niveau;
 use App\Modules\Referentiel\Models\Programme;
 use DomainException;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -23,8 +24,10 @@ class AdmissionService
     ) {}
 
     /**
-     * Accorde/refuse une admission. Idempotence verrouillée : une seule
-     * admission active par (étudiant, programme, année).
+     * Accorde/refuse une admission. Idempotence verrouillée : un seul acte
+     * ACTIF (non refusé, non consommé — cf. `Admission::estActive()`) par
+     * (étudiant, programme, année). Un refus antérieur ne bloque pas une
+     * décision ultérieure (recours) ; les actes restent historisés.
      *
      * @throws DomainException
      */
@@ -50,6 +53,7 @@ class AdmissionService
                 ->where('programme_id', $programme->id)
                 ->where('annee_universitaire_id', $annee->id)
                 ->whereNull('consumed_at')
+                ->where('decision', '!=', 'refuse')
                 ->lockForUpdate()
                 ->first();
 
@@ -57,16 +61,28 @@ class AdmissionService
                 throw new DomainException('Une admission active existe déjà pour cet étudiant, ce programme et cette année.');
             }
 
-            $admission = Admission::create([
-                'etudiant_id' => $etudiant->id,
-                'programme_id' => $programme->id,
-                'niveau_id' => $niveau?->id,
-                'annee_universitaire_id' => $annee->id,
-                'decision' => $decision,
-                'motif' => $motif,
-                'decided_by' => $auteurId,
-                'decided_at' => now(),
-            ]);
+            // R1 : verrou d'unicité des actifs (NULL pour les refus, libéré
+            // à la consommation). Une violation concurrente retombe sur le
+            // même refus déterministe que la garde applicative.
+            $verrou = $decision === 'refuse'
+                ? null
+                : $etudiant->id.'-'.$programme->id.'-'.$annee->id;
+
+            try {
+                $admission = Admission::create([
+                    'etudiant_id' => $etudiant->id,
+                    'programme_id' => $programme->id,
+                    'niveau_id' => $niveau?->id,
+                    'annee_universitaire_id' => $annee->id,
+                    'decision' => $decision,
+                    'motif' => $motif,
+                    'decided_by' => $auteurId,
+                    'decided_at' => now(),
+                    'verrou_actif' => $verrou,
+                ]);
+            } catch (UniqueConstraintViolationException) {
+                throw new DomainException('Une admission active existe déjà pour cet étudiant, ce programme et cette année.');
+            }
 
             $this->audit->tracer(
                 $etudiant,

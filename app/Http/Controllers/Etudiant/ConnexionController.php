@@ -35,13 +35,16 @@ class ConnexionController extends Controller
             ->first();
 
         // Temps constant anti-énumération (audit §P3-22) : même si aucun
-        // compte ne correspond, on exécute un bcrypt valide pour que la
-        // durée de réponse ne révèle pas l'existence du compte.
-        $empreinte = $etudiant && ! empty($etudiant->password)
+        // compte ne correspond ou si le compte n'a pas de mot de passe,
+        // on exécute un bcrypt valide pour que la durée de réponse ne révèle pas l'existence du compte.
+        $aUnMotDePasse = $etudiant && ! empty($etudiant->password);
+        $empreinte = $aUnMotDePasse
             ? $etudiant->password
             : '$2y$12$k1pW5dHhc72vFo3SF3rAOeLUrgzwefl91XUMRfRyMNa8FoPzyuZIi';
 
-        if (! $etudiant || ! Hash::check($request->input('password'), $empreinte)) {
+        $motDePasseValide = Hash::check($request->input('password'), $empreinte);
+
+        if (! $etudiant || ! $aUnMotDePasse || ! $motDePasseValide) {
             return back()->withErrors([
                 'identifiant' => 'Identifiants incorrects. Vérifiez votre email/CIN et votre mot de passe.',
             ])->onlyInput('identifiant');

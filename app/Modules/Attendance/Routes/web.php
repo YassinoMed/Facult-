@@ -117,6 +117,9 @@ Route::middleware(['auth', 'admin', 'secondaire.verrou', 'module:attendance'])->
     Route::get('justifications', [JustificationController::class, 'index'])
         ->middleware('can:attendance.view')
         ->name('justifications.index');
+    Route::get('justifications/{justification}/piece', [JustificationController::class, 'telechargerPiece'])
+        ->middleware(['can:attendance.justify', 'throttle:20,1'])
+        ->name('justifications.piece');
     Route::post('justifications/{justification}/valider', [JustificationController::class, 'valider'])
         ->middleware(['can:attendance.justify', 'throttle:20,1'])
         ->name('justifications.valider');
@@ -147,6 +150,9 @@ Route::middleware(['etudiant.auth', 'module:attendance'])->prefix('etudiant')->n
     Route::post('absences/{presence}/justifier', [JustificationController::class, 'deposer'])
         ->middleware('throttle:10,1')
         ->name('absences.justifier');
+    Route::get('absences/justificatifs/{justification}/piece', [JustificationController::class, 'telechargerPieceEtudiant'])
+        ->middleware('throttle:20,1')
+        ->name('absences.justificatif');
 
     // Pointage via QR temporaire d'appel (LOOP 21) : jeton nominatif,
     // appel en cours du groupe, idempotent.

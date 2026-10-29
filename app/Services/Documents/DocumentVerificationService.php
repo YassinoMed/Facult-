@@ -12,8 +12,12 @@ use App\Modules\StudentDossiers\Models\GeneratedDocument;
  */
 final class DocumentVerificationService
 {
+    public function __construct(
+        private readonly DocumentSignatureService $signature,
+    ) {}
+
     /**
-     * @return array{code: string, trouve: bool, statut: string, type: ?string, date: ?string, nom_masque: ?string, valide: bool}
+     * @return array{code: string, trouve: bool, statut: string, type: ?string, date: ?string, nom_masque: ?string, signature_valide: ?bool, valide: bool}
      */
     public function verifier(string $code, string $ip): array
     {
@@ -31,15 +35,18 @@ final class DocumentVerificationService
 
             return [
                 'code' => $code, 'trouve' => false, 'statut' => 'inexistant',
-                'type' => null, 'date' => null, 'nom_masque' => null, 'valide' => false,
+                'type' => null, 'date' => null, 'nom_masque' => null,
+                'signature_valide' => null, 'valide' => false,
             ];
         }
 
         $statut = $document->statut;
 
-        if ($statut === 'valide' && $document->valide_jusquau !== null && $document->valide_jusquau->isPast()) {
+        if ($statut === 'valide' && (($document->valide_jusquau !== null && $document->valide_jusquau->isPast()) || ($document->expires_at !== null && $document->expires_at->isPast()))) {
             $statut = 'expire';
         }
+
+        $signatureValide = $this->signature->verifier($document);
 
         DocumentVerification::create([
             'document_id' => $document->id,
@@ -57,7 +64,8 @@ final class DocumentVerificationService
             'type' => $document->type,
             'date' => $document->emis_le?->format('d/m/Y') ?? $document->created_at?->format('d/m/Y'),
             'nom_masque' => $this->masquerNom((string) ($snapshot['nom'] ?? '')),
-            'valide' => $statut === 'valide',
+            'signature_valide' => $signatureValide,
+            'valide' => $statut === 'valide' && $signatureValide !== false,
         ];
     }
 

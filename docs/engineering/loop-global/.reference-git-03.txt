@@ -1,0 +1,747 @@
+ M .env.example
+A  .gitmodules
+ M AGENTS.md
+ M app/Contracts/CanalNotificationExterneInterface.php
+ M app/Http/Controllers/Admin/AdministrateurController.php
+ M app/Http/Controllers/Admin/AdmissionController.php
+ M app/Http/Controllers/Admin/AffectationController.php
+ M app/Http/Controllers/Admin/ArchiveController.php
+ M app/Http/Controllers/Admin/AuditController.php
+ M app/Http/Controllers/Admin/AuthController.php
+ M app/Http/Controllers/Admin/AutomaticAssignmentController.php
+ M app/Http/Controllers/Admin/BiController.php
+ M app/Http/Controllers/Admin/CockpitController.php
+ M app/Http/Controllers/Admin/DataExchangeController.php
+ M app/Http/Controllers/Admin/EnseignantController.php
+ M app/Http/Controllers/Admin/EtudiantController.php
+ M app/Http/Controllers/Admin/FileTraitementController.php
+ M app/Http/Controllers/Admin/InscriptionAcademiqueController.php
+ M app/Http/Controllers/Admin/ListesController.php
+ M app/Http/Controllers/Admin/MensReferenceController.php
+ M app/Http/Controllers/Admin/MfaController.php
+ M app/Http/Controllers/Admin/ParametreController.php
+ M app/Http/Controllers/Admin/QualiteController.php
+ M app/Http/Controllers/Admin/RoleController.php
+ M app/Http/Controllers/Admin/StatistiquesController.php
+ M app/Http/Controllers/Admin/VerificationController.php
+ M app/Http/Controllers/Api/V1/ReadyController.php
+ M app/Http/Controllers/DossierExistantController.php
+ M app/Http/Controllers/Enseignant/ConnexionController.php
+ M app/Http/Controllers/Enseignant/ProfilController.php
+ M app/Http/Controllers/Enseignant/TableauDeBordController.php
+ M app/Http/Controllers/Etudiant/ArchiveController.php
+ M app/Http/Controllers/Etudiant/ProfilController.php
+ M app/Http/Controllers/Etudiant/RendezVousScolariteController.php
+ M app/Http/Controllers/Etudiant/TableauDeBordController.php
+ M app/Http/Controllers/RecherchePortailController.php
+ M app/Http/Middleware/EnsureStudent.php
+ M app/Http/Middleware/EnsureTeacher.php
+ M app/Http/Middleware/SecurityHeadersMiddleware.php
+ M app/Http/Requests/ProfilEnseignantRequest.php
+ M app/Http/Requests/ProfilEtudiantRequest.php
+ M app/Http/Requests/StoreInscriptionAcademiqueRequest.php
+ M app/Jobs/AcheminerNotificationExterneJob.php
+ M app/Jobs/GeneratePopulationExport.php
+ M app/Listeners/NotifierDecisionDossier.php
+ M app/Listeners/NotifierDepotRecu.php
+ M app/Livewire/Admin/Campagnes/AssistantCompositionCampagne.php
+ M app/Livewire/Admin/Campagnes/GestionGroupesDestinataires.php
+ M app/Livewire/Admin/Campagnes/SuiviCampagneCourriel.php
+ M app/Livewire/Admin/Campagnes/TableauDeBordCampagnes.php
+ M app/Models/Admission.php
+ M app/Models/Batiment.php
+ M app/Models/DossierCorrection.php
+ M app/Models/Etudiant.php
+ M app/Models/HistoriqueAcademique.php
+ M app/Models/InscriptionAcademique.php
+ M app/Models/Parametre.php
+ M app/Models/Scrutin.php
+ M app/Models/User.php
+ M app/Modules/Announcements/Controllers/MesAnnoncesController.php
+ M app/Modules/Announcements/Models/Annonce.php
+ M app/Modules/Attendance/Controllers/JustificationController.php
+ M app/Modules/Attendance/Controllers/MesPresencesController.php
+ M app/Modules/Attendance/Controllers/PresenceController.php
+ M app/Modules/Attendance/Models/Presence.php
+ M app/Modules/Attendance/Routes/web.php
+ M app/Modules/Calendar/Controllers/CalendrierController.php
+ M app/Modules/Calendar/Models/EvenementCalendrier.php
+ M app/Modules/Calendar/Routes/web.php
+ M app/Modules/Calendar/Services/AgendaService.php
+ M app/Modules/Evaluation/Controllers/AffectationEnseignantController.php
+ M app/Modules/Evaluation/Controllers/EmploiSurveillanceController.php
+ M app/Modules/Evaluation/Controllers/EpreuveController.php
+ M app/Modules/Evaluation/Controllers/ExamenController.php
+ M app/Modules/Evaluation/Controllers/MesNotesController.php
+ M app/Modules/Evaluation/Controllers/MesSurveillancesController.php
+ M app/Modules/Evaluation/Controllers/NoteEpreuveController.php
+ M app/Modules/Evaluation/Controllers/SurveillanceController.php
+ M app/Modules/Evaluation/Events/EvaluationChanged.php
+ M app/Modules/Evaluation/Models/Candidat.php
+ M app/Modules/Evaluation/Models/DecisionDeliberation.php
+ M app/Modules/Evaluation/Models/Epreuve.php
+ M app/Modules/Evaluation/Models/NoteEpreuve.php
+ M app/Modules/Evaluation/Models/SurveillanceConstraintConfig.php
+ M app/Modules/Evaluation/Policies/EvaluationPolicy.php
+ M app/Modules/Evaluation/Requests/SaisieNotesAnonymesRequest.php
+ M app/Modules/Evaluation/Requests/StoreEpreuveRequest.php
+ M app/Modules/Evaluation/Requests/StoreExamenRequest.php
+ M app/Modules/Evaluation/Routes/web.php
+ M app/Modules/Evaluation/Services/ConflitEpreuveService.php
+ M app/Modules/Evaluation/Services/ConvocationService.php
+ M app/Modules/Evaluation/Services/DeliberationService.php
+ M app/Modules/Evaluation/Services/EpreuveService.php
+ M app/Modules/Evaluation/Services/ExamRoomAssignmentService.php
+ M app/Modules/Evaluation/Services/ExamenService.php
+ M app/Modules/Evaluation/Services/GradeCheckSuite.php
+ M app/Modules/Evaluation/Services/SaisieNoteService.php
+ M app/Modules/Evaluation/Services/SessionExamenService.php
+ M app/Modules/Evaluation/Services/SessionPreparationService.php
+ M app/Modules/Finances/Controllers/FinanceController.php
+ M app/Modules/Finances/Models/Facture.php
+ M app/Modules/Finances/Routes/web.php
+ M app/Modules/Finances/Services/FinanceService.php
+ M app/Modules/OnlineRequests/Services/RequestAttachmentService.php
+ M app/Modules/ParcoursAcademique/Controllers/AmenagementParcoursController.php
+ M app/Modules/ParcoursAcademique/Models/ParcoursSimulation.php
+ M app/Modules/ParcoursAcademique/Routes/web.php
+ M app/Modules/ParcoursAcademique/Services/AmenagementParcoursService.php
+ M app/Modules/Referentiel/Models/Niveau.php
+ M app/Modules/Referentiel/Routes/web.php
+ M app/Modules/Schedule/Models/Group.php
+ M app/Modules/Schedule/Models/Room.php
+ M app/Modules/Schedule/Models/Schedule.php
+ M app/Modules/Schedule/Models/ScheduleSlot.php
+ M app/Modules/Schedule/Models/Teacher.php
+ M app/Modules/Schedule/Routes/web.php
+ M app/Modules/Schedule/Services/ScheduleConflictService.php
+ M app/Modules/Schedule/Services/ScheduleExplorerService.php
+ M app/Modules/Schedule/Services/ScheduleService.php
+ M app/Modules/StudentDossiers/Contracts/AntivirusResult.php
+ M app/Modules/StudentDossiers/Contracts/AntivirusScannerInterface.php
+ M app/Modules/StudentDossiers/Controllers/MonDossierController.php
+ M app/Modules/StudentDossiers/Controllers/StudentDossierController.php
+ M app/Modules/StudentDossiers/Models/StudentDocument.php
+ M app/Modules/StudentDossiers/Services/DocumentStorageService.php
+ M app/Modules/StudentDossiers/Services/Pdf/OfficialDocumentService.php
+ M app/Modules/Tasks/Controllers/TaskController.php
+ M app/Modules/Tasks/Policies/TaskPolicy.php
+ M app/Modules/Tasks/Services/TaskGenerationService.php
+ M app/Modules/Tasks/Services/TaskService.php
+ M app/Modules/Versioning/Controllers/Api/VersioningApiController.php
+ M app/Notifications/ConfirmationMiseAJourDossierExistant.php
+ M app/Policies/CampagneCourrielPolicy.php
+ M app/Policies/EtudiantPolicy.php
+ M app/Policies/GroupeDestinatairesPolicy.php
+ M app/Policies/QualitePolicy.php
+ M app/Providers/AppServiceProvider.php
+ M app/Providers/ModuleServiceProvider.php
+ M app/Services/AcademicProgressionService.php
+ M app/Services/AdmissionService.php
+ M app/Services/AffectationAutomatiqueService.php
+ M app/Services/ArchiveService.php
+ M app/Services/BIService.php
+ M app/Services/CampagneCourrielService.php
+ M app/Services/DataExchange/DataImportService.php
+ M app/Services/DataExchange/Definitions/DecisionJuryDefinition.php
+ M app/Services/DataExchange/Definitions/DeliberationDefinition.php
+ M app/Services/DataExchange/Definitions/EtudiantDefinition.php
+ M app/Services/DataExchange/Definitions/ExamenDefinition.php
+ M app/Services/DataExchange/Definitions/GroupDefinition.php
+ M app/Services/DataExchange/Definitions/InscriptionAcademiqueDefinition.php
+ M app/Services/DataExchange/Definitions/NiveauDefinition.php
+ M app/Services/DataExchange/Definitions/NoteEpreuveAnonymeDefinition.php
+ M app/Services/DataExchange/Definitions/ProgressionDefinition.php
+ M app/Services/DataExchange/Definitions/SemestreDefinition.php
+ M app/Services/DocumentService.php
+ M app/Services/Documents/DefaultDocumentGenerator.php
+ M app/Services/Documents/DocumentVerificationService.php
+ M app/Services/DocumentsRequisService.php
+ M app/Services/DossierExistantService.php
+ M app/Services/Exports/ListeEtudiantsService.php
+ M app/Services/FicheEtudiantService.php
+ M app/Services/FileTraitementService.php
+ M app/Services/InscriptionService.php
+ M app/Services/Io/CsvSerializer.php
+ M app/Services/Io/ExportOrchestrator.php
+ M app/Services/Io/ImportOrchestrator.php
+ M app/Services/Io/InscriptionsAcademiquesImporter.php
+ M app/Services/Io/StudentsImporter.php
+ M app/Services/NotificationService.php
+ M app/Services/PopulationStatsService.php
+ M app/Services/ReinscriptionService.php
+ M app/Services/ResolutionDestinatairesService.php
+ M app/Services/Verification/CorrectionService.php
+ M app/Support/Permissions.php
+ M app/Support/QrCodeSvg.php
+ M app/Support/SaisieIdentification.php
+ M bootstrap/app.php
+ M bootstrap/providers.php
+ M config/communication.php
+ M config/integrations.php
+ M config/modules.php
+ M config/services.php
+ M config/student-dossiers.php
+ M database/seeders/AdminSeeder.php
+ M database/seeders/ArchiveSeeder.php
+ M database/seeders/DatabaseSeeder.php
+ M database/seeders/FsegsDatasetSeeder.php
+ M database/seeders/NotesDemoSeeder.php
+ M database/seeders/ScheduleSeeder.php
+ M database/seeders/VolumeSeeder.php
+ M docs/BACK-OFFICE.md
+ M docs/DATA-EXCHANGE.md
+ M docs/DESIGN-SYSTEM.md
+ M docs/academic/documents.md
+ M docs/assignments/confirmation.md
+ M docs/engineering/LOOP-MAIL-00-BASELINE.md
+ M docs/engineering/inscription-group-assignment.md
+ M docs/engineering/loop-existant-email-rapport.md
+ M docs/engineering/loop-inscription-consolidation-rapport.md
+ M docs/engineering/schedule-audit-progress.md
+ M docs/fonctionnement-import-export-affectation-groupes.md
+ M docs/inscriptions/re-enrollment.md
+ M docs/inscriptions/rules.md
+ M docs/parcours-academique/architecture.md
+ M docs/parcours-academique/tests-securite.md
+ M docs/students-groups/assignment.md
+ M opencode.json
+ M package-lock.json
+ M package.json
+ M phpunit.xml
+A  rea
+ M resources/css/app.css
+ M resources/js/app.js
+ M resources/views/admin/administrateurs/index.blade.php
+ M resources/views/admin/admissions/index.blade.php
+ M resources/views/admin/affectations/auto-simulation.blade.php
+ M resources/views/admin/archives/index.blade.php
+ M resources/views/admin/audit/index.blade.php
+ M resources/views/admin/cockpit/index.blade.php
+ M resources/views/admin/courriels/index.blade.php
+ M resources/views/admin/dashboard.blade.php
+ M resources/views/admin/enseignants/show.blade.php
+ M resources/views/admin/etudiants/index.blade.php
+ M resources/views/admin/facultes/index.blade.php
+ M resources/views/admin/groupes/index.blade.php
+ M resources/views/admin/groupes/show.blade.php
+ M resources/views/admin/inscriptions/file-traitement.blade.php
+ M resources/views/admin/inscriptions/reinscrire.blade.php
+ M resources/views/admin/listes/preview.blade.php
+ M resources/views/admin/mens/index.blade.php
+ M resources/views/admin/mfa/configurer.blade.php
+ M resources/views/admin/roles/index.blade.php
+ M resources/views/admin/smtp/index.blade.php
+ M resources/views/admin/system/sauvegardes/index.blade.php
+ M resources/views/components/alert.blade.php
+ M resources/views/components/btn.blade.php
+ M resources/views/components/dropdown.blade.php
+ M resources/views/components/empty-state.blade.php
+ M resources/views/components/export-actions.blade.php
+ M resources/views/components/modal.blade.php
+ M resources/views/components/page-header.blade.php
+ M resources/views/components/palette.blade.php
+ M resources/views/components/quick-actions.blade.php
+ M resources/views/components/status-badge.blade.php
+ M resources/views/components/tabs.blade.php
+ M resources/views/components/timeline.blade.php
+ M resources/views/components/verrouillage-surveillance.blade.php
+ M resources/views/documents/verifier.blade.php
+ M resources/views/enseignant/connexion.blade.php
+ M resources/views/enseignant/dashboard.blade.php
+ M resources/views/enseignant/documents.blade.php
+ M resources/views/enseignant/modifier.blade.php
+ M resources/views/enseignant/presences.blade.php
+ M resources/views/enseignant/surveillances.blade.php
+ M resources/views/etudiant/archives.blade.php
+ M resources/views/etudiant/connexion.blade.php
+ M resources/views/etudiant/dashboard.blade.php
+ M resources/views/etudiant/inscriptions.blade.php
+ M resources/views/etudiant/modifier.blade.php
+ M resources/views/etudiant/notes.blade.php
+ M resources/views/etudiant/profil.blade.php
+ M resources/views/hors-ligne.blade.php
+ M resources/views/inscription/_wizard.blade.php
+ M resources/views/inscription/create.blade.php
+ M resources/views/inscription/existant/accueil.blade.php
+ M resources/views/inscription/existant/confirmation.blade.php
+ M resources/views/inscription/faq.blade.php
+ M resources/views/inscription/success.blade.php
+ M resources/views/inscription/suivi.blade.php
+ M resources/views/layouts/_navigation.blade.php
+ M resources/views/layouts/app.blade.php
+ M resources/views/modules/announcements/mes-annonces.blade.php
+ M resources/views/modules/attendance/justifications.blade.php
+ M resources/views/modules/attendance/mes-absences.blade.php
+ M resources/views/modules/calendar/agenda.blade.php
+ M resources/views/modules/evaluation/affectations-index.blade.php
+ M resources/views/modules/evaluation/deliberations-show.blade.php
+ M resources/views/modules/evaluation/emargement.blade.php
+ M resources/views/modules/evaluation/epreuves-show.blade.php
+ M resources/views/modules/evaluation/examens-index.blade.php
+ M resources/views/modules/evaluation/ma-saisie-notes.blade.php
+ M resources/views/modules/evaluation/mes-notes.blade.php
+ M resources/views/modules/evaluation/mes-surveillances.blade.php
+ M resources/views/modules/evaluation/notes-import-preview.blade.php
+ M resources/views/modules/evaluation/notes-saisie.blade.php
+ M resources/views/modules/evaluation/tableau-bord.blade.php
+ M resources/views/modules/finances/facture-show.blade.php
+ M resources/views/modules/finances/mes-finances.blade.php
+ M resources/views/modules/finances/tableau-bord.blade.php
+ M resources/views/modules/schedule/creneau.blade.php
+ M resources/views/modules/schedule/disponibilites.blade.php
+ M resources/views/modules/schedule/index.blade.php
+ M resources/views/modules/schedule/mon-planning.blade.php
+ M resources/views/modules/schedule/show.blade.php
+ M resources/views/modules/student-dossiers/mon-dossier.blade.php
+ M resources/views/modules/student-dossiers/pdf/attestation-inscription.blade.php
+ M resources/views/modules/student-dossiers/pdf/attestation-reussite.blade.php
+ M resources/views/modules/student-dossiers/pdf/diplome.blade.php
+ M resources/views/modules/student-dossiers/pdf/releve.blade.php
+ M resources/views/modules/student-dossiers/show.blade.php
+ M resources/views/notifications/index.blade.php
+ M routes/console.php
+ M routes/web.php
+ M tests/Feature/AccessibiliteParcoursTest.php
+ M tests/Feature/AffectationMoteurTest.php
+ M tests/Feature/ArchiveAuthorizationTest.php
+ M tests/Feature/CentreResolutionTest.php
+ M tests/Feature/CompostageAnonymeTest.php
+ M tests/Feature/ContraintesSurveillanceTest.php
+ M tests/Feature/DossierExistantAutonomeTest.php
+ M tests/Feature/DossierExistantParcoursTest.php
+ M tests/Feature/EnseignantNotesTest.php
+ M tests/Feature/EnseignantPortailTest.php
+ M tests/Feature/EspaceEnseignantModulesTest.php
+ M tests/Feature/EspaceEnseignantTest.php
+ M tests/Feature/EspaceEtudiantTest.php
+ M tests/Feature/ExamCandidatePopulationTest.php
+ M tests/Feature/ExamensFeatureCompleteTest.php
+ M tests/Feature/FileTraitementCategoriesTest.php
+ M tests/Feature/FileTraitementCoherenceTest.php
+ M tests/Feature/FileTraitementSecuriteTest.php
+ M tests/Feature/InscriptionCorrection4YeuxTest.php
+ M tests/Feature/InscriptionFileTraitementTest.php
+ M tests/Feature/InscriptionNotificationsEcheancesTest.php
+ M tests/Feature/InscriptionPerformanceFiabiliteTest.php
+ M tests/Feature/LoopPopupHomeOnly04Test.php
+ M tests/Feature/MfaLoopJTest.php
+ M tests/Feature/NavigationTest.php
+ M tests/Feature/NotesImportAssociationTest.php
+ M tests/Feature/NotesImportMultiTest.php
+ M tests/Feature/ParcoursAcademiqueTest.php
+ M tests/Feature/ParcoursAccueilEmbarqueTest.php
+ M tests/Feature/PortailEtudiantPublicationTest.php
+ M tests/Feature/QualiteApiSupervisionTest.php
+ M tests/Feature/RecherchePortailTest.php
+ M tests/Feature/RelevesGenerationTest.php
+ M tests/Feature/RevocationSessionsTest.php
+ M tests/Feature/SaisieIdentificationStricteTest.php
+ M tests/Feature/ScheduleTest.php
+ M tests/Feature/TableauDeBordTest.php
+ M tests/Feature/VerificationFeatureTest.php
+ M tests/Feature/VersioningTest.php
+ M tests/TestCase.php
+ M vite.config.js
+?? .agents/skills/reverse-engineer-anything/
+?? .opencode/skills/reverse-engineer-anything/
+?? .taste-skill/
+?? .tours/
+?? OMNiroUTE-OPENCODE-SETUP.md
+?? app/Console/Commands/AssocierDocumentsInscriptions.php
+?? app/Console/Commands/AuditRapprochementFinancier.php
+?? app/Console/Commands/AuditRetentionPortails.php
+?? app/Console/Commands/InitialiserDossiersPaiement.php
+?? app/Console/Commands/PublierOutbox.php
+?? app/Console/Commands/ReprendreNotificationsExterneEchecs.php
+?? app/Console/Commands/SynchroniserDefinitionsKpi.php
+?? app/DataMesh/
+?? app/Events/InscriptionAcademiqueCreee.php
+?? app/Http/Controllers/Admin/CentreTravailController.php
+?? app/Http/Controllers/Admin/DataMeshController.php
+?? app/Http/Controllers/Admin/ScrutinController.php
+?? app/Http/Controllers/Auth/
+?? app/Http/Controllers/NotificationPreferencesController.php
+?? app/Http/Livewire/Admin/Etudiants/
+?? app/Http/Livewire/Admin/Scrutins/
+?? app/Http/Livewire/Etudiant/
+?? app/Http/Middleware/EnsureMfa.php
+?? app/Http/Middleware/EnsureTrustedHost.php
+?? app/Http/Requests/AttribuerRoleRequest.php
+?? app/Mail/PortailMotDePasseMail.php
+?? app/Models/KpiDefinition.php
+?? app/Models/PortalPasswordResetToken.php
+?? app/Modules/AiAssistant/
+?? app/Modules/Aide/
+?? app/Modules/AssistantIa/
+?? app/Modules/AssuranceQualite/
+?? app/Modules/Evaluation/Controllers/AnomalieController.php
+?? app/Modules/Evaluation/Controllers/DocumentBatchController.php
+?? app/Modules/Evaluation/Controllers/HistoriqueNotesController.php
+?? app/Modules/Evaluation/Controllers/PreparationExamenController.php
+?? app/Modules/Evaluation/Jobs/PlanifierExamensJob.php
+?? app/Modules/Evaluation/Models/DocumentExamenGenere.php
+?? app/Modules/Evaluation/Services/EvaluationAuditService.php
+?? app/Modules/Evaluation/Services/EvaluationDocumentBatchService.php
+?? app/Modules/Evaluation/Services/EvaluationImportService.php
+?? app/Modules/Evaluation/Services/EvaluationQualityService.php
+?? app/Modules/Evaluation/Services/EvaluationWorkflowService.php
+?? app/Modules/Evaluation/Services/PreparationExamenService.php
+?? app/Modules/Finances/Controllers/PaiementInscriptionAdminController.php
+?? app/Modules/Finances/Controllers/PaiementInscriptionEtudiantController.php
+?? app/Modules/Finances/Models/DossierPaiement.php
+?? app/Modules/Finances/Models/RecuPaiement.php
+?? app/Modules/Finances/Policies/DossierPaiementPolicy.php
+?? app/Modules/Finances/Requests/
+?? app/Modules/Finances/Services/DossierPaiementService.php
+?? app/Modules/Finances/Services/FinancialReconciliationService.php
+?? app/Modules/ParcoursAcademique/Controllers/MaSimulationParcoursController.php
+?? app/Modules/ParcoursAcademique/Requests/MaSimulationParcoursRequest.php
+?? app/Modules/PreventionDecrochage/
+?? app/Modules/Referentiel/Controllers/CompetencesController.php
+?? app/Modules/Referentiel/Models/Competence.php
+?? app/Modules/Referentiel/Models/CompetenceObjectif.php
+?? app/Modules/Referentiel/Services/CouvertureCompetencesService.php
+?? app/Modules/Schedule/Controllers/ScheduleAvailabilityController.php
+?? app/Modules/Schedule/Controllers/ScheduleGenerationController.php
+?? app/Modules/Schedule/Models/AcademicWeek.php
+?? app/Modules/Schedule/Models/ScheduleAvailability.php
+?? app/Modules/Schedule/Models/ScheduleSlotTeacher.php
+?? app/Modules/Schedule/Models/ScheduleVersion.php
+?? app/Modules/Schedule/Models/TimeSlot.php
+?? app/Modules/Schedule/Models/TimetableConstraint.php
+?? app/Modules/Schedule/Models/TimetableGeneration.php
+?? app/Modules/Schedule/Models/TimetableScenario.php
+?? app/Modules/Schedule/Requests/StoreScheduleAvailabilityRequest.php
+?? app/Modules/Schedule/Requests/UpdateScheduleAvailabilityRequest.php
+?? app/Modules/Schedule/Services/ExamScheduleEngineService.php
+?? app/Modules/Schedule/Services/ScheduleAuditReport.php
+?? app/Modules/Schedule/Services/ScheduleAvailabilityService.php
+?? app/Modules/Schedule/Services/ScheduleBenchmarkService.php
+?? app/Modules/Schedule/Services/ScheduleCalendarService.php
+?? app/Modules/Schedule/Services/ScheduleConstraintChecker.php
+?? app/Modules/Schedule/Services/ScheduleConstraintRegistry.php
+?? app/Modules/Schedule/Services/ScheduleExchangeService.php
+?? app/Modules/Schedule/Services/ScheduleGenerationSettings.php
+?? app/Modules/Schedule/Services/ScheduleGeneratorService.php
+?? app/Modules/Schedule/Services/ScheduleInteractiveService.php
+?? app/Modules/Schedule/Services/ScheduleOptimizerService.php
+?? app/Modules/Schedule/Services/SchedulePedagogieService.php
+?? app/Modules/Schedule/Services/ScheduleRepairService.php
+?? app/Modules/Schedule/Services/ScheduleSecurityAuditService.php
+?? app/Modules/Schedule/Services/ScheduleVersioningService.php
+?? app/Modules/Schedule/Services/SeanceDemande.php
+?? app/Modules/SimulateurScenarios/
+?? app/Modules/StudentDossiers/Listeners/AssocierDocumentsInscription.php
+?? app/Modules/StudentDossiers/Listeners/SynchroniserDocumentsAnnuels.php
+?? app/Modules/StudentDossiers/Models/InscriptionDocument.php
+?? app/Modules/StudentDossiers/Policies/InscriptionDocumentPolicy.php
+?? app/Modules/StudentDossiers/Services/ClamavAntivirusScanner.php
+?? app/Modules/StudentDossiers/Services/ReutilisationDocumentsService.php
+?? app/Modules/Tasks/Listeners/CreerTacheInscription.php
+?? app/Notifications/ConfirmationDepotInscription.php
+?? app/Notifications/DecisionDossierInscription.php
+?? app/Providers/ConfigurationSmtpServiceProvider.php
+?? app/Services/AttributionRoleService.php
+?? app/Services/ConfigurationSmtpService.php
+?? app/Services/DataExchange/Contracts/ImportLotInterface.php
+?? app/Services/DisponibiliteWorkerService.php
+?? app/Services/Kpi/
+?? app/Services/MfaRecoveryCodeService.php
+?? app/Services/Notifications/
+?? app/Services/PortalPasswordResetService.php
+?? app/Services/Workflow/
+?? app/Support/CampagnePerimetre.php
+?? app/Support/DemoData.php
+?? app/Support/MfaPolicy.php
+?? app/Support/NavigationDestination.php
+?? app/Support/SupervisionAccess.php
+?? config/ai-assistant.php
+?? config/assistant-ia.php
+?? config/datamesh_observabilite.php
+?? config/inscriptions-paiements.php
+?? config/retention.php
+?? config/security.php
+?? database/migrations/2026_10_16_180000_create_data_mesh_outbox_table.php
+?? database/migrations/2026_10_16_190000_ajouter_capacite_illimitee_groupes.php
+?? database/migrations/2026_10_16_210000_ajouter_verrou_actif_admissions.php
+?? database/migrations/2026_10_17_100000_ajouter_codes_secours_mfa_users.php
+?? database/migrations/2026_10_18_090000_exam_preparation_lacunes_g2_g5.php
+?? database/migrations/2026_10_18_100000_verifier_unicite_inscription_annuelle.php
+?? database/migrations/2026_10_18_140000_creer_disponibilites_ressources_schedule.php
+?? database/migrations/2026_10_18_140100_parametres_generation_planning.php
+?? database/migrations/2026_10_18_150000_creer_grille_horaire_schedule.php
+?? database/migrations/2026_10_18_150100_creer_semaines_academiques_schedule.php
+?? database/migrations/2026_10_18_150200_enrichir_salles_et_batiments_schedule.php
+?? database/migrations/2026_10_18_160000_enrichir_schedule_slots_phase2.php
+?? database/migrations/2026_10_18_160100_creer_slot_teachers_coenseignement.php
+?? database/migrations/2026_10_18_160200_enrichir_teachers_charge_phase2.php
+?? database/migrations/2026_10_18_170000_creer_timetable_constraints_registry.php
+?? database/migrations/2026_10_18_180000_creer_timetable_generations.php
+?? database/migrations/2026_10_18_190000_creer_timetable_scenarios.php
+?? database/migrations/2026_10_18_200000_creer_schedule_versions.php
+?? database/migrations/2026_10_20_090000_creer_table_inscription_documents.php
+?? database/migrations/2026_10_21_000001_ajouter_version_mot_de_passe_enseignants.php
+?? database/migrations/2026_10_21_100000_creer_dossiers_paiement_et_recus.php
+?? database/migrations/2026_10_21_200000_creer_tokens_reinitialisation_portails.php
+?? database/migrations/2026_10_23_100000_creer_tables_assistant_ia.php
+?? database/migrations/2026_10_23_110000_creer_ai_approvals.php
+?? database/migrations/2026_10_23_110000_creer_table_ai_documents_index.php
+?? database/migrations/2026_10_23_120000_creer_ai_base_documentaire.php
+?? database/migrations/2026_10_23_120000_creer_table_ai_propositions_actions.php
+?? database/migrations/2026_10_23_130000_creer_ai_metrics.php
+?? database/migrations/2026_10_23_140000_creer_table_ai_sources_connaissances.php
+?? database/migrations/2026_10_23_150000_ajouter_metadonnees_ai_documents_index.php
+?? database/migrations/2026_10_24_100000_ajouter_valide_at_aux_notes_evaluation.php
+?? database/migrations/2026_10_24_100000_etendre_ai_multiportails.php
+?? database/migrations/2026_10_24_110000_creer_kpi_definitions_table.php
+?? database/migrations/2026_10_24_130000_creer_tables_prevention_decrochage.php
+?? database/migrations/2026_10_24_140000_creer_tables_assurance_qualite.php
+?? database/migrations/2026_10_25_010000_creer_tables_competences.php
+?? docs/BASELINE-ADMISSIONS-AUTO-VALIDATION-01.md
+?? docs/BASELINE-ROLE-ASSIGNMENT-UX-01.md
+?? docs/RAPPORT-ADMISSIONS-AUTO-VALIDATION-01.md
+?? docs/RAPPORT-AFFECTATION-AUTO-GROS-VOLUMES-01.md
+?? docs/RAPPORT-INSCRIPTION-UNIQUE-ANNUELLE-01.md
+?? docs/RAPPORT-ROLE-ASSIGNMENT-UX-01.md
+?? docs/REFERENTIEL-CORRESPONDANCE.md
+?? docs/architecture/KNOWLEDGE-BASE-RAG.md
+?? docs/architecture/KNOWLEDGE-BASE.md
+?? docs/architecture/UNIREGISTRE-AI-ASSISTANT.md
+?? docs/architecture/UNIREGISTRE-AI-KNOWLEDGE-HUB.md
+?? docs/audit-referentiel/
+?? docs/data-mesh/
+?? docs/diagrammes/
+?? docs/engineering/AI-ASSISTANT-FOUNDATION-REPORT.md
+?? docs/engineering/INVENTAIRE_TACHES_ET_URLS.md
+?? docs/engineering/KNOWLEDGE_BASE.md
+?? docs/engineering/LOOP-00-AUDIT-DIRECTEUR-UNIREGISTRE.md
+?? docs/engineering/LOOP-01-WORKFLOW-VALIDATION.md
+?? docs/engineering/LOOP-02-NOTIFICATIONS-UNIFIEES.md
+?? docs/engineering/LOOP-03-COCKPIT-KPI-SCOLARITE.md
+?? docs/engineering/LOOP-03-COCKPIT-KPI.md
+?? docs/engineering/LOOP-04-PASSEPORT-ACADEMIQUE.md
+?? docs/engineering/LOOP-05-NOTES-DELIBERATIONS.md
+?? docs/engineering/LOOP-06-PLANIFICATION-EXAMENS.md
+?? docs/engineering/LOOP-07-COFFRE-FORT-ATTESTATIONS.md
+?? docs/engineering/LOOP-14-20-AUDIT-DIRECTEUR.md
+?? docs/engineering/LOOP-14-SIMULATEUR-SCENARIOS.md
+?? docs/engineering/LOOP-15-PREVENTION-DECROCHAGE.md
+?? docs/engineering/LOOP-16-ASSURANCE-QUALITE.md
+?? docs/engineering/LOOP-20-PROGRAMMES-COMPETENCES.md
+?? docs/engineering/LOOP-AIDE-KB-UTILISATEUR-01.md
+?? docs/engineering/LOOP-AUTO-PASS-EXAMENS-01.md
+?? docs/engineering/LOOP-AUTO-PASS-EXAMENS-02.md
+?? docs/engineering/LOOP-AUTO-PASS-EXAMENS-03.md
+?? docs/engineering/LOOP-AUTO-PASS-EXAMENS-04.md
+?? docs/engineering/LOOP-AUTO-VALIDATION-AUTO-PASS-01.md
+?? docs/engineering/LOOP-EXAM-PREPARATION-01.md
+?? docs/engineering/LOOP-GLOBAL-00-ETAT-INITIAL.md
+?? docs/engineering/LOOP-GLOBAL-INVENTAIRE.md
+?? docs/engineering/LOOP-GROQCLOUD-UNIREGISTRE.md
+?? docs/engineering/LOOP-MENS-ADMIN-CRUD-01.md
+?? docs/engineering/LOOP-POPUP-ASSISTANT-IA-UNIREGISTRE.md
+?? docs/engineering/LOOP-SECURITY-PRODUCTION.md
+?? docs/engineering/LOOP-SECURITY-REMEDIATION-01.md
+?? docs/engineering/LOOP-SMART-TIMETABLES-PHASE-A.md
+?? docs/engineering/LOOP-SMART-TIMETABLES-PHASE-B.md
+?? docs/engineering/LOOP-SMART-TIMETABLES-PHASE-C.md
+?? docs/engineering/LOOP-UNIREGISTRE-ADMIN-INSCRIPTIONS-ADVANCED-AUTO-PASS-01.md
+?? docs/engineering/LOOP-UNIREGISTRE-ADMIN-INSCRIPTIONS-E2E-FINAL-AUTO-PASS-02.md
+?? docs/engineering/LOOP-UNIREGISTRE-AI-ASSISTANT-FOUNDATION-AUTO-PASS-01.md
+?? docs/engineering/LOOP-UNIREGISTRE-AI-ASSISTANT-INDEPENDENT-AUDIT-AUTO-PASS-02.md
+?? docs/engineering/LOOP-UNIREGISTRE-AI-KNOWLEDGE-HUB-INDEPENDENT-AUDIT-01.md
+?? docs/engineering/LOOP-UNIREGISTRE-AI-KNOWLEDGE-HUB-REA-01-CONTRE-AUDIT-01.md
+?? docs/engineering/LOOP-UNIREGISTRE-AI-KNOWLEDGE-HUB-REA-01-VERIFICATION-02.md
+?? docs/engineering/LOOP-UNIREGISTRE-AI-KNOWLEDGE-HUB-REA-01.md
+?? docs/engineering/LOOP-UNIREGISTRE-ASSISTANT-IA-VALIDATION-FINALE-01.md
+?? docs/engineering/LOOP-UNIREGISTRE-BASELINE-STABILISATION-ADMISSIONS-INSCRIPTION-01.md
+?? docs/engineering/LOOP-UNIREGISTRE-CENTRE-TRAVAIL-ADMIN-INTELLIGENT-01-CONTRE-AUDIT-01.md
+?? docs/engineering/LOOP-UNIREGISTRE-CENTRE-TRAVAIL-ADMIN-INTELLIGENT-01.md
+?? docs/engineering/LOOP-UNIREGISTRE-CENTRE-TRAVAIL-ADMIN-INTELLIGENT-02.md
+?? docs/engineering/LOOP-UNIREGISTRE-CENTRE-TRAVAIL-GATE-D-01.md
+?? docs/engineering/LOOP-UNIREGISTRE-CENTRE-TRAVAIL-HARDENING-AUTO-PASS-01.md
+?? docs/engineering/LOOP-UNIREGISTRE-CENTRE-TRAVAIL-HARDENING-AUTO-PASS-02.md
+?? docs/engineering/LOOP-UNIREGISTRE-CENTRE-TRAVAIL-INTELLIGENT-MASTER-AUTO-PASS-01.md
+?? docs/engineering/LOOP-UNIREGISTRE-CENTRE-TRAVAIL-LOT-A-01.md
+?? docs/engineering/LOOP-UNIREGISTRE-CENTRE-TRAVAIL-LOT-B-01.md
+?? docs/engineering/LOOP-UNIREGISTRE-CENTRE-TRAVAIL-LOT-C-01.md
+?? docs/engineering/LOOP-UNIREGISTRE-CENTRE-TRAVAIL-MASTER-AUTO-PASS-01.md
+?? "docs/engineering/LOOP-UNIREGISTRE-CENTRE-TRAVAIL-PR\303\211IMPL\303\211MENTATION-02.md"
+?? docs/engineering/LOOP-UNIREGISTRE-DOCUMENTS-REUTILISABLES-01.md
+?? docs/engineering/LOOP-UNIREGISTRE-HYBRID-AI-GATEWAY-REA-01-VERIFICATION.md
+?? docs/engineering/LOOP-UNIREGISTRE-HYBRID-AI-GATEWAY-REA-01.md
+?? docs/engineering/LOOP-UNIREGISTRE-INSCRIPTIONS-PAIEMENTS-01.md
+?? docs/engineering/LOOP-UNIREGISTRE-NOTES-EVALUATIONS-ADVANCED-01.md
+?? docs/engineering/LOOP-UNIREGISTRE-NOTES-EVALUATIONS-ADVANCED-02-LOT0-AUDIT-INDEPENDANT-01.md
+?? docs/engineering/LOOP-UNIREGISTRE-NOTES-EVALUATIONS-ADVANCED-02-POST-AUDIT.md
+?? docs/engineering/LOOP-UNIREGISTRE-NOTES-EVALUATIONS-ADVANCED-02.md
+?? docs/engineering/LOOP-UNIREGISTRE-NOTES-EVALUATIONS-CERTIFICATION-01.md
+?? docs/engineering/LOOP-UNIREGISTRE-PORTAIL-ETUDIANT-ADVANCED-01.md
+?? docs/engineering/LOOP-UNIREGISTRE-PORTAILS-CLOSURE-02.md
+?? docs/engineering/LOOP-UNIREGISTRE-PORTAILS-ENTERPRISE-01.md
+?? docs/engineering/LOOP-UNIREGISTRE-PORTALS-CONTINUATION-03.md
+?? docs/engineering/LOOP-UNIREGISTRE-UX-UI-CERTIFICATION-TRANSVERSALE-01.md
+?? docs/engineering/LOOP-UNIREGISTRE-UX-UI-NAVIGATION-PALETTE-01.md
+?? docs/engineering/LOOP-UNIREGISTRE-UX-UI-PREMIUM-FLUIDITE-01-CONTRE-AUDIT.md
+?? docs/engineering/LOOP-UNIREGISTRE-UX-UI-PREMIUM-FLUIDITE-01.md
+?? docs/engineering/LOOP-UNIREGISTRE-UX-UI-PREMIUM-VALIDATION-02.md
+?? docs/engineering/LOOP-UNIREGISTRE-UX-UI-TABLEAUX-CONTRASTE-02.md
+?? docs/engineering/MOTION-SYSTEM.md
+?? docs/engineering/RAPPORT-AUDIT-FINAL-EXAMEN-01.md
+?? docs/engineering/RAPPORT-CREATION-MANUELLE-EXAMEN-01.md
+?? docs/engineering/RAPPORT-EXAM-PREPARATION-01.md
+?? docs/engineering/RAPPORT-SMART-TIMETABLES-PHASE-A.md
+?? docs/engineering/RAPPORT-SMART-TIMETABLES-PHASE-B.md
+?? docs/engineering/RAPPORT-SMART-TIMETABLES-PHASE-C.md
+?? docs/engineering/loop-global/
+?? docs/evaluation/exemple-decisions-jury.csv
+?? docs/evaluation/exemple-deliberations.csv
+?? docs/notes/exemple-notes-10-lignes.csv
+?? docs/utilisateur/
+?? lang/fr.json
+?? lang/fr/pagination.php
+?? on
+?? public/motion-harness.html
+?? public/preview-etudiant.html
+?? resources/js/admin.js
+?? resources/js/etudiant-theme.js
+?? resources/js/etudiant.js
+?? resources/js/form-guard.js
+?? resources/js/motion-cinematic.js
+?? resources/js/motion-loader.js
+?? resources/js/profil.js
+?? resources/views/admin/_modal-attribution-role.blade.php
+?? resources/views/admin/centre-travail/
+?? resources/views/admin/datamesh/
+?? resources/views/admin/mens/form.blade.php
+?? resources/views/admin/mens/show.blade.php
+?? resources/views/admin/scrutins/
+?? resources/views/auth/
+?? resources/views/components/etudiant-theme-switch.blade.php
+?? resources/views/components/uniregistre-ai-popup.blade.php
+?? resources/views/mail/
+?? resources/views/modules/ai-assistant/
+?? resources/views/modules/aide/
+?? resources/views/modules/assistant-ia/
+?? resources/views/modules/evaluation/anomalies-index.blade.php
+?? resources/views/modules/evaluation/documents-batch.blade.php
+?? resources/views/modules/evaluation/notes-historique-detail.blade.php
+?? resources/views/modules/evaluation/notes-historique-epreuve.blade.php
+?? resources/views/modules/evaluation/notes-historique.blade.php
+?? resources/views/modules/evaluation/preparation-index.blade.php
+?? resources/views/modules/evaluation/preparation-session.blade.php
+?? resources/views/modules/finances/paiements-inscriptions/
+?? resources/views/modules/finances/widget-etudiant.blade.php
+?? resources/views/modules/parcours-academique/ma-simulation-create.blade.php
+?? resources/views/modules/parcours-academique/ma-simulation-show.blade.php
+?? resources/views/modules/parcours-academique/ma-simulations-index.blade.php
+?? resources/views/modules/schedule/generation.blade.php
+?? resources/views/modules/schedule/indisponibilites/
+?? resources/views/notifications/preferences.blade.php
+?? tests/Feature/AccessibilitePortailsTest.php
+?? tests/Feature/AdmissionAutoValidationTest.php
+?? tests/Feature/AgendaCalendrierTest.php
+?? tests/Feature/AiAssistantChatTest.php
+?? tests/Feature/AiAssistantFondationsTest.php
+?? tests/Feature/AiAssistantGatewayTest.php
+?? tests/Feature/AiAssistantOllamaTest.php
+?? tests/Feature/AiAssistantOutilsTest.php
+?? tests/Feature/AiAssistantRagTest.php
+?? tests/Feature/AiAssistantSecuriteTest.php
+?? tests/Feature/AntivirusPolicyTest.php
+?? tests/Feature/AssistantIa/
+?? tests/Feature/AssuranceQualiteTest.php
+?? tests/Feature/AsyncExportRevocationTest.php
+?? tests/Feature/AttributionRoleTest.php
+?? tests/Feature/BiKpiDefinitionsTest.php
+?? tests/Feature/CentreNotificationsPortailTest.php
+?? tests/Feature/CentreNotificationsUnifieTest.php
+?? tests/Feature/CentreTravailAdminTest.php
+?? tests/Feature/CentreTravailConcurrenceMysqlTest.php
+?? tests/Feature/CentreTravailDetailTest.php
+?? tests/Feature/CentreTravailMutationTest.php
+?? tests/Feature/CentreTravailSecurityAndAutomationTest.php
+?? tests/Feature/CockpitKpiServiceTest.php
+?? tests/Feature/CoffreFortAttestationsQrTest.php
+?? tests/Feature/ConfigurationSmtpPilotageTest.php
+?? tests/Feature/DashboardWidgetsIsolationTest.php
+?? tests/Feature/DataMesh/
+?? tests/Feature/DataMeshObservabiliteTest.php
+?? tests/Feature/DataMeshTest.php
+?? tests/Feature/DeliberationImportAssociationTest.php
+?? tests/Feature/DisponibiliteWorkerServiceTest.php
+?? tests/Feature/DocumentsReutilisablesTest.php
+?? tests/Feature/EtudiantPagesV2Test.php
+?? tests/Feature/EtudiantThemesTest.php
+?? tests/Feature/EvaluationAdvanced02IntegrationTest.php
+?? tests/Feature/EvaluationAnomaliesKpisTest.php
+?? tests/Feature/EvaluationAuditTest.php
+?? tests/Feature/EvaluationDocumentBatchTest.php
+?? tests/Feature/EvaluationQualityServiceTest.php
+?? tests/Feature/EvaluationWorkflowServiceTest.php
+?? tests/Feature/ExamPreparationTest.php
+?? tests/Feature/ExamenCreationManuelleTest.php
+?? tests/Feature/ExamensConcurrenceReelleTest.php
+?? tests/Feature/ExamensInvariantsSallesTest.php
+?? tests/Feature/ExamensInvariantsValidationTest.php
+?? tests/Feature/HarmonisationFileRegistreTest.php
+?? tests/Feature/ImportNiveauProgrammeTest.php
+?? tests/Feature/InscriptionsBulkVerificationTest.php
+?? tests/Feature/JustificatifAbsenceTelechargementTest.php
+?? tests/Feature/MaSimulationParcoursTest.php
+?? tests/Feature/MensCrudTest.php
+?? tests/Feature/ModuleAideTest.php
+?? tests/Feature/MotionAdminTest.php
+?? tests/Feature/MotionEtudiantTest.php
+?? tests/Feature/NotesEvaluationsAmeliorationsTest.php
+?? tests/Feature/NotesEvaluationsSecuriteTest.php
+?? tests/Feature/NotificationsOutboxRepriseTest.php
+?? tests/Feature/NotificationsPreferencesTest.php
+?? tests/Feature/PaginationTraductionTest.php
+?? tests/Feature/PaiementsInscriptionsTest.php
+?? tests/Feature/PlanificationAutomatiqueExamensTest.php
+?? tests/Feature/PortailEtudiantResultatsPubliesTest.php
+?? tests/Feature/PortailMotDePasseTest.php
+?? tests/Feature/PortailSimulationParcoursTest.php
+?? tests/Feature/PortailsPerformanceAccessibiliteTest.php
+?? tests/Feature/PreventionDecrochageTest.php
+?? tests/Feature/PreviewEtudiantDumpTest.php
+?? tests/Feature/PrintExportSecurityTest.php
+?? tests/Feature/QrCodeSvgConformiteTest.php
+?? tests/Feature/RapprochementFinancierTest.php
+?? tests/Feature/ReferentielCompetencesTest.php
+?? tests/Feature/RetentionAuditTest.php
+?? tests/Feature/RevocationSessionsEnseignantTest.php
+?? tests/Feature/ScheduleDisponibilitesRessourcesTest.php
+?? tests/Feature/ScheduleGenerationMoteurBTest.php
+?? tests/Feature/ScheduleGenerationPerformanceBTest.php
+?? tests/Feature/SchedulePhase10SecuriteAuditNotificationsTest.php
+?? tests/Feature/SchedulePhase11BenchmarksOptimisationTest.php
+?? tests/Feature/SchedulePhase12ExamensExtensionTest.php
+?? tests/Feature/SchedulePhase1CalendrierRessourcesTest.php
+?? tests/Feature/SchedulePhase2SeancesRessourcesAvanceesTest.php
+?? tests/Feature/SchedulePhase3RegistreContraintesCheckerTest.php
+?? tests/Feature/SchedulePhase4MoteurGenerationCspTest.php
+?? tests/Feature/SchedulePhase5ScenariosOptimisationDiagnosticTest.php
+?? tests/Feature/SchedulePhase6DeplacementsInteractifsTest.php
+?? tests/Feature/SchedulePhase7VersionsPublicationTest.php
+?? tests/Feature/SchedulePhase8ReparationRemplacementsTest.php
+?? tests/Feature/SchedulePhase9ImportExportInteropTest.php
+?? tests/Feature/ScheduleSmartTimetablesPhaseCTest.php
+?? tests/Feature/ScrutinTest.php
+?? tests/Feature/Security/CampagnesPerimetreFaculteTest.php
+?? tests/Feature/Security/ExportCsvNeutralisationTest.php
+?? tests/Feature/Security/OrigineEtResetMotDePasseTest.php
+?? tests/Feature/Security/ProfilEtIdentiteSecurisesTest.php
+?? tests/Feature/Security/SeedersSecurisesTest.php
+?? tests/Feature/Security/SondesEtEntetesSecuriteTest.php
+?? tests/Feature/SimulateurScenariosTest.php
+?? tests/Feature/TaskBulkAuthorizationTest.php
+?? tests/Feature/TaskGenerationInscriptionTest.php
+?? tests/Feature/UniciteInscriptionAnnuelleTest.php
+?? tests/Feature/UniciteInscriptionConcurrenceMysqlTest.php
+?? tests/Feature/UxUiFluiditeTest.php
+?? tests/Feature/VerificationAuthorizationTest.php
+?? tests/Feature/WorkflowValidationConfigurableTest.php
+?? tests/Unit/AssistantIa/

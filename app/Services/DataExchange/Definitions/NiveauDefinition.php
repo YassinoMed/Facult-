@@ -169,15 +169,20 @@ class NiveauDefinition implements ExportDefinitionInterface, ImportDefinitionInt
     public function trouverExistant(array $ligne): ?object
     {
         $programmeCode = $ligne['programme'] ?? null;
-        if (! empty($programmeCode)) {
-            $programme = Programme::where('code', $programmeCode)->first();
-            if ($programme !== null) {
-                return Niveau::where('code', $ligne['code'])
-                    ->where('programme_id', $programme->id)->first();
-            }
+
+        // Sans programme, `niveaux.code` n'identifie rien : retourner le
+        // premier niveau venu ferait écraser celui d'un autre programme.
+        if (empty($programmeCode)) {
+            return null;
         }
 
-        return Niveau::where('code', $ligne['code'])->first();
+        $programme = Programme::where('code', mb_strtoupper(trim((string) $programmeCode)))->first();
+
+        if ($programme === null) {
+            return null;
+        }
+
+        return Niveau::resoudreDansProgramme($ligne['code'] ?? null, $programme->id);
     }
 
     public function persister(array $ligne, string $mode, ?int $auteurId): string

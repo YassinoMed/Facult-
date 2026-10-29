@@ -21,15 +21,49 @@
             <x-alert type="warning" class="mt-4">
                 Cette épreuve est verrouillée ({{ $epreuve->statut }}). L'émargement ne peut plus être modifié.
             </x-alert>
+        @else
+            <section id="emargement-hors-ligne" class="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-4"
+                aria-labelledby="eh-titre">
+                <div class="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                        <h2 id="eh-titre" class="text-sm font-bold text-slate-900">Saisie hors ligne</h2>
+                        <p class="mt-1 text-xs text-slate-600">
+                            File locale minimale : identifiant du candidat, statut et horodatage.
+                            Aucun nom, e-mail ou matricule n'est stocké. Purge automatique après 24 h.
+                        </p>
+                    </div>
+                    <div class="flex items-center gap-3">
+                        <label for="eh-activer" class="flex items-center gap-2 text-xs font-semibold text-slate-700">
+                            <input type="checkbox" id="eh-activer" class="h-4 w-4 rounded border-slate-300" />
+                            Activer la saisie hors ligne
+                        </label>
+                        <button type="button" id="eh-synchroniser"
+                            class="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 disabled:opacity-40">
+                            Synchroniser (<span id="eh-attente">0</span>)
+                        </button>
+                    </div>
+                </div>
+                <p id="eh-note-texte-libre" hidden class="mt-2 text-xs text-amber-700">
+                    En mode hors ligne, la justification libre n'est pas conservée (minimisation des données).
+                    Saisissez-la après la synchronisation si nécessaire.
+                </p>
+                <p id="eh-statut" class="mt-2 text-xs" role="status" aria-live="polite"></p>
+            </section>
         @endif
 
-        <form method="post" action="{{ route('admin.evaluations.epreuves.emargement.store', $epreuve) }}" class="mt-6">
+        <form id="form-emargement" method="post"
+            action="{{ route('admin.evaluations.epreuves.emargement.store', $epreuve) }}"
+            data-epreuve-id="{{ $epreuve->id }}"
+            data-utilisateur-id="{{ auth()->id() }}"
+            data-sync-url="{{ route('admin.evaluations.epreuves.emargement.hors-ligne', $epreuve) }}"
+            class="mt-6">
             @csrf
 
             <div class="ds-card overflow-hidden bg-white rounded-xl border border-slate-200">
                 <div class="p-4 bg-slate-50 border-b border-slate-200 flex flex-wrap items-center justify-between gap-3 text-xs">
                     <div class="flex items-center gap-4 text-slate-600">
                         <span>Total candidats : <strong class="text-slate-900">{{ $candidats->count() }}</strong></span>
+                        <span>Non pointés : <strong class="text-slate-700">{{ $candidats->where('statut', 'non_pointe')->count() }}</strong></span>
                         <span>Présents : <strong class="text-emerald-700">{{ $candidats->where('statut', 'present')->count() }}</strong></span>
                         <span>Absents : <strong class="text-rose-700">{{ $candidats->whereIn('statut', ['absent', 'absent_justifie', 'absent_injustifie'])->count() }}</strong></span>
                         <span>Retards : <strong class="text-amber-700">{{ $candidats->where('statut', 'retard')->count() }}</strong></span>
@@ -77,6 +111,7 @@
                                             <select name="presences[{{ $index }}][statut]"
                                                 @disabled($epreuve->estVerrouillee())
                                                 class="rounded-lg border border-slate-300 px-2.5 py-1 text-xs bg-white font-medium focus:border-indigo-500">
+                                                <option value="non_pointe" @selected($candidat->statut === 'non_pointe')>Non pointé</option>
                                                 <option value="present" @selected($candidat->statut === 'present')>Présent</option>
                                                 <option value="absent" @selected($candidat->statut === 'absent')>Absent</option>
                                                 <option value="retard" @selected($candidat->statut === 'retard')>En retard</option>
@@ -108,4 +143,8 @@
             </div>
         </form>
     </div>
+
+    @unless($epreuve->estVerrouillee())
+        <script src="{{ asset('js/emargement-hors-ligne.js') }}" defer></script>
+    @endunless
 @endsection

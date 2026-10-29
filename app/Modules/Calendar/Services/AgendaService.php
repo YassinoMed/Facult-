@@ -5,6 +5,7 @@ namespace App\Modules\Calendar\Services;
 use App\Models\Etudiant;
 use App\Modules\Calendar\Models\EvenementCalendrier;
 use App\Modules\Evaluation\Models\SessionExamen;
+use App\Modules\Schedule\Models\Teacher;
 
 /**
  * Agenda unifié (§41) : événements + sessions d'examen en lecture
@@ -19,12 +20,16 @@ class AgendaService
     {
         $elements = [];
 
+        // LOT 2 : un événement chevauche la période s'il commence au plus
+        // tard à `fin` et se termine au plus tôt à `debut`. L'ancien filtre
+        // (`date_fin >= fin` + `date_debut >= debut`) masquait les
+        // événements multi-jours commençant avant la période et ceux qui se
+        // terminaient dedans.
         $evenements = EvenementCalendrier::where('statut', 'publie')
             ->whereDate('date_debut', '<=', $fin)
-            ->where(function ($q) use ($fin) {
-                $q->whereNull('date_fin')->orWhereDate('date_fin', '>=', $fin);
+            ->where(function ($q) use ($debut) {
+                $q->whereNull('date_fin')->orWhereDate('date_fin', '>=', $debut);
             })
-            ->whereDate('date_debut', '>=', $debut)
             ->where(fn ($q) => $q
                 ->where('audience', 'tous')
                 ->orWhere(function ($s) use ($etudiant) {
@@ -72,5 +77,34 @@ class AgendaService
         usort($elements, fn (array $a, array $b) => $a['date'] <=> $b['date']);
 
         return $elements;
+    }
+
+    /**
+     * Agenda enseignant (lecture seule) : événements publiés des
+     * audiences `tous`/`enseignants` de sa faculté. Les brouillons, les
+     * événements annulés et ceux d'une autre faculté sont exclus.
+     *
+     * @return array<int, array{titre: string, type: string, date: string, source: string, lien: ?string}>
+     */
+    public function agendaPourEnseignant(Teacher $enseignant, string $debut, string $fin, ?int $limite = null): array
+    {
+        $query = EvenementCalendrier::visiblesPourEnseignant($enseignant)
+            ->whereDate('date_debut', '<=', $fin)
+            ->where(fn ($q) => $q->whereNull('date_fin')->orWhereDate('date_fin', '>=', $debut))
+            ->orderBy('date_debut');
+
+        if ($limite !== null) {
+            $query->limit($limite);
+        }
+
+        $evenements = $query->get();
+
+        return $evenements->map(fn (EvenementCalendrier $evenement) => [
+            'titre' => $evenement->titre,
+            'type' => $evenement->type,
+            'date' => $evenement->date_debut->format('Y-m-d'),
+            'source' => 'calendrier',
+            'lien' => null,
+        ])->all();
     }
 }

@@ -5,7 +5,7 @@
 @props(['titre', 'description' => null, 'fil' => []])
 
 <nav aria-label="Fil d'Ariane" class="mb-1">
-    <ol class="flex flex-wrap items-center gap-1 text-[11px] font-semibold text-slate-400">
+    <ol class="flex flex-wrap items-center gap-1.5 text-[13px] font-semibold text-slate-500">
         @foreach($fil as $etiquette => $url)
             <li class="flex items-center gap-1">
                 @if(!$loop->last)
@@ -19,11 +19,11 @@
     </ol>
 </nav>
 
-<div class="flex flex-wrap items-start justify-between gap-3">
+<div class="flex flex-wrap items-start justify-between gap-3" data-reveal="fade-up" data-motion-block>
     <div class="min-w-0">
         <h1 class="text-2xl sm:text-3xl font-black tracking-tight text-slate-900">{{ $titre }}</h1>
         @if($description !== null)
-            <p class="mt-1 text-xs sm:text-sm text-slate-500">{{ $description }}</p>
+            <p class="mt-1 text-sm text-slate-500">{{ $description }}</p>
         @endif
     </div>
     @if(isset($actions))

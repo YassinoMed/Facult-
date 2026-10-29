@@ -72,15 +72,24 @@
                 </div>
             </section>
 
-            {{-- Dernier résultat (persisté, léger) --}}
+            {{-- Dernier résultat : uniquement une décision publiée (D-01) --}}
             <section aria-labelledby="titre-resultat" class="ds-card p-5 sm:p-6">
-                <h2 id="titre-resultat" class="text-base font-black text-slate-900">Dernier résultat</h2>                <p class="mt-2 text-3xl font-black tabular-nums text-slate-900">
-                    {{ $derniereInscription?->moyenne_annuelle !== null ? number_format($derniereInscription->moyenne_annuelle, 2) : '—' }}<span class="text-base font-bold text-slate-400"> / 20</span>
-                </p>
-                <p class="mt-1 text-xs text-slate-500">
-                    Crédits : <strong class="tabular-nums">{{ $derniereInscription !== null ? $derniereInscription->credits_obtenus : '—' }} / {{ $derniereInscription !== null ? $derniereInscription->credits_total : '—' }}</strong>
-                </p>
-                <p class="text-xs text-slate-500">{{ $derniereInscription?->anneeUniversitaire?->libelle ?? 'Aucune année académique' }} · {{ $derniereInscription?->decision ?? '—' }}</p>
+                <h2 id="titre-resultat" class="text-base font-black text-slate-900">Dernier résultat</h2>
+                @if($resumeAcademique['publie'])
+                    <p class="mt-2 text-3xl font-black tabular-nums text-slate-900">
+                        {{ $resumeAcademique['moyenne'] !== null ? number_format((float) $resumeAcademique['moyenne'], 2) : '—' }}<span class="text-base font-bold text-slate-400"> / 20</span>
+                    </p>
+                    <p class="mt-1 text-xs text-slate-500">
+                        Crédits : <strong class="tabular-nums">{{ $resumeAcademique['credits_obtenus'] }} / {{ $resumeAcademique['credits_total'] }}</strong>
+                    </p>
+                    <p class="text-xs text-slate-500">{{ $derniereInscription?->anneeUniversitaire?->libelle ?? 'Aucune année académique' }} · {{ $resumeAcademique['decision'] ?? '—' }}</p>
+                @elseif($derniereInscription === null)
+                    <p class="mt-2 text-sm font-bold text-slate-700">Aucune année académique</p>
+                    <p class="mt-1 text-xs text-slate-500">Aucun résultat académique n'est encore rattaché à votre dossier.</p>
+                @else
+                    <p class="mt-2 text-sm font-bold text-slate-700">Résultats en attente de publication</p>
+                    <p class="mt-1 text-xs text-slate-500">{{ $derniereInscription->anneeUniversitaire?->libelle }} · la délibération du jury n'est pas encore publiée : aucune moyenne, aucun crédit et aucune décision ne sont affichés.</p>
+                @endif
                 <a href="{{ route('etudiant.notes.index') }}" class="mt-3 inline-flex items-center gap-1.5 text-xs font-bold text-primary-800 underline underline-offset-2 hover:text-primary-600">Toutes mes notes →</a>
             </section>
         </div>
@@ -141,7 +150,7 @@
                                     <span class="block truncate font-bold text-slate-800">{{ $document->nom_original }}</span>
                                     <span class="block text-[11px] text-slate-500">{{ $document->created_at->format('d/m/Y') }}</span>
                                 </span>
-                                <a href="{{ route('etudiant.archives.documents.download', $document) }}" class="flex-shrink-0 text-xs font-bold text-primary-800 underline underline-offset-2 hover:text-primary-600">Télécharger</a>
+                                <a href="{{ route('etudiant.archives.documents.download', $document) }}" aria-label="Télécharger {{ $document->nom_original }}" class="flex-shrink-0 text-xs font-bold text-primary-800 underline underline-offset-2 hover:text-primary-600">Télécharger</a>
                             </li>
                         @endforeach
                     </ul>
@@ -152,6 +161,45 @@
                 @endif
             </section>
         </div>
+
+        {{-- Prochaines épreuves publiées (LOT 4) --}}
+        @if(app(\App\Support\Modules\ModuleRegistry::class)->estActif('evaluation'))
+            <section aria-labelledby="titre-examens" class="mt-4 ds-card p-5 sm:p-6">
+                <div class="flex items-center justify-between gap-2">
+                    <h2 id="titre-examens" class="text-base font-black text-slate-900">Prochains examens</h2>
+                    <a href="{{ route('etudiant.examens.index') }}" class="text-xs font-bold text-primary-800 underline underline-offset-2 hover:text-primary-600">Tous mes examens →</a>
+                </div>
+                @if($prochainsExamens->isNotEmpty())
+                    <ul class="mt-3 grid grid-cols-1 gap-2 lg:grid-cols-3">
+                        @foreach($prochainsExamens as $candidat)
+                            @php $epreuve = $candidat->epreuve; @endphp
+                            <li class="flex flex-col justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50/60 p-3.5">
+                                <div class="flex items-start gap-3">
+                                    <div class="min-w-[82px] rounded-lg border border-indigo-100 bg-indigo-50 px-2 py-1.5 text-center">
+                                        <span class="block text-[11px] font-black tabular-nums text-indigo-800">{{ $epreuve->date->format('d/m/Y') }}</span>
+                                        <span class="block text-[10px] tabular-nums text-indigo-700">{{ substr((string) $epreuve->heure_debut, 0, 5) }} → {{ substr((string) $epreuve->heure_fin, 0, 5) }}</span>
+                                    </div>
+                                    <div class="min-w-0">
+                                        <p class="truncate text-sm font-black text-slate-900">{{ $epreuve->matiere?->code ?? 'Épreuve' }} — {{ $epreuve->matiere?->nom ?? '' }}</p>
+                                        <p class="mt-0.5 text-[11px] text-slate-500">
+                                             Salle <strong class="text-slate-800">{{ $candidat->salleEffective()?->code ?? $epreuve->salle?->code ?? 'À confirmer' }}</strong>
+                                            @if($epreuve->session?->nom)
+                                                · {{ $epreuve->session->nom }}
+                                            @endif
+                                        </p>
+                                    </div>
+                                </div>
+                                <a href="{{ route('etudiant.examens.convocation', $candidat) }}" aria-label="Convocation pour {{ $epreuve->matiere?->nom ?? 'l\'examen' }}" class="inline-flex items-center gap-1 text-[11px] font-bold text-indigo-700 underline underline-offset-2 hover:text-indigo-500">Convocation →</a>
+                            </li>
+                        @endforeach
+                    </ul>
+                @else
+                    <div class="mt-3">
+                        <x-empty-state message="Aucun examen publié à venir." />
+                    </div>
+                @endif
+            </section>
+        @endif
 
         {{-- Modules : widgets complémentaires --}}
         @php $widgetsEtudiant = app(\App\Support\Modules\ModuleRegistry::class)->widgets('etudiant'); @endphp

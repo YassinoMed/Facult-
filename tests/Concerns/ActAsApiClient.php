@@ -51,9 +51,18 @@ trait ActAsApiClient
      * production chaque requête a sa propre instance d'application).
      * Indispensable pour tester révocation / changement de token dans
      * une même méthode de test.
+     *
+     * `forgetGuards()` seul ne suffit pas : entre deux requêtes du test,
+     * `auth()` (audit, composeurs de vues) est appelé hors requête et
+     * recréerait le guard `sanctum` avec la requête encore liée — il
+     * mettrait alors l'utilisateur du token précédent en cache. On
+     * restaure donc aussi le guard par défaut de l'application.
      */
     protected function resetAuthGuards(): void
     {
-        $this->app['auth']->forgetGuards();
+        $auth = $this->app['auth'];
+
+        $auth->forgetGuards();
+        $auth->setDefaultDriver((string) env('AUTH_GUARD', 'web'));
     }
 }

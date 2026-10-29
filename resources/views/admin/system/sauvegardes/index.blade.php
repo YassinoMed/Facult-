@@ -43,43 +43,43 @@
     <div class="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-4">
         {{-- 1. Dernier backup --}}
         <div class="ds-card p-4">
-            <p class="text-[11px] font-bold uppercase tracking-wider text-slate-400">Dernier backup</p>
+            <p class="text-[11px] font-bold uppercase tracking-wider text-slate-600 font-semibold">Dernier backup</p>
             <p class="mt-1 text-base font-black tabular-nums text-slate-900">
                 {{ $dernier?->completed_at?->format('d/m/Y H:i:s') ?? '—' }}
             </p>
-            <p class="text-[11px] font-semibold {{ $dernier?->status === 'SUCCESS' ? 'text-emerald-600' : 'text-slate-400' }}">
+            <p class="text-[11px] font-semibold {{ $dernier?->status === 'SUCCESS' ? 'text-emerald-600' : 'text-slate-500' }}">
                 {{ $dernier ? ($dernier->status === 'SUCCESS' ? 'Succès ('.$dernier->completed_at?->diffForHumans().')' : $dernier->status) : 'Aucun backup' }}
             </p>
         </div>
 
         {{-- 2. Checksum du dernier backup --}}
         <div class="ds-card p-4">
-            <p class="text-[11px] font-bold uppercase tracking-wider text-slate-400">Dernier Checksum</p>
+            <p class="text-[11px] font-bold uppercase tracking-wider text-slate-600 font-semibold">Dernier Checksum</p>
             <p class="mt-1 text-xs font-mono font-bold text-slate-800 truncate" title="{{ $dernier?->checksum ?? 'Non calculé' }}">
                 {{ $dernier?->checksum ? substr($dernier->checksum, 0, 16).'…' : '—' }}
             </p>
-            <p class="text-[11px] text-slate-400">
+            <p class="text-[11px] text-slate-500">
                 {{ $dernier?->verified_at ? 'Vérifié le '.$dernier->verified_at->format('d/m H:i') : 'SHA-256 standard' }}
             </p>
         </div>
 
         {{-- 3. Historique / Conservées --}}
         <div class="ds-card p-4">
-            <p class="text-[11px] font-bold uppercase tracking-wider text-slate-400">Historique total</p>
+            <p class="text-[11px] font-bold uppercase tracking-wider text-slate-600 font-semibold">Historique total</p>
             <p class="mt-1 text-lg font-black tabular-nums text-slate-900">{{ $statistiques['total'] }}</p>
             <p class="text-[11px] text-slate-500">
                 <span class="text-emerald-600 font-bold">{{ $statistiques['succes'] }} succès</span> ·
-                <span class="{{ $statistiques['echecs'] > 0 ? 'text-rose-600 font-bold' : 'text-slate-400' }}">{{ $statistiques['echecs'] }} échec(s)</span>
+                <span class="{{ $statistiques['echecs'] > 0 ? 'text-rose-600 font-bold' : 'text-slate-500' }}">{{ $statistiques['echecs'] }} échec(s)</span>
             </p>
         </div>
 
         {{-- 4. Taille & Répertoire --}}
         <div class="ds-card p-4">
-            <p class="text-[11px] font-bold uppercase tracking-wider text-slate-400">Répertoire externe</p>
+            <p class="text-[11px] font-bold uppercase tracking-wider text-slate-600 font-semibold">Répertoire externe</p>
             <p class="mt-1 text-lg font-black tabular-nums text-slate-900">
                 {{ number_format($statistiques['octets'] / 1048576, 1, ',', ' ') }} Mo
             </p>
-            <p class="text-[11px] text-slate-400 font-mono truncate" title="{{ $dossier }}">
+            <p class="text-[11px] text-slate-500 font-mono truncate" title="{{ $dossier }}">
                 {{ $dossier }}
             </p>
         </div>
@@ -98,7 +98,7 @@
             <div class="overflow-x-auto">
                 <table class="w-full min-w-[850px] text-left text-xs sm:text-sm">
                     <thead>
-                        <tr class="border-b border-slate-100 text-[11px] uppercase tracking-wider text-slate-400 bg-slate-50/30">
+                        <tr class="border-b border-slate-100 text-[11px] uppercase tracking-wider text-slate-700 font-bold bg-slate-50/30">
                             <th scope="col" class="px-5 py-3 font-bold">Date & Heure</th>
                             <th scope="col" class="px-4 py-3 font-bold">Fichier</th>
                             <th scope="col" class="px-4 py-3 font-bold">Base</th>

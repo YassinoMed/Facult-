@@ -34,6 +34,7 @@ class Epreuve extends Model
         'groupe_id', 'sous_groupe_id', 'salle_id', 'date', 'heure_debut', 'heure_fin',
         'duree_minutes', 'type_evaluation', 'coefficient', 'bareme', 'note_max',
         'capacite_necessaire', 'statut',
+        'population_validated_at', 'population_hash', 'population_effectif',
     ];
 
     protected function casts(): array
@@ -43,6 +44,7 @@ class Epreuve extends Model
             'coefficient' => 'decimal:2',
             'bareme' => 'decimal:2',
             'note_max' => 'decimal:2',
+            'population_validated_at' => 'datetime',
         ];
     }
 
@@ -106,6 +108,11 @@ class Epreuve extends Model
     public function incidents(): HasMany
     {
         return $this->hasMany(EvaluationIncident::class, 'epreuve_id');
+    }
+
+    public function groupesVirtuels(): HasMany
+    {
+        return $this->hasMany(GroupeVirtuelExamen::class, 'epreuve_id');
     }
 
     public function estVerrouillee(): bool

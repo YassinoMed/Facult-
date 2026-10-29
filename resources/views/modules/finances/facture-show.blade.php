@@ -24,26 +24,53 @@
 
         <section class="mt-4 ds-card p-5">
             <h2 class="text-sm font-black uppercase tracking-wider text-slate-500">Paiements (reçu après confirmation uniquement)</h2>
-            <ul class="mt-2 divide-y divide-slate-100 text-sm">
-                @foreach($facture->paiements as $paiement)
-                    <li class="flex flex-wrap items-center justify-between gap-2 py-2">
-                        <span><strong>{{ $paiement->reference }}</strong> · {{ \App\Modules\Finances\Models\Facture::formater($paiement->montant_centimes) }} · {{ $paiement->methode }} · <x-status-badge :statut="$paiement->statut" /></span>
-                        <span class="flex gap-1.5">
-                            @if($paiement->statut === 'pending')
-                                @can('finances.confirm')
-                                    <form method="post" action="{{ route('admin.finances.confirmer', $paiement) }}" class="inline">
-                                        @csrf
-                                        <x-btn size="sm" type="submit">Confirmer</x-btn>
-                                    </form>
-                                @endcan
-                            @endif
-                            @if($paiement->estConfirme())
-                                <x-btn size="sm" variant="secondary" href="{{ route('admin.finances.recu', $paiement) }}">Reçu PDF</x-btn>
-                            @endif
-                        </span>
-                    </li>
-                @endforeach
-            </ul>
+            @if($facture->statut === 'paid' && $facture->paiements->isEmpty())
+                <p class="mt-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3.5 py-2.5 text-sm text-emerald-800 dark:border-emerald-900/50 dark:bg-emerald-950/40 dark:text-emerald-200">
+                    Paiement effectué sur le site externe — aucune transaction de paiement locale n’est enregistrée.
+                </p>
+            @else
+                <ul class="mt-2 divide-y divide-slate-100 text-sm">
+                    @foreach($facture->paiements as $paiement)
+                        <li class="flex flex-wrap items-center justify-between gap-2 py-2">
+                            <span><strong>{{ $paiement->reference }}</strong> · {{ \App\Modules\Finances\Models\Facture::formater($paiement->montant_centimes) }} · {{ $paiement->methode }} · <x-status-badge :statut="$paiement->statut" /></span>
+                            <span class="flex gap-1.5">
+                                @if($paiement->statut === 'pending')
+                                    @can('finances.confirm')
+                                        <form method="post" action="{{ route('admin.finances.confirmer', $paiement) }}" class="inline">
+                                            @csrf
+                                            <x-btn size="sm" type="submit">Confirmer</x-btn>
+                                        </form>
+                                    @endcan
+                                @endif
+                                @if($paiement->estConfirme())
+                                    <x-btn size="sm" variant="secondary" href="{{ route('admin.finances.recu', $paiement) }}">Reçu PDF</x-btn>
+                                    @can('finances.manage')
+                                        @php($dejaRembourse = $paiement->remboursements->whereNotIn('statut', ['rejected'])->sum('montant_centimes'))
+                                        @php($remboursable = $paiement->montant_centimes - $dejaRembourse)
+                                        @if($remboursable > 0)
+                                            <details class="inline-block text-left">
+                                                <summary class="cursor-pointer rounded-lg border border-slate-200 px-2.5 py-1 text-xs font-bold text-slate-700">Rembourser</summary>
+                                                <form method="post" action="{{ route('admin.finances.remboursements.store', $paiement) }}" class="mt-2 flex flex-wrap items-end gap-2">
+                                                    @csrf
+                                                    <div>
+                                                        <label class="text-xs font-bold text-slate-600" for="remboursement-montant-{{ $paiement->id }}">Montant (max : {{ \App\Modules\Finances\Models\Facture::formater($remboursable) }})</label>
+                                                        <input id="remboursement-montant-{{ $paiement->id }}" name="montant" type="number" step="0.01" min="0.01" max="{{ number_format($remboursable / 100, 2, '.', '') }}" required class="mt-1 w-40 rounded-xl border border-slate-200 px-3 py-2 text-sm" />
+                                                    </div>
+                                                    <div>
+                                                        <label class="text-xs font-bold text-slate-600" for="remboursement-motif-{{ $paiement->id }}">Motif</label>
+                                                        <input id="remboursement-motif-{{ $paiement->id }}" name="motif" type="text" maxlength="255" required class="mt-1 w-56 rounded-xl border border-slate-200 px-3 py-2 text-sm" />
+                                                    </div>
+                                                    <x-btn size="sm" type="submit">Demander</x-btn>
+                                                </form>
+                                            </details>
+                                        @endif
+                                    @endcan
+                                @endif
+                            </span>
+                        </li>
+                    @endforeach
+                </ul>
+            @endif
             @can('finances.manage')
                 @if($facture->resteCentimes() > 0 && !in_array($facture->statut, ['cancelled', 'refunded'], true))
                     <form method="post" action="{{ route('admin.finances.payer', $facture) }}" class="mt-3 flex flex-wrap items-end gap-2">

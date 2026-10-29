@@ -2,12 +2,15 @@
 
 namespace App\Models;
 
+use App\Modules\Finances\Models\DossierPaiement;
 use App\Modules\Referentiel\Models\Niveau;
 use App\Modules\Referentiel\Models\Programme;
+use App\Modules\StudentDossiers\Models\InscriptionDocument;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
 /**
  * Inscription académique d'un étudiant pour une année universitaire.
@@ -77,6 +80,41 @@ class InscriptionAcademique extends Model
     public function pedagogiques(): HasMany
     {
         return $this->hasMany(InscriptionPedagogique::class, 'inscription_id');
+    }
+
+    /**
+     * LOOP-UNIREGISTRE-DOCUMENTS-REUTILISABLES-01 : pièces associées à
+     * cette inscription annuelle (réutilisées ou à fournir). Le fichier
+     * physique reste unique dans le dossier permanent de l'étudiant.
+     *
+     * @return HasMany<InscriptionDocument, $this>
+     */
+    public function documentsInscription(): HasMany
+    {
+        return $this->hasMany(
+            InscriptionDocument::class,
+            'inscription_academique_id'
+        );
+    }
+
+    /**
+     * LOOP-UNIREGISTRE-INSCRIPTIONS-PAIEMENTS-01 : dossier de paiement
+     * propre à cette inscription annuelle. Un seul par inscription
+     * (contrainte UNIQUE en base).
+     *
+     * @return HasOne<DossierPaiement, $this>
+     */
+    public function dossierPaiement(): HasOne
+    {
+        return $this->hasOne(
+            DossierPaiement::class,
+            'inscription_academique_id'
+        );
+    }
+
+    public function corrections(): HasMany
+    {
+        return $this->hasMany(DossierCorrection::class, 'inscription_academique_id');
     }
 
     public function semestres(): HasMany

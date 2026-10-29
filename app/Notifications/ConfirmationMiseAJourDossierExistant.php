@@ -3,32 +3,31 @@
 namespace App\Notifications;
 
 use App\Models\Etudiant;
-use Illuminate\Bus\Queueable;
-use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
 
 /**
  * Email final du parcours public « dossier existant » : confirmation de
  * la prise en compte de la demande de mise à jour. Envoyé UNIQUEMENT
- * après le commit de la transaction d'enregistrement (jamais avant).
+ * après le commit de la transaction d'enregistrement (jamais avant), et
+ * UNIQUEMENT si au moins un champ a réellement changé (voir le
+ * contrôleur : une demande vide n'engendre aucun email).
  *
- * Mis en file (queue « notifications », retries automatiques) : un
- * incident d'envoi ne remet jamais en cause l'enregistrement déjà
- * validé. Contenu non sensible : jamais de CIN complet, de date de
- * naissance, de code de vérification, de mot de passe ni de document.
+ * Envoyé de façon synchrone et fail-soft : la file `notifications` n'est
+ * pas servie en permanence (aucun worker garanti) — l'écran final ne
+ * doit jamais annoncer un email qu'un worker manquant laisserait en
+ * attente. Un incident d'envoi ne remet jamais en cause l'enregistrement
+ * déjà validé (voir `DossierExistantService::notifierConfirmation`).
+ *
+ * Contenu non sensible : jamais de CIN complet, de date de naissance, de
+ * code de vérification, de mot de passe ni de document.
  */
-class ConfirmationMiseAJourDossierExistant extends Notification implements ShouldQueue
+class ConfirmationMiseAJourDossierExistant extends Notification
 {
-    use Queueable;
-
     public function __construct(
         public readonly string $reference,
         public readonly int $nbChampsModifies,
-    ) {
-        // File dédiée aux notifications (architecture existante).
-        $this->onQueue('notifications');
-    }
+    ) {}
 
     /**
      * @return list<string>

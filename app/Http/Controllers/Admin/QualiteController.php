@@ -29,6 +29,7 @@ class QualiteController extends Controller
 
         $query = AnomalieQualite::orderByRaw("CASE gravite WHEN 'critique' THEN 0 WHEN 'erreur' THEN 1 WHEN 'avertissement' THEN 2 ELSE 3 END")
             ->latest('derniere_detection_a')
+            ->when($faculteId !== null, fn ($q) => $q->where('faculte_id', $faculteId))
             ->when($request->input('statut'), fn ($q, $s) => $q->where('statut', $s))
             ->when($request->input('gravite'), fn ($q, $g) => $q->where('gravite', $g))
             ->when($request->input('source'), fn ($q, $s) => $q->where('source', $s));

@@ -30,22 +30,22 @@
     focusOnglet(i) { const onglets = [...$el.querySelectorAll('[role=tab]')]; const n = (i + onglets.length) % onglets.length; onglets[n].focus(); onglets[n].click(); }
 }" class="admin-tabs">
     <div role="tablist" aria-label="Sections de la page"
-         class="flex gap-1 overflow-x-auto border-b border-slate-200"
+         class="flex flex-wrap gap-1.5 p-1"
          @keydown.arrow-right.prevent="focusOnglet([...$el.querySelectorAll('[role=tab]')].indexOf(document.activeElement) + 1)"
          @keydown.arrow-left.prevent="focusOnglet([...$el.querySelectorAll('[role=tab]')].indexOf(document.activeElement) - 1)">
         @foreach($onglets as $cle => $libelle)
             <button type="button" role="tab" id="onglet-{{ $cle }}" aria-controls="panneau-{{ $cle }}"
                     :aria-selected="(onglet === '{{ $cle }}').toString()" :tabindex="onglet === '{{ $cle }}' ? 0 : -1"
                     @click="onglet = '{{ $cle }}'"
-                    class="whitespace-nowrap px-4 py-2.5 text-sm font-bold min-h-[44px]"
-                    :class="onglet === '{{ $cle }}' ? 'text-primary-800' : 'text-slate-500 hover:text-slate-900'">
+                    class="whitespace-nowrap rounded-xl px-4 py-2.5 text-sm font-bold min-h-[44px]"
+                    :class="onglet === '{{ $cle }}' ? 'bg-primary-800 text-white' : 'text-slate-600 hover:text-slate-900'">
                 {{ $libelle }}
             </button>
         @endforeach
     </div>
     @foreach($onglets as $cle => $libelle)
         <div x-show="onglet === '{{ $cle }}'" x-cloak role="tabpanel" id="panneau-{{ $cle }}"
-             aria-labelledby="onglet-{{ $cle }}" tabindex="0" class="pt-4">
+             aria-labelledby="onglet-{{ $cle }}" tabindex="0" class="pt-6">
             {{ ${'panneau_'.$cle} ?? '' }}
         </div>
     @endforeach

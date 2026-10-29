@@ -7,7 +7,9 @@
         <x-page-header titre="Prévisualisation" :description="$total . ' résultat(s) — ' . $contexte"
             :fil="['Listes' => route('admin.listes.index'), 'Prévisualisation' => '#']">
             <x-slot:actions>
-                <x-btn variant="ghost" href="{{ route('admin.listes.exports') }}">Mes exports</x-btn>
+                @can('data.export')
+                    <x-btn variant="ghost" href="{{ route('admin.listes.exports') }}">Mes exports</x-btn>
+                @endcan
             </x-slot:actions>
         </x-page-header>
 

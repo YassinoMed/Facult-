@@ -19,9 +19,9 @@
     </button>
     <div x-show="ouvert" x-cloak @click.outside="ouvert = false"
          x-transition:enter="transition ease-out duration-100" x-transition:enter-start="opacity-0 scale-95" x-transition:enter-end="opacity-100 scale-100"
-         x-transition:leave="transition ease-in duration-75" x-transition:leave-start="opacity-100 scale-100" x-transition:leave-end="opacity-0 scale-95"
+         x-transition:leave="transition ease-out duration-75" x-transition:leave-start="opacity-100 scale-100" x-transition:leave-end="opacity-0 scale-95"
          role="menu" aria-label="{{ $etiquette }}"
-         class="absolute right-0 z-30 mt-1 w-48 origin-top-right rounded-xl border border-slate-200 bg-white py-1 shadow-lg">
+         class="absolute right-0 z-30 mt-1 w-48 origin-top-right rounded-xl bg-white py-1 shadow-lg"><!-- taste-skill-ignore : ombre de menu -->
         {{ $liens ?? $slot }}
     </div>
 </div>

@@ -210,10 +210,10 @@
 | Masse cockpit | filtres candidats + groupes | `precheck()` + `analyser()` **sans écriture** + `lockForUpdate` + tranches 500 | `confirmer()` transactionnel, rapport (proposées/bloquées/warnings), CSV, reprise reliquat ✅ |
 | Propositions semi-auto | analyse | seuils `auto_score/ecart/remplissage` | `AffectationProposal` (en_attente→acceptee/modifiee/rejetee), alternatives compactes, `Cas sûrs` ✅ |
 | Simulateur avancé | paramètres + seed | contraints-d'abord, MOVE/SWAP bornés, pureté (zéro écriture métier, prouvée) | `assignment_simulations` + `items`, métriques, `regenerer()`, confirmation par groupe idempotente ✅ |
-| Lots async | sélection > `seuil_sync` (1000) | normalisation, auteur re-vérifié | `AffectationMasseLot` (compteurs, reprise `traites_ids`, annulation coopérative), page suivi ✅ |
+| Lots async | sélection masse > `seuil_sync` (1000) ou volume auto > seuil (`appliquerAuto`) | normalisation, re-cloisonnement périmètre, auteur re-vérifié | `AffectationMasseLot` (compteurs, reprise `traites_ids`, annulation coopérative), page suivi ✅ |
 | Auto post-validation | `InscriptionValidee` (post-commit) | éligibilité + scope-first + niveau officiel + boucle fallback capacité | `ASSIGNED/EXISTING/LOCKED/NOT_ASSIGNED…`, bilan immédiat, `POST …/reaffecter`, jamais bloquant pour l'inscription ✅ |
 | Réaffectation | transfert | mêmes gardes + verrou (exception explicite sinon) | clôture + création, historique conservé ✅ |
-| Reprise | reliquat / lot / reaffecter | `vueReliquat()`, `traites_ids`, `reessayer()` | jamais de double application (idempotence) ✅ |
+| Reprise | reliquat auto (sous le seuil) / lot / reaffecter | `vueReliquat()`, `traites_ids`, `reessayer()` | jamais de double application (idempotence) ✅ |
 
 ### 6.4. Sécurité et intégrité
 

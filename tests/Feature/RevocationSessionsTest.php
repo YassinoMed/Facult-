@@ -163,6 +163,36 @@ class RevocationSessionsTest extends TestCase
         ])->assertRedirect()->assertSessionHas('etudiant_mdp_version', 1);
     }
 
+    /**
+     * LOT 1 : un changement de mot de passe par l'étudiant lui-même doit
+     * révoquer les autres sessions, pas seulement celle qui a effectué
+     * l'opération.
+     */
+    public function test_changement_mot_de_passe_etudiant_revoque_les_autres_sessions(): void
+    {
+        $etudiant = $this->etudiant();
+        $etudiant->update(['password' => 'Ancien@12345']);
+
+        $this->withSession([
+            'etudiant_auth_id' => $etudiant->id,
+            'etudiant_mdp_version' => 0,
+        ])->patch(route('etudiant.profil.password'), [
+            'current_password' => 'Ancien@12345',
+            'password' => 'Nouveau@12345',
+            'password_confirmation' => 'Nouveau@12345',
+        ])->assertRedirect(route('etudiant.profil.show'))
+            ->assertSessionHas('etudiant_mdp_version', 1);
+
+        $this->assertSame(1, (int) $etudiant->fresh()->mot_de_passe_version);
+
+        // Session « volée » ouverte avant le changement : version 0.
+        $this->withSession([
+            'etudiant_auth_id' => $etudiant->id,
+            'etudiant_mdp_version' => 0,
+        ])->get(route('etudiant.profil.show'))
+            ->assertRedirect(route('etudiant.connexion.show'));
+    }
+
     private function etudiant(): Etudiant
     {
         return Etudiant::create([

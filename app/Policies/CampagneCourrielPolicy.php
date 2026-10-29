@@ -4,6 +4,7 @@ namespace App\Policies;
 
 use App\Models\CampagneCourriel;
 use App\Models\User;
+use App\Support\CampagnePerimetre;
 
 class CampagneCourrielPolicy
 {
@@ -14,7 +15,11 @@ class CampagneCourrielPolicy
 
     public function view(User $user, CampagneCourriel $campagne): bool
     {
-        return $user->hasPermission('campagnes.view');
+        // Périmètre faculté (LOOP-SECURITY-REMEDIATION-01) : un
+        // admin_faculte ne voit pas les campagnes des autres facultés ni
+        // les campagnes globales.
+        return $user->hasPermission('campagnes.view')
+            && CampagnePerimetre::campagneAutorisee($campagne, $user->faculteRestreinteId());
     }
 
     public function create(User $user): bool
@@ -24,26 +29,38 @@ class CampagneCourrielPolicy
 
     public function update(User $user, CampagneCourriel $campagne): bool
     {
-        return $user->hasPermission('campagnes.manage') && $campagne->peutEtreModifiee();
+        return $user->hasPermission('campagnes.manage')
+            && CampagnePerimetre::campagneAutorisee($campagne, $user->faculteRestreinteId())
+            && $campagne->peutEtreModifiee();
     }
 
     public function envoyer(User $user, CampagneCourriel $campagne): bool
     {
-        return $user->hasPermission('campagnes.manage') && $user->hasPermission('mail.send') && $campagne->peutEtreEnvoyee();
+        return $user->hasPermission('campagnes.manage')
+            && $user->hasPermission('mail.send')
+            && CampagnePerimetre::campagneAutorisee($campagne, $user->faculteRestreinteId())
+            && $campagne->peutEtreEnvoyee();
     }
 
     public function annuler(User $user, CampagneCourriel $campagne): bool
     {
-        return $user->hasPermission('campagnes.manage') && $campagne->peutEtreAnnulee();
+        return $user->hasPermission('campagnes.manage')
+            && CampagnePerimetre::campagneAutorisee($campagne, $user->faculteRestreinteId())
+            && $campagne->peutEtreAnnulee();
     }
 
     public function relancer(User $user, CampagneCourriel $campagne): bool
     {
-        return $user->hasPermission('campagnes.manage') && $user->hasPermission('mail.send') && $campagne->peutEtreRelancee();
+        return $user->hasPermission('campagnes.manage')
+            && $user->hasPermission('mail.send')
+            && CampagnePerimetre::campagneAutorisee($campagne, $user->faculteRestreinteId())
+            && $campagne->peutEtreRelancee();
     }
 
     public function delete(User $user, CampagneCourriel $campagne): bool
     {
-        return $user->hasPermission('campagnes.manage') && $campagne->statut === CampagneCourriel::STATUT_BROUILLON;
+        return $user->hasPermission('campagnes.manage')
+            && CampagnePerimetre::campagneAutorisee($campagne, $user->faculteRestreinteId())
+            && $campagne->statut === CampagneCourriel::STATUT_BROUILLON;
     }
 }

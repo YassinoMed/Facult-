@@ -116,6 +116,36 @@ class ExamCandidatePopulationTest extends TestCase
         $this->assertStringContainsString('Candidats CSV', $html);
     }
 
+    public function test_candidats_csv_masque_sans_data_export_et_route_directe_refusee(): void
+    {
+        $consultation = User::creerCompteBackOffice([
+            'name' => 'Consultation', 'email' => 'cons.exam@universite.test', 'password' => 'Motdepasse@123',
+        ], 'consultation');
+
+        $url = route('admin.listes.exporter', array_filter([
+            'format' => 'csv', 'groupe_id' => $this->epreuve->groupe_id,
+            'matiere_id' => $this->epreuve->groupe_id ? null : $this->epreuve->matiere_id,
+            'annee_universitaire_id' => $this->epreuve->session?->annee_universitaire_id,
+        ]));
+
+        // Page visible (epreuves.view) mais lien d'export masqué (data.export).
+        $this->actingAs($consultation)
+            ->get(route('admin.evaluations.epreuves.show', $this->epreuve))
+            ->assertOk()
+            ->assertSee('Émargement PDF')
+            ->assertDontSee('Candidats CSV')
+            ->assertDontSee($url, false);
+
+        // Le refus serveur reste effectif en accès direct.
+        $this->actingAs($consultation)->get($url)->assertForbidden();
+
+        // L'utilisateur autorisé conserve le lien.
+        $this->actingAs($this->admin)
+            ->get(route('admin.evaluations.epreuves.show', $this->epreuve))
+            ->assertOk()
+            ->assertSee('Candidats CSV');
+    }
+
     public function test_candidats_csv_meme_population(): void
     {
         $this->creerEtudiant('EXA00003');

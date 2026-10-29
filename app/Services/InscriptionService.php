@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Events\InscriptionAcademiqueCreee;
 use App\Events\InscriptionValidee;
 use App\Events\PopulationChanged;
 use App\Models\AnneeUniversitaire;
@@ -33,10 +34,82 @@ class InscriptionService
         'abandon' => [],
     ];
 
+    /**
+     * Message unique de refus quand une inscription existe déjà pour
+     * (étudiant, année universitaire). Jamais de donnée personnelle :
+     * ni nom, ni CIN, ni matricule — seule la règle est signifiée.
+     */
+    public const MESSAGE_INSCRIPTION_ANNUELLE_EXISTANTE = 'Cet étudiant possède déjà une inscription pour cette année universitaire.';
+
     public function __construct(
         private readonly AuditService $audit,
         private readonly PeriodeInscriptionService $periodes,
     ) {}
+
+    /**
+     * L'inscription académique d'un étudiant pour une année, si elle existe.
+     * Règle métier : au plus UNE inscription par (étudiant, année) —
+     * contrainte `uniq_inscription_etudiant_annee` en filet final.
+     */
+    public function inscriptionAnnuelle(Etudiant|int $etudiant, AnneeUniversitaire|int $annee): ?InscriptionAcademique
+    {
+        return InscriptionAcademique::query()
+            ->where('etudiant_id', $etudiant instanceof Etudiant ? $etudiant->id : $etudiant)
+            ->where('annee_universitaire_id', $annee instanceof AnneeUniversitaire ? $annee->id : $annee)
+            ->first();
+    }
+
+    /**
+     * Garde centralisée de la règle d'unicité annuelle : refuse une
+     * nouvelle inscription quand la paire (étudiant, année) est déjà
+     * couverte — quel que soit le point d'entrée.
+     *
+     * @throws \DomainException
+     */
+    public function verifierUniciteAnnuelle(Etudiant|int $etudiant, AnneeUniversitaire|int $annee): void
+    {
+        if ($this->inscriptionAnnuelle($etudiant, $annee) !== null) {
+            throw new \DomainException(self::MESSAGE_INSCRIPTION_ANNUELLE_EXISTANTE);
+        }
+    }
+
+    /**
+     * Création d'une inscription académique sous la règle d'unicité
+     * annuelle : garde préalable + traduction de la violation d'unicité
+     * (deux créations simultanées : la perdante reçoit la même erreur
+     * métier, jamais un 500). Les identifiants (étudiant, année) sont
+     * TOUJOURS ceux passés en paramètres — jamais ceux du tableau d'entrée.
+     *
+     * Les effets associés (semestres, audit, événements) restent à la
+     * charge de l'appelant, dans SA transaction.
+     *
+     * @param  array<string, mixed>  $donnees
+     *
+     * @throws \DomainException
+     */
+    public function creerInscriptionAnnuelle(int $etudiantId, int $anneeId, array $donnees = []): InscriptionAcademique
+    {
+        $this->verifierUniciteAnnuelle($etudiantId, $anneeId);
+
+        try {
+            $inscription = InscriptionAcademique::create([
+                'etudiant_id' => $etudiantId,
+                'annee_universitaire_id' => $anneeId,
+            ] + $donnees);
+        } catch (UniqueConstraintViolationException) {
+            // Course réelle entre deux requêtes : la contrainte unique a
+            // arbitré — même refus métier contrôlé que la garde.
+            throw new \DomainException(self::MESSAGE_INSCRIPTION_ANNUELLE_EXISTANTE);
+        }
+
+        // LOOP-UNIREGISTRE-DOCUMENTS-REUTILISABLES-01 : point d'extension
+        // unique pour associer les pièces permanentes au nouveau dossier
+        // annuel. Émis dans la transaction de l'appelant ; le listener est
+        // fail-soft et ne bloque jamais la création de l'inscription.
+        InscriptionAcademiqueCreee::dispatch($inscription, auth()->id());
+
+        return $inscription;
+    }
 
     /**
      * @throws \DomainException
@@ -152,12 +225,9 @@ class InscriptionService
             $exceptionId = $this->periodes->verifierCreation($etudiant, $annee, 'reinscription');
             // Garde interne (le contrôleur la vérifie aussi) : idempotence
             // même en appel direct du service. Verrou pessimiste sur
-            // l'étudiant + contrainte unique = double clic/retry sans doublon.
+            // l'étudiant + règle d'unicité centralisée = double clic/retry
+            // sans doublon, erreur métier unique dans tous les cas.
             Etudiant::whereKey($etudiant->id)->lockForUpdate()->firstOrFail();
-
-            if ($etudiant->inscriptionsAcademiques()->where('annee_universitaire_id', $annee->id)->exists()) {
-                throw new \DomainException('Une inscription existe déjà pour cette année (historique conservé).');
-            }
 
             $precedente = $etudiant->inscriptionsAcademiques()
                 ->where('annee_universitaire_id', '!=', $annee->id)
@@ -175,10 +245,10 @@ class InscriptionService
                 ?? $precedente?->niveau
                 ?? $etudiant->niveau;
 
-            try {
-                $inscription = InscriptionAcademique::create([
-                    'etudiant_id' => $etudiant->id,
-                    'annee_universitaire_id' => $annee->id,
+            $inscription = $this->creerInscriptionAnnuelle(
+                (int) $etudiant->id,
+                (int) $annee->id,
+                [
                     'programme_id' => $donnees['programme_id'] ?? $precedente?->programme_id ?? $etudiant->programme_id,
                     'niveau_id' => $niveauId,
                     'niveau' => $codeNiveau,
@@ -190,11 +260,8 @@ class InscriptionService
                     // décision jury) — le type reste `reinscription`
                     // (contrainte enum SQLite/MySQL partagée).
                     'observation' => $donnees['observation'] ?? null,
-                ]);
-            } catch (UniqueConstraintViolationException $e) {
-                // Course concurrence (double clic) : 422 lisible, pas de 500.
-                throw new \DomainException('Une inscription existe déjà pour cette année (création concurrente ignorée).');
-            }
+                ],
+            );
 
             foreach ([1, 2] as $numero) {
                 $inscription->semestres()->create(['numero' => $numero]);
@@ -504,7 +571,7 @@ class InscriptionService
         $erreurs = [];
         $now = now();
 
-        DB::transaction(function () use ($candidats, $annee, $now, &$crees) {
+        DB::transaction(function () use ($candidats, $annee, $now, &$crees, &$erreurs) {
             foreach ($candidats->chunk(500) as $chunk) {
                 $inscriptionsLignes = [];
                 $etudiantParId = [];
@@ -528,7 +595,24 @@ class InscriptionService
                     ];
                 }
 
-                DB::table('inscriptions_academiques')->insert($inscriptionsLignes);
+                // Insertion groupée ; si une création concurrente a devancé
+                // une ligne du paquet, l'instruction échoue en bloc
+                // (atomicité) → repli ligne à ligne : la paire déjà
+                // couverte est ignorée (règle d'unicité annuelle), jamais
+                // de doublon ni d'erreur technique.
+                try {
+                    DB::table('inscriptions_academiques')->insert($inscriptionsLignes);
+                    $crees += count($inscriptionsLignes);
+                } catch (UniqueConstraintViolationException) {
+                    foreach ($inscriptionsLignes as $ligne) {
+                        try {
+                            DB::table('inscriptions_academiques')->insert([$ligne]);
+                            $crees++;
+                        } catch (UniqueConstraintViolationException) {
+                            $erreurs[] = 'Étudiant #'.$ligne['etudiant_id'].' : inscription déjà existante pour cette année (ignorée).';
+                        }
+                    }
+                }
 
                 $createdIds = DB::table('inscriptions_academiques')
                     ->where('annee_universitaire_id', $annee->id)
@@ -552,7 +636,9 @@ class InscriptionService
                 }
 
                 if ($semestresLignes !== []) {
-                    DB::table('semestres')->insert($semestresLignes);
+                    // Idempotent : une inscription créée concurremment a
+                    // déjà pu recevoir ses semestres (UNIQUE inscription+numéro).
+                    DB::table('semestres')->insertOrIgnore($semestresLignes);
                 }
 
                 // Initialisation du dossier académique si absent
@@ -580,8 +666,6 @@ class InscriptionService
                 if ($dossiersAcreer !== []) {
                     DB::table('archives_etudiants')->insert($dossiersAcreer);
                 }
-
-                $crees += count($inscriptionsLignes);
             }
         });
 

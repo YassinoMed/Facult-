@@ -47,8 +47,10 @@ class PdfDocumentService
             ->where('type', $type)
             ->max('version')) + 1;
 
+        $prefixeRef = $type === 'dossier' ? 'PDF' : 'PDF-'.strtoupper(substr($type, 0, 3));
+
         return GeneratedDocument::create([
-            'reference' => sprintf('PDF-%s-%02d', $dossier->reference, $version),
+            'reference' => sprintf('%s-%s-%02d', $prefixeRef, $dossier->reference, $version),
             'code_verification' => $codeVerification,
             'student_dossier_id' => $dossier->id,
             'type' => $type,

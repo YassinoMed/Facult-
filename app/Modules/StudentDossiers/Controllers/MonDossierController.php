@@ -4,6 +4,8 @@ namespace App\Modules\StudentDossiers\Controllers;
 
 use App\Http\Controllers\Controller;
 use App\Models\Etudiant;
+use App\Models\InscriptionAcademique;
+use App\Modules\Evaluation\Models\DecisionDeliberation;
 use App\Modules\StudentDossiers\Models\GeneratedDocument;
 use App\Modules\StudentDossiers\Models\StudentDocument;
 use App\Modules\StudentDossiers\Models\StudentDocumentVersion;
@@ -11,6 +13,7 @@ use App\Modules\StudentDossiers\Models\StudentDossier;
 use App\Modules\StudentDossiers\Requests\RemplacerMonDocumentRequest;
 use App\Modules\StudentDossiers\Requests\TeleverserMonDocumentRequest;
 use App\Modules\StudentDossiers\Services\Pdf\PdfDocumentService;
+use App\Modules\StudentDossiers\Services\ReutilisationDocumentsService;
 use App\Modules\StudentDossiers\Services\StudentDocumentService;
 use App\Modules\StudentDossiers\Services\StudentDossierService;
 use App\Services\AuditService;
@@ -35,6 +38,7 @@ class MonDossierController extends Controller
         private readonly PdfDocumentService $pdfs,
         private readonly AuditService $audit,
         private readonly DocumentsRequisService $documentsRequis,
+        private readonly ReutilisationDocumentsService $reutilisation,
     ) {}
 
     public function show(Request $request): View
@@ -54,11 +58,22 @@ class MonDossierController extends Controller
         // navigateur.
         $checklist = $this->documentsRequis->verifier($etudiant, null);
 
+        // LOOP-UNIREGISTRE-DOCUMENTS-REUTILISABLES-01 : état de la dernière
+        // inscription ouverte (lecture seule). Les pièces validées du
+        // dossier permanent sont réutilisées ; seules les pièces réellement
+        // manquantes/refusées/expirées/non conformes sont demandées.
+        $inscriptionCourante = $this->reutilisation->derniereInscriptionActive($etudiant);
+        $reutilisation = $inscriptionCourante !== null
+            ? $this->reutilisation->etatInscription($inscriptionCourante)
+            : null;
+
         return view('modules.student-dossiers.mon-dossier', [
             'etudiant' => $etudiant,
             'dossier' => $dossier,
             'pdf' => $this->pdfs->dernierPdf($dossier),
             'checklist' => $checklist,
+            'inscriptionCourante' => $inscriptionCourante,
+            'reutilisation' => $reutilisation,
         ]);
     }
 
@@ -231,10 +246,19 @@ class MonDossierController extends Controller
     {
         $dossier = $this->dossierConnecte($request);
 
-        $documents = GeneratedDocument::where('student_dossier_id', $dossier->id)
+        $query = GeneratedDocument::where('student_dossier_id', $dossier->id)
             ->where('statut', 'valide')
-            ->latest('id')
-            ->paginate(15);
+            ->latest('id');
+
+        $etudiant = $dossier->etudiant;
+        if ($etudiant) {
+            $publiees = DecisionDeliberation::inscriptionsPublieesPour($etudiant->id);
+            if (empty($publiees)) {
+                $query->whereNotIn('type', ['releve_notes', 'releve_semestriel', 'releve_cursus']);
+            }
+        }
+
+        $documents = $query->paginate(15);
 
         return view('modules.student-dossiers.mon-dossier-officiels', [
             'documents' => $documents,
@@ -248,6 +272,21 @@ class MonDossierController extends Controller
         abort_if((int) $document->student_dossier_id !== (int) $dossier->id, 404);
         abort_if($document->statut !== 'valide', 410, 'Document non disponible.');
         abort_unless(Storage::disk('private')->exists($document->storage_path), 404);
+
+        if (in_array($document->type, ['releve_notes', 'releve_semestriel', 'releve_cursus'], true)) {
+            $etudiant = $dossier->etudiant;
+            if ($etudiant) {
+                $publiees = DecisionDeliberation::inscriptionsPublieesPour($etudiant->id);
+                $anneeId = $document->snapshot_donnees['annee_universitaire_id'] ?? null;
+                $inscriptionsConcernees = InscriptionAcademique::where('etudiant_id', $etudiant->id)
+                    ->when($anneeId, fn ($q) => $q->where('annee_universitaire_id', $anneeId))
+                    ->pluck('id')
+                    ->all();
+
+                $estPublie = ! empty(array_intersect($inscriptionsConcernees, $publiees));
+                abort_unless($estPublie, 403, 'Le relevé de notes n’est pas encore publié.');
+            }
+        }
 
         $this->audit->tracer(
             $dossier->etudiant,

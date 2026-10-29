@@ -68,29 +68,30 @@
 
     {{-- Liste --}}
     <div class="overflow-hidden rounded-3xl border border-slate-200/90 bg-white shadow-xs">
-        <table class="w-full text-sm">
-            <thead>
-                <tr class="border-b border-slate-100 bg-slate-50/60 text-left text-xs uppercase tracking-wider text-slate-400">
-                    <th class="px-6 py-3.5">Administrateur</th>
-                    <th class="px-4 py-3.5">Rôle</th>
-                    <th class="px-4 py-3.5">Périmètre</th>
-                    <th class="px-4 py-3.5">Statut</th>
-                    <th class="px-6 py-3.5 text-right">Action</th>
-                </tr>
-            </thead>
+        <div class="overflow-x-auto">
+            <table class="w-full text-sm min-w-[640px]">
+                <thead>
+                    <tr class="border-b border-slate-100 bg-slate-50/60 text-left text-xs uppercase tracking-wider text-slate-700 font-bold">
+                        <th scope="col" class="px-6 py-3.5">Administrateur</th>
+                        <th scope="col" class="px-4 py-3.5">Rôle</th>
+                        <th scope="col" class="px-4 py-3.5">Périmètre</th>
+                        <th scope="col" class="px-4 py-3.5">Statut</th>
+                        <th scope="col" class="px-6 py-3.5 text-right">Action</th>
+                    </tr>
+                </thead>
             <tbody>
                 @forelse($administrateurs as $administrateur)
                     <tr class="border-b border-slate-50 last:border-0 hover:bg-slate-50/40 transition-smooth">
                         <td class="px-6 py-3.5">
                             <p class="font-bold text-slate-900">{{ $administrateur->name }}</p>
-                            <p class="text-xs text-slate-400">{{ $administrateur->email }}</p>
+                            <p class="text-xs text-slate-500 font-medium">{{ $administrateur->email }}</p>
                         </td>
                         <td class="px-4 py-3.5">
-                            <span class="rounded-lg bg-primary-50 px-2.5 py-1 text-xs font-bold text-primary-800 border border-primary-200">
+                            <span id="role-badge-{{ $administrateur->id }}" class="rounded-lg bg-primary-50 px-2.5 py-1 text-xs font-bold text-primary-800 border border-primary-200">
                                 {{ $administrateur->role_libelle }}
                             </span>
                         </td>
-                        <td class="px-4 py-3.5 text-xs text-slate-600">
+                        <td class="px-4 py-3.5 text-xs text-slate-600" id="perimetre-{{ $administrateur->id }}">
                             {{ $administrateur->faculte?->nom ?? 'Toutes les facultés' }}
                         </td>
                         <td class="px-4 py-3.5">
@@ -106,10 +107,18 @@
                         </td>
                         <td class="px-6 py-3.5 text-right">
                             @if($administrateur->id === auth()->id())
-                                <span class="text-xs text-slate-300 font-semibold">Votre compte</span>
+                                <span class="text-xs text-slate-500 font-semibold">Votre compte</span>
                             @else
-                                <form method="POST" action="{{ route('admin.administrateurs.statut', $administrateur) }}"
-                                      onsubmit="return confirm('{{ $administrateur->actif ? 'Désactiver' : 'Réactiver' }} le compte « '.e($administrateur->name).' » ?');">
+                                <div class="flex items-center justify-end gap-2">
+                                    <button type="button"
+                                            @click="$dispatch('ouvrir-attribution', { compte: @js(['id' => $administrateur->id, 'name' => $administrateur->name, 'email' => $administrateur->email, 'role' => $administrateur->role, 'role_libelle' => $administrateur->role_libelle, 'faculte' => $administrateur->faculte?->nom]) })"
+                                            class="rounded-lg px-3 py-1.5 text-xs font-bold border border-primary-200 text-primary-700 hover:bg-primary-50">
+                                        Rôle
+                                    </button>
+                                    <a href="{{ route('admin.administrateurs.edit', $administrateur) }}"
+                                       class="rounded-lg px-3 py-1.5 text-xs font-bold border border-slate-200 text-slate-600 hover:bg-slate-50">Modifier</a>
+                                    <form method="POST" action="{{ route('admin.administrateurs.statut', $administrateur) }}"
+                                          onsubmit="return confirm('{{ $administrateur->actif ? 'Désactiver' : 'Réactiver' }} le compte « '.e($administrateur->name).' » ?');">
                                     @csrf
                                     @method('PATCH')
                                     <button type="submit"
@@ -120,18 +129,38 @@
                                         {{ $administrateur->actif ? 'Désactiver' : 'Réactiver' }}
                                     </button>
                                 </form>
+                                </div>
                             @endif
                         </td>
                     </tr>
                 @empty
                     <tr>
-                        <td colspan="5" class="px-6 py-10 text-center text-sm text-slate-400">Aucun administrateur enregistré.</td>
+                        <td colspan="5" class="px-6 py-10 text-center text-sm text-slate-600 font-medium">Aucun administrateur enregistré.</td>
                     </tr>
                 @endforelse
             </tbody>
         </table>
+        </div>
     </div>
 
     <div class="mt-4">{{ $administrateurs->links() }}</div>
+
+    <div @role-attribue.window="
+            document.getElementById('role-badge-' + $event.detail.cible.id).textContent = $event.detail.resultat.role_libelle;
+            document.getElementById('perimetre-' + $event.detail.cible.id).textContent = $event.detail.resultat.faculte_nom ?? 'Toutes les facultés';
+            document.getElementById('banner-role').classList.remove('hidden');
+            document.getElementById('banner-role-texte').textContent = $event.detail.resultat.message;
+         ">
+        <p id="banner-role" class="hidden mt-4 rounded-2xl border border-emerald-200 bg-emerald-50/80 px-5 py-3.5 text-sm font-semibold text-emerald-800" role="status">
+            <span id="banner-role-texte"></span>
+        </p>
+        @include('admin._modal-attribution-role', ['mode' => 'compte', 'config' => [
+            'mode' => 'compte',
+            'urls' => ['attribuer' => route('admin.administrateurs.role.attribuer', ['administrateur' => '__ID__'])],
+            'roles' => $rolesAttribuables,
+            'registre' => $registrePermissions,
+            'facultes' => $facultes->map(fn ($f) => ['id' => $f->id, 'nom' => $f->nom])->all(),
+        ]])
+    </div>
 </div>
 @endsection

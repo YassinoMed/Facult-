@@ -26,6 +26,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Str;
 use Illuminate\View\View;
 
@@ -138,9 +139,8 @@ class AffectationEnseignantController
             ))
             ->count();
 
-        $epreuvesIdsInScope = (clone $baseKpiQuery)->pluck('id');
         $totalAffectations = Surveillance::whereIn('statut', ['assigne', 'confirme'])
-            ->whereIn('epreuve_id', $epreuvesIdsInScope)
+            ->whereIn('epreuve_id', (clone $baseKpiQuery)->select('id'))
             ->count();
 
         // 3. Eager loading sans N+1 pour le tableau paginé
@@ -284,6 +284,11 @@ class AffectationEnseignantController
         $activeRun = null;
         if ($request->filled('session_id')) {
             $activeRun = SurveillanceAssignmentRun::actifPour((int) $request->input('session_id'), $faculteId);
+        } else {
+            $activeRun = SurveillanceAssignmentRun::whereIn('status', [SurveillanceAssignmentRun::STATUS_PENDING, SurveillanceAssignmentRun::STATUS_RUNNING])
+                ->when($faculteId !== null, fn ($q) => $q->where('faculte_id', $faculteId))
+                ->latest('id')
+                ->first();
         }
 
         return view('modules.evaluation.affectations-index', [
@@ -356,13 +361,28 @@ class AffectationEnseignantController
     {
         Gate::authorize('surveillances.assign');
 
-        $donnees = $request->validate([
+        $validator = Validator::make($request->all(), [
             'session_id' => ['required', 'exists:evaluation_sessions,id'],
         ], [
             'session_id.required' => 'Veuillez sélectionner une session d’examen.',
             'session_id.exists' => 'Session d’examen introuvable.',
         ]);
 
+        if ($validator->fails()) {
+            if ($request->expectsJson()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => $validator->errors()->first('session_id'),
+                    'errors' => $validator->errors(),
+                ], 422);
+            }
+
+            return redirect()->route('admin.evaluations.affectations.index')
+                ->withErrors($validator)
+                ->withInput();
+        }
+
+        $donnees = $validator->validated();
         $session = SessionExamen::findOrFail((int) $donnees['session_id']);
         $faculteId = $request->user()->faculteRestreinteId();
 
@@ -390,7 +410,15 @@ class AffectationEnseignantController
             ->count();
 
         if ($nbEpreuves === 0) {
-            return back()->withErrors(['affectation' => 'Aucune épreuve planifiée dans cette session.']);
+            if ($request->expectsJson()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Aucune épreuve planifiée dans cette session.',
+                ], 422);
+            }
+
+            return redirect()->route('admin.evaluations.affectations.index', ['session_id' => $session->id])
+                ->withErrors(['affectation' => 'Aucune épreuve planifiée dans cette session.']);
         }
 
         // 3. Snapshot de configuration résolu et figé pour le run (§9)
@@ -425,6 +453,13 @@ class AffectationEnseignantController
             report($e);
             Log::warning('affectation.dispatch_echec', ['run_id' => $run->id, 'session_id' => $session->id]);
 
+            if ($request->expectsJson()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Le lancement a échoué : le traitement est marqué en échec, vous pouvez le relancer.',
+                ], 500);
+            }
+
             return redirect()->route('admin.evaluations.affectations.runs', ['run' => $run->uuid])
                 ->with('error', 'Le lancement a échoué : le traitement est marqué en échec, vous pouvez le relancer.');
         }
@@ -449,13 +484,20 @@ class AffectationEnseignantController
     {
         Gate::authorize('surveillances.manage');
 
-        $donnees = $request->validate([
+        $validator = Validator::make($request->all(), [
             'session_id' => ['required', 'exists:evaluation_sessions,id'],
         ], [
             'session_id.required' => 'Veuillez sélectionner une session d’examen.',
             'session_id.exists' => 'Session d’examen introuvable.',
         ]);
 
+        if ($validator->fails()) {
+            return redirect()->route('admin.evaluations.affectations.index')
+                ->withErrors($validator)
+                ->withInput();
+        }
+
+        $donnees = $validator->validated();
         $session = SessionExamen::findOrFail((int) $donnees['session_id']);
         $faculteId = $request->user()->faculteRestreinteId();
 

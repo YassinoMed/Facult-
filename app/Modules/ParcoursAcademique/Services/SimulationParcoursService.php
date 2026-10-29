@@ -269,7 +269,7 @@ class SimulationParcoursService implements SimulationParcoursInterface
         $validees = $this->coeur->notesValideesParMatiere($notes)->toArray();
         $trouvee = false;
         foreach ($validees as &$ligne) {
-            if ((int) ($ligne['matiere_id'] ?? $ligne['matiere']?->id) === $matiereId) {
+            if (self::matiereIdDeLigne($ligne) === $matiereId) {
                 $ligne['note'] = $noteFictive;
                 $trouvee = true;
             }
@@ -288,6 +288,18 @@ class SimulationParcoursService implements SimulationParcoursInterface
             'justification' => 'Recomposition en mémoire (notes officielles + hypothèse), moyenne pondérée recalculée, zéro écriture.',
             'regles' => ['AcademicCalculationService::moyennePonderee'],
         ]);
+    }
+
+    /**
+     * Identifiant matière d'une ligne issue de `notesValideesParMatiere()`
+     * convertie en tableau. Le repli relationnel doit rester compatible
+     * tableau (R-04/4) : `matiere` est un tableau après `toArray()`.
+     *
+     * @param  array<string, mixed>  $ligne
+     */
+    private static function matiereIdDeLigne(array $ligne): int
+    {
+        return (int) ($ligne['matiere_id'] ?? data_get($ligne, 'matiere.id') ?? 0);
     }
 
     /**
@@ -318,15 +330,15 @@ class SimulationParcoursService implements SimulationParcoursInterface
     {
         $base = $this->baseOfficielle($etudiant, $source);
         $credits = $this->credits->creditsEtudiant($etudiant);
-        $transférables = $credits['obtenus'];
+        $transferables = $credits['obtenus'];
 
         return array_merge($base, [
             'scenario_propose' => $scenario,
-            'credits_transferables' => $transférables,
+            'credits_transferables' => $transferables,
             'conditions_necessaires' => ['Dossier de demande', 'Avis commission', 'Places/capacité', 'Décision admise'],
             'conditions_satisfaites' => [
                 'Historique académique conservé (inscriptions d\'origine intactes)',
-                "Crédits déjà obtenus transférables à l'étude : {$transférables} (équivalences à instruire)",
+                "Crédits déjà obtenus transférables à l'étude : {$transferables} (équivalences à instruire)",
             ],
             'conditions_non_satisfaites' => ['Décision d\'orientation non enregistrée (simulation seule)'],
             'resultat_final' => 'orientation_envisageable',

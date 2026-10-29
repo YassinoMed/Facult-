@@ -7,6 +7,7 @@ use App\Jobs\Io\ExportStudentsJob;
 use App\Models\ImportReport;
 use App\Models\IntegrationLog;
 use App\Models\User;
+use App\Services\DisponibiliteWorkerService;
 use App\Services\Io\Exports\AcademicExportEngine;
 use App\Services\Io\Exports\ExportFilters;
 use Illuminate\Support\Facades\Storage;
@@ -70,7 +71,8 @@ class ExportOrchestrator
         // Estimation du volume : volumineux → job (§80)
         $estimation = $this->engine->construire($type, $profil, $filtres, $utilisateur, $colonnes, null, $granularite);
 
-        if ($estimation['total'] > (int) config('integrations.queue_threshold', 500)) {
+        $arbitre = app(DisponibiliteWorkerService::class);
+        if ($arbitre->doitBasculerEnFile((int) $estimation['total'], (int) config('integrations.queue_threshold', 500))) {
             match ($type) {
                 'students' => ExportStudentsJob::dispatch($rapport),
                 'grades' => ExportAcademicRecordsJob::dispatch($rapport),

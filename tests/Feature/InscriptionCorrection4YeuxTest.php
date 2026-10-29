@@ -11,6 +11,7 @@ use App\Models\InscriptionAcademique;
 use App\Models\User;
 use App\Modules\Referentiel\Models\Niveau;
 use App\Modules\Referentiel\Models\Programme;
+use App\Services\Verification\CorrectionService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Testing\TestResponse;
 use Tests\Concerns\ActAsScolarite;
@@ -201,5 +202,65 @@ class InscriptionCorrection4YeuxTest extends TestCase
         ])->assertForbidden();
 
         $this->assertSame(0, DossierCorrection::where('champ', DossierCorrection::CHAMP_INSCRIPTION)->count());
+    }
+
+    public function test_programme_cible_hors_faculte_etudiant_refuse_meme_pour_un_agent_global(): void
+    {
+        $autreFaculte = Faculte::create(['nom' => 'FC', 'code' => 'FC', 'description' => 'T', 'active' => true]);
+        $programmeHorsFaculte = Programme::create([
+            'faculte_id' => $autreFaculte->id, 'code' => 'LC', 'nom' => 'Licence Autre Faculté',
+            'duree_annees' => 3, 'semestres_nombre' => 6, 'credits_requis' => 180,
+        ]);
+
+        $this->actingAs($this->proposeur)->post(route('admin.inscriptions.corriger', $this->inscription), [
+            'programme_id' => $programmeHorsFaculte->id,
+            'motif' => 'Tentative de rattachement à un programme d’une autre faculté.',
+        ])->assertSessionHasErrors('correction');
+
+        $this->assertSame(0, DossierCorrection::where('champ', DossierCorrection::CHAMP_INSCRIPTION)->count());
+        $this->assertSame((int) $this->programmeBachelier->id, (int) $this->inscription->fresh()->programme_id);
+    }
+
+    public function test_niveau_cible_hors_faculte_etudiant_refuse_sans_programme_explicite(): void
+    {
+        $autreFaculte = Faculte::create(['nom' => 'FD', 'code' => 'FD', 'description' => 'T', 'active' => true]);
+        $programmeHorsFaculte = Programme::create([
+            'faculte_id' => $autreFaculte->id, 'code' => 'LD', 'nom' => 'Licence Autre Faculté D',
+            'duree_annees' => 3, 'semestres_nombre' => 6, 'credits_requis' => 180,
+        ]);
+        $niveauHorsFaculte = Niveau::create([
+            'programme_id' => $programmeHorsFaculte->id, 'code' => 'L1', 'nom' => 'L1 Autre Faculté', 'ordre' => 1,
+        ]);
+
+        $this->actingAs($this->proposeur)->post(route('admin.inscriptions.corriger', $this->inscription), [
+            'niveau_id' => $niveauHorsFaculte->id,
+            'motif' => 'Tentative de rattachement à un niveau d’une autre faculté.',
+        ])->assertSessionHasErrors('correction');
+
+        $this->assertSame(0, DossierCorrection::where('champ', DossierCorrection::CHAMP_INSCRIPTION)->count());
+        $this->assertSame((int) $this->l1->id, (int) $this->inscription->fresh()->niveau_id);
+    }
+
+    public function test_correction_de_champ_avec_rattachement_inscription_reste_une_correction_etudiant(): void
+    {
+        $correction = DossierCorrection::create([
+            'etudiant_id' => $this->etudiant->id,
+            'inscription_academique_id' => $this->inscription->id,
+            'champ' => 'nom',
+            'ancienne_valeur' => 'Test',
+            'nouvelle_valeur' => 'Test Corrigé',
+            'regle' => 'R12_MENS',
+            'motif' => 'Correction du nom de l’étudiant.',
+            'statut' => 'approuvee',
+            'propose_par' => $this->proposeur->id,
+            'decide_par' => $this->approbateur->id,
+        ]);
+
+        app(CorrectionService::class)->appliquer($correction, $this->approbateur->id);
+
+        // Le rattachement à une inscription ne doit pas transformer une
+        // correction de champ étudiant en correction de payload JSON.
+        $this->assertSame('Test Corrigé', $this->etudiant->fresh()->nom);
+        $this->assertSame('appliquee', $correction->fresh()->statut);
     }
 }

@@ -37,10 +37,10 @@
         @endif
 
         @if($resultat->apercu !== [])
-            <div class="mt-4 overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-sm">
+            <div class="mt-4 overflow-x-auto max-h-[500px] rounded-2xl border border-slate-200 bg-white shadow-sm">
                 <table class="w-full min-w-[640px] text-left text-sm">
-                    <thead>
-                        <tr class="border-b border-slate-100 text-[11px] uppercase tracking-wider text-slate-400">
+                    <thead class="sticky top-0 z-10 bg-slate-50/95 backdrop-blur-xs border-b border-slate-100 text-[11px] uppercase tracking-wider text-slate-500 shadow-2xs">
+                        <tr>
                             <th scope="col" class="px-4 py-3 font-bold">Ligne</th>
                             <th scope="col" class="px-4 py-3 font-bold">Compostage</th>
                             <th scope="col" class="px-4 py-3 font-bold text-right">Note</th>
@@ -48,10 +48,10 @@
                     </thead>
                     <tbody class="divide-y divide-slate-100">
                         @foreach($resultat->apercu as $ligne)
-                            <tr class="hover:bg-slate-50/60">
+                            <tr class="hover:bg-slate-50/60 transition-colors">
                                 <td class="px-4 py-3 tabular-nums">{{ $ligne['ligne'] ?? '—' }}</td>
-                                <td class="px-4 py-3 font-mono font-bold">{{ $ligne['compostage'] ?? '—' }}</td>
-                                <td class="px-4 py-3 text-right tabular-nums">{{ $ligne['note'] ?? '—' }}</td>
+                                <td class="px-4 py-3 font-mono font-bold text-slate-900">{{ $ligne['compostage'] ?? '—' }}</td>
+                                <td class="px-4 py-3 text-right tabular-nums font-mono font-semibold">{{ $ligne['note'] ?? '—' }}</td>
                             </tr>
                         @endforeach
                     </tbody>
@@ -60,10 +60,10 @@
         @endif
 
         @if($resultat->erreurs !== [])
-            <div class="mt-4 overflow-x-auto rounded-2xl border border-rose-200 bg-white shadow-sm">
+            <div class="mt-4 overflow-x-auto max-h-[500px] rounded-2xl border border-rose-200 bg-white shadow-sm">
                 <table class="w-full min-w-[640px] text-left text-sm">
-                    <thead>
-                        <tr class="border-b border-rose-100 text-[11px] uppercase tracking-wider text-rose-400">
+                    <thead class="sticky top-0 z-10 bg-rose-50/95 backdrop-blur-xs border-b border-rose-200 text-[11px] uppercase tracking-wider text-rose-700 shadow-2xs">
+                        <tr>
                             <th scope="col" class="px-4 py-3 font-bold">Ligne</th>
                             <th scope="col" class="px-4 py-3 font-bold">Champ</th>
                             <th scope="col" class="px-4 py-3 font-bold">Erreur</th>
@@ -72,11 +72,11 @@
                     </thead>
                     <tbody class="divide-y divide-rose-100">
                         @foreach($resultat->erreurs as $erreur)
-                            <tr class="hover:bg-rose-50/60">
-                                <td class="px-4 py-3 tabular-nums">{{ $erreur['ligne'] }}</td>
+                            <tr class="hover:bg-rose-50/60 transition-colors">
+                                <td class="px-4 py-3 tabular-nums font-mono">{{ $erreur['ligne'] }}</td>
                                 <td class="px-4 py-3 font-mono text-xs">{{ $erreur['champ'] }}</td>
-                                <td class="px-4 py-3 text-xs">{{ $erreur['message'] }}</td>
-                                <td class="px-4 py-3 font-mono text-xs font-bold">{{ $erreur['code'] }}</td>
+                                <td class="px-4 py-3 text-xs text-rose-800">{{ $erreur['message'] }}</td>
+                                <td class="px-4 py-3 font-mono text-xs font-bold text-rose-700">{{ $erreur['code'] }}</td>
                             </tr>
                         @endforeach
                     </tbody>
@@ -91,16 +91,19 @@
                 <x-btn type="submit" variant="secondary">Annuler</x-btn>
             </form>
             @if($resultat->valides !== [])
-                <form method="post" action="{{ route('admin.evaluations.notes.import-multi-confirmer', $epreuve) }}" class="flex flex-wrap items-center gap-3">
+                <form method="post" action="{{ route('admin.evaluations.notes.import-multi-confirmer', $epreuve) }}"
+                      x-data="{ confirmant: false }" @submit="confirmant = true"
+                      class="flex flex-wrap items-center gap-3">
                     @csrf
                     <input type="hidden" name="token" value="{{ $token }}" />
-                    <label class="text-xs font-bold text-slate-600">Mode
-                        <select name="mode" class="ml-1 rounded-xl border border-slate-200 px-2 py-1.5 text-xs">
+                    <label class="text-xs font-bold text-slate-600 flex items-center">
+                        <span>Mode</span>
+                        <select name="mode" class="ml-1.5 rounded-xl border border-slate-200 px-2.5 py-1.5 text-xs bg-white focus:border-primary-500 focus:ring-primary-500">
                             <option value="upsert">Mettre à jour l’existant</option>
                             <option value="creer">Créer uniquement</option>
                         </select>
                     </label>
-                    <x-btn type="submit">Confirmer l’import ({{ count($resultat->valides) }} ligne(s))</x-btn>
+                    <x-btn type="submit" ::loading="confirmant">Confirmer l’import ({{ count($resultat->valides) }} ligne(s))</x-btn>
                 </form>
             @else
                 <p class="text-xs font-bold text-rose-700">Aucune ligne valide : corrigez le fichier puis recommencez.</p>

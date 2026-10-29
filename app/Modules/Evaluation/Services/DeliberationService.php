@@ -14,6 +14,7 @@ use App\Services\PopulationService;
 use DomainException;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 /**
  * Délibérations / jurys (§35) : préparation automatique (étudiants +
@@ -37,8 +38,6 @@ class DeliberationService
      */
     public function simuler(Deliberation $deliberation): array
     {
-        $deliberation->loadMissing(['session', 'programme', 'groupe']);
-
         $compile = $this->compiler($deliberation);
 
         // Traçabilité (Phase 14 §14.5) : la simulation elle-même est
@@ -62,8 +61,6 @@ class DeliberationService
             if (! $deliberation->peutTransiterVers('prepared')) {
                 throw new DomainException("Préparation interdite depuis « {$deliberation->statut} ».");
             }
-
-            $deliberation->loadMissing(['session', 'programme', 'groupe']);
 
             $compile = $this->compiler($deliberation);
 
@@ -115,6 +112,7 @@ class DeliberationService
 
         $notesNonValideesParEtudiant = NoteEpreuve::whereIn('etudiant_id', $etudiantIds)
             ->whereIn('statut', ['draft', 'entered', 'submitted'])
+            ->whereNotNull('valeur')
             ->whereHas('epreuve', fn ($q) => $q->where('annee_universitaire_id', $deliberation->annee_universitaire_id))
             ->selectRaw('etudiant_id, COUNT(*) as total')
             ->groupBy('etudiant_id')
@@ -238,7 +236,19 @@ class DeliberationService
                 throw new DomainException('Données modifiées par un autre utilisateur : rechargez le tableau.');
             }
 
+            $ancienne = $decision->decision;
+
             $decision->update(['decision' => $nouvelleDecision, 'commentaire' => $commentaire]);
+
+            // Lot 4/6 : la décision du jury est traçable par valeurs
+            // (codes de décision uniquement — aucune PII dans les logs).
+            Log::info('deliberation.decision.modifiee', [
+                'decision_id' => $decision->id,
+                'deliberation_id' => $decision->deliberation_id,
+                'ancienne' => $ancienne,
+                'nouvelle' => $nouvelleDecision,
+                'acteur_id' => auth()->id(),
+            ]);
 
             EvaluationChanged::dispatch('deliberation.decision', $decision->deliberation_id);
 
@@ -287,7 +297,12 @@ class DeliberationService
 
     public function publier(Deliberation $deliberation): Deliberation
     {
-        return DB::transaction(function () use ($deliberation) {
+        // Lot 4/6 : les notifications étudiantes partent APRÈS la
+        // fermeture de la transaction — un échec de commit ne notifie
+        // jamais une publication qui n'a pas eu lieu, et un échec de
+        // diffusion ne remet pas en cause la publication (qui est déjà
+        // persistée). Écritures sensibles : transaction + verrou.
+        $etudiantIds = DB::transaction(function () use ($deliberation) {
             $deliberation = Deliberation::whereKey($deliberation->id)->lockForUpdate()->firstOrFail();
 
             if (! $deliberation->peutTransiterVers('published')) {
@@ -305,19 +320,19 @@ class DeliberationService
 
             // Phase 6 §36 : chaque candidat est notifié (sans PII
             // sensible : décision + moyenne, jamais de détail médical).
-            $etudiantIds = $deliberation->decisions()->pluck('etudiant_id')->all();
-
-            // Phase 15 §15.4 : diffusion via le centre (gabarit versionné,
-            // préférences, texte contractuel inchangé).
-            app(CommunicationDispatcher::class)->dispatcherPlusieurs(
-                'deliberation.publiee',
-                $etudiantIds,
-                [],
-                route('etudiant.dashboard'),
-            );
-
-            return $deliberation->fresh();
+            return $deliberation->decisions()->pluck('etudiant_id')->all();
         });
+
+        // Phase 15 §15.4 : diffusion via le centre (gabarit versionné,
+        // préférences, texte contractuel inchangé).
+        app(CommunicationDispatcher::class)->dispatcherPlusieurs(
+            'deliberation.publiee',
+            $etudiantIds,
+            [],
+            route('etudiant.dashboard'),
+        );
+
+        return $deliberation->fresh();
     }
 
     /** @return Collection<int, Etudiant> */

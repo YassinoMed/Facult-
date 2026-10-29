@@ -9,6 +9,7 @@ This project uses OpenCode with integrated skills and agents for Laravel develop
 | `auto-fix` | Boucle Test → Debug → Patch jusqu'à ce que les tests passent. Inspiré de Aider, OpenHands et code-repair-demo. | `.opencode/skills/auto-fix/SKILL.md` |
 | `code-review` | Code review expert pour Laravel — conventions, sécurité, patterns, maintenabilité. | `.opencode/skills/code-review/SKILL.md` |
 | `swe-bench-style` | Style SWE-agent / SWE-bench pour les corrections multi-fichiers sur le projet inscription-etudiants. | `.opencode/skills/swe-bench-style/SKILL.md` |
+| `reverse-engineer-anything` | Rétro-ingénierie d'applications natives, web/Electron, binaires et protocoles via REA. | `.agents/skills/reverse-engineer-anything/SKILL.md` |
 
 ## Available Agents
 

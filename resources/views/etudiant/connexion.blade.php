@@ -279,7 +279,9 @@
                             </svg>
                         </div>
                         <p class="text-xs text-slate-700 dark:text-indigo-200 leading-relaxed">
-                            Vous utilisez le mot de passe créé lors de votre inscription. En cas d'oubli, écrivez à <a href="mailto:scolarite@universite.ac.ma" class="font-bold text-indigo-700 dark:text-indigo-300 underline underline-offset-2">scolarite@universite.ac.ma</a>
+                            Vous utilisez le mot de passe créé lors de votre inscription.
+                            <a href="{{ route('etudiant.mot-de-passe.oublie') }}" class="font-bold text-indigo-700 dark:text-indigo-300 underline underline-offset-2">Mot de passe oublié ?</a>
+                            Ou écrivez à <a href="mailto:{{ config('inscriptions.contact_scolarite.email') }}" class="font-bold text-indigo-700 dark:text-indigo-300 underline underline-offset-2">{{ config('inscriptions.contact_scolarite.email') }}</a>
                         </p>
                     </div>
 

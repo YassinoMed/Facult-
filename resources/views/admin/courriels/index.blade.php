@@ -33,7 +33,7 @@
     <dl class="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
         @foreach($statuts as $statut)
             <div class="rounded-2xl border border-slate-200 bg-white p-4">
-                <dt class="text-[11px] font-bold uppercase tracking-wider text-slate-400">{{ $statut }}</dt>
+                <dt class="text-[11px] font-bold uppercase tracking-wider text-slate-600 font-semibold">{{ $statut }}</dt>
                 <dd class="mt-1 text-2xl font-black text-slate-900 tabular-nums">{{ $compteurs[$statut] ?? 0 }}</dd>
             </div>
         @endforeach
@@ -58,9 +58,9 @@
     </form>
 
     <div class="mt-4 overflow-x-auto rounded-2xl border border-slate-200 bg-white">
-        <table class="w-full text-sm">
+        <table class="w-full text-sm min-w-[720px]">
             <thead>
-                <tr class="border-b border-slate-100 text-left text-[11px] uppercase tracking-wider text-slate-400">
+                <tr class="border-b border-slate-100 text-left text-[11px] uppercase tracking-wider text-slate-700 font-bold">
                     <th scope="col" class="px-4 py-3">#</th>
                     <th scope="col" class="px-4 py-3">Modèle</th>
                     <th scope="col" class="px-4 py-3">Destinataire</th>

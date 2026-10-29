@@ -7,6 +7,7 @@ use App\Models\AnneeUniversitaire;
 use App\Models\Faculte;
 use App\Modules\Referentiel\Models\Programme;
 use App\Services\BIService;
+use App\Services\Io\CsvSerializer;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
 use Symfony\Component\HttpFoundation\StreamedResponse;
@@ -59,18 +60,19 @@ class BiController extends Controller
         $indicateurs = $bi->indicateurs($anneeId, $faculteId, $programmeId);
 
         return response()->streamDownload(function () use ($indicateurs) {
+            $csv = app(CsvSerializer::class);
             $sortie = fopen('php://output', 'w');
             fwrite($sortie, "\xEF\xBB\xBF");
-            fputcsv($sortie, ['indicateur', 'valeur', 'definition', 'source'], ';');
+            fputcsv($sortie, $csv->neutraliserLigne(['indicateur', 'valeur', 'definition', 'source']), ';');
 
             foreach ($indicateurs as $nom => $indicateur) {
                 $valeur = $indicateur['valeur'];
-                fputcsv($sortie, [
+                fputcsv($sortie, $csv->neutraliserLigne([
                     $nom,
                     is_scalar($valeur) ? $valeur : json_encode($valeur, JSON_UNESCAPED_UNICODE),
                     $indicateur['definition'],
                     $indicateur['source'],
-                ], ';');
+                ]), ';');
             }
 
             fclose($sortie);

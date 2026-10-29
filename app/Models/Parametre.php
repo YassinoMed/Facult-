@@ -15,7 +15,7 @@ class Parametre extends Model
     public const CATEGORIES = [
         'etablissement', 'securite', 'academique', 'inscription', 'presences',
         'sauvegardes', 'sentinel', 'notifications', 'interface', 'evaluation',
-        'documents', 'demandes', 'import_export',
+        'documents', 'demandes', 'import_export', 'planning',
     ];
 
     protected $fillable = ['cle', 'valeur', 'type', 'categorie', 'description', 'updated_by'];

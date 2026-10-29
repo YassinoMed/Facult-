@@ -40,7 +40,20 @@ class PopulationMySQLPerformanceTest extends TestCase
     {
         $plan = DB::select('EXPLAIN SELECT * FROM etudiants WHERE faculte_id = ? AND statut = ?', [1, 'valide']);
 
-        $this->assertContains($plan[0]->key, ['idx_etudiants_faculte_statut', 'PRIMARY', null]);
+        // MySQL est libre de préférer l'index simple `etudiants_statut_index`
+        // (cardinalité) au composite : l'exigence tenable est l'absence de
+        // balayage complet, pas le nom exact de l'index choisi par l'optimiseur.
+        $this->assertNotSame('ALL', $plan[0]->type, 'La requête ne doit pas balayer toute la table.');
+        $this->assertNotNull($plan[0]->key, 'La requête doit utiliser un index.');
+
+        // Le composite (faculté, statut) reste utilisable sur les deux
+        // colonnes : FORCE INDEX le prouve indépendamment de l'optimiseur.
+        $force = DB::select(
+            'EXPLAIN SELECT * FROM etudiants FORCE INDEX (idx_etudiants_faculte_statut) WHERE faculte_id = ? AND statut = ?',
+            [1, 'valide']
+        );
+        $this->assertSame('idx_etudiants_faculte_statut', $force[0]->key);
+
         $this->assertTrue(Schema::hasIndex('etudiants', 'idx_etudiants_faculte_prog_niveau'));
         $this->assertTrue(Schema::hasIndex('affectations_groupe', 'idx_affectations_annee_statut'));
     }

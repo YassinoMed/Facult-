@@ -14,6 +14,7 @@ use Illuminate\Contracts\View\View;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Facades\Log;
 
 /**
  * Admissions (roadmap « admission Master ») : actes d'admission
@@ -69,9 +70,13 @@ class AdmissionController extends Controller
         $programme = Programme::findOrFail($valide['programme_id']);
 
         // Isolation faculté (scope → 404) : l'étudiant ET la cible.
-        abort_unless($request->user()->peutAccederFaculte((int) $etudiant->faculte_id), 404);
-        abort_unless($programme->faculte_id === null
-            || $request->user()->peutAccederFaculte((int) $programme->faculte_id), 404);
+        // R4 : les sondages hors périmètre sont journalisés (warning, sans
+        // PII) avant le 404 — pas de détail exposé au client.
+        if (! $request->user()->peutAccederFaculte((int) $etudiant->faculte_id)
+            || ($programme->faculte_id !== null && ! $request->user()->peutAccederFaculte((int) $programme->faculte_id))) {
+            $this->journaliserRefus($request, $etudiant->id, null, 'Périmètre facultaire refusé.');
+            abort(404);
+        }
 
         try {
             $this->admissions->accorder(
@@ -84,6 +89,8 @@ class AdmissionController extends Controller
                 (int) $request->user()->id,
             );
         } catch (DomainException $e) {
+            $this->journaliserRefus($request, $etudiant->id, null, $e->getMessage());
+
             return back()->withErrors(['admission' => $e->getMessage()])->withInput();
         }
 
@@ -91,20 +98,42 @@ class AdmissionController extends Controller
             ->with('success', 'Admission enregistrée.');
     }
 
+    /**
+     * R4 : journalisation des refus d'opération (périmètre, doublon,
+     * acte consommé). Événement `admission_operation_refusee` : acteur,
+     * cible technique, motif contrôlé — sans PII ni contenu libre.
+     * Les erreurs de validation de formulaire (422) restent du bruit
+     * utilisateur et ne sont pas journalisées.
+     */
+    private function journaliserRefus(Request $request, ?int $etudiantId, ?int $admissionId, string $motif): void
+    {
+        Log::channel(config('logging.default'))->warning('admission_operation_refusee', [
+            'acteur_id' => $request->user()?->id,
+            'etudiant_id' => $etudiantId,
+            'admission_id' => $admissionId,
+            'motif' => $motif,
+            'adresse_ip' => $request->ip(),
+        ]);
+    }
+
     public function destroy(Request $request, Admission $admission): RedirectResponse
     {
         $admission->loadMissing(['etudiant', 'programme']);
 
         // Isolation faculté (scope → 404) — l'étudiant ET la cible.
-        abort_unless($request->user()->peutAccederFaculte((int) $admission->etudiant->faculte_id), 404);
-        abort_unless($admission->programme->faculte_id === null
-            || $request->user()->peutAccederFaculte((int) $admission->programme->faculte_id), 404);
+        if (! $request->user()->peutAccederFaculte((int) $admission->etudiant->faculte_id)
+            || ($admission->programme->faculte_id !== null && ! $request->user()->peutAccederFaculte((int) $admission->programme->faculte_id))) {
+            $this->journaliserRefus($request, $admission->etudiant_id, $admission->id, 'Périmètre facultaire refusé.');
+            abort(404);
+        }
 
         Gate::authorize('delete', $admission);
 
         try {
             $this->admissions->supprimer($admission);
         } catch (DomainException $e) {
+            $this->journaliserRefus($request, $admission->etudiant_id, $admission->id, $e->getMessage());
+
             return back()->withErrors(['admission' => $e->getMessage()]);
         }
 

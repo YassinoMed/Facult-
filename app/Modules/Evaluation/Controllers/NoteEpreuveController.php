@@ -8,20 +8,61 @@ use App\Modules\Evaluation\Models\NoteEpreuve;
 use App\Modules\Evaluation\Requests\SaisieNotesAnonymesRequest;
 use App\Modules\Evaluation\Requests\SaisieNotesRequest;
 use App\Modules\Evaluation\Services\CompostageService;
+use App\Modules\Evaluation\Services\EvaluationImportService;
+use App\Modules\Evaluation\Services\EvaluationWorkflowService;
 use App\Modules\Evaluation\Services\SaisieNoteService;
 use App\Services\AuditService;
 use App\Services\DataExchange\DataImportService;
+use App\Services\Io\CsvSerializer;
 use App\Services\Io\IoException;
 use DomainException;
-use Illuminate\Contracts\View\View;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Facades\Log;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class NoteEpreuveController
 {
-    public function saisie(Epreuve $epreuve): View
+    /**
+     * En-têtes des pages contenant des notes ou une correspondance
+     * CMP → identité : jamais de cache navigateur/proxy (poste partagé,
+     * historique, extensions), jamais d'indexation.
+     *
+     * @return array<string, string>
+     */
+    private function entetesSensibles(): array
+    {
+        return [
+            'Cache-Control' => 'no-store, no-cache, must-revalidate, private, max-age=0',
+            'Pragma' => 'no-cache',
+            'X-Robots-Tag' => 'noindex, nofollow',
+        ];
+    }
+
+    /**
+     * Trace les rejets de saisie sans jamais journaliser la valeur des
+     * notes ni une identité étudiante : seul le volume et le contexte
+     * technique sont conservés (audit sécurité).
+     *
+     * @param  array<int|string, string>  $erreurs
+     */
+    private function journaliserRejets(Epreuve $epreuve, array $erreurs, string $operation): void
+    {
+        if ($erreurs === []) {
+            return;
+        }
+
+        Log::warning('notes.saisie_rejetee', [
+            'epreuve_id' => $epreuve->id,
+            'operation' => $operation,
+            'auteur_id' => (int) (request()->user()?->id ?? 0),
+            'nombre_rejets' => count($erreurs),
+        ]);
+    }
+
+    public function saisie(Epreuve $epreuve): Response
     {
         // Scope faculté → 404 avant toute Gate (convention projet).
         if ($epreuve->faculteId() !== null && request()->user()?->faculteRestreinteId() !== null
@@ -45,12 +86,15 @@ class NoteEpreuveController
         $notes = $epreuve->notes->keyBy('etudiant_id');
         $statuts = $epreuve->candidats->keyBy('etudiant_id');
 
-        return view('modules.evaluation.notes-saisie', [
-            'epreuve' => $epreuve,
-            'lignes' => $lignes,
-            'notes' => $notes,
-            'statuts' => $statuts,
-        ]);
+        return response()
+            ->view('modules.evaluation.notes-saisie', [
+                'epreuve' => $epreuve,
+                'lignes' => $lignes,
+                'notes' => $notes,
+                'statuts' => $statuts,
+                'baremeValide' => $epreuve->note_max !== null && (float) $epreuve->note_max > 0,
+            ])
+            ->withHeaders($this->entetesSensibles());
     }
 
     public function storeLot(SaisieNotesRequest $request, Epreuve $epreuve, SaisieNoteService $service): RedirectResponse
@@ -64,10 +108,17 @@ class NoteEpreuveController
         }
 
         if ($resultat['erreurs'] !== []) {
+            $this->journaliserRejets($epreuve, $resultat['erreurs'], 'lot');
+
             return back()->withErrors($resultat['erreurs'])->withInput();
         }
 
-        return back()->with('succes', "{$resultat['saisies']} note(s) enregistrée(s).");
+        $message = "{$resultat['saisies']} note(s) enregistrée(s).";
+        if ($resultat['ignorees'] > 0) {
+            $message .= " ({$resultat['ignorees']} note(s) verrouillée(s) ou inchangée(s) ignorée(s))";
+        }
+
+        return back()->with('succes', $message);
     }
 
     /**
@@ -85,10 +136,17 @@ class NoteEpreuveController
         }
 
         if ($resultat['erreurs'] !== []) {
+            $this->journaliserRejets($epreuve, $resultat['erreurs'], 'anonyme');
+
             return back()->withErrors($resultat['erreurs'])->withInput();
         }
 
-        return back()->with('succes', "{$resultat['saisies']} note(s) enregistrée(s).");
+        $message = "{$resultat['saisies']} note(s) enregistrée(s).";
+        if ($resultat['ignorees'] > 0) {
+            $message .= " ({$resultat['ignorees']} note(s) verrouillée(s) ou inchangée(s) ignorée(s))";
+        }
+
+        return back()->with('succes', $message);
     }
 
     /**
@@ -112,7 +170,7 @@ class NoteEpreuveController
      * Correspondance CMP → identité (§13) : permission dédiée, scope
      * faculté → 404, chaque résolution est auditée.
      */
-    public function correspondance(Epreuve $epreuve, AuditService $audit): View
+    public function correspondance(Epreuve $epreuve, AuditService $audit): Response
     {
         if ($epreuve->faculteId() !== null && request()->user()?->faculteRestreinteId() !== null
             && ! request()->user()->peutAccederFaculte($epreuve->faculteId())) {
@@ -131,10 +189,12 @@ class NoteEpreuveController
             }
         }
 
-        return view('modules.evaluation.compostages-correspondance', [
-            'epreuve' => $epreuve,
-            'compostages' => $epreuve->compostages->sortBy('numero')->values(),
-        ]);
+        return response()
+            ->view('modules.evaluation.compostages-correspondance', [
+                'epreuve' => $epreuve,
+                'compostages' => $epreuve->compostages->sortBy('numero')->values(),
+            ])
+            ->withHeaders($this->entetesSensibles());
     }
 
     /**
@@ -150,20 +210,25 @@ class NoteEpreuveController
         $statuts = $epreuve->candidats->keyBy('etudiant_id');
 
         return response()->streamDownload(function () use ($epreuve, $notes, $statuts) {
+            $csv = app(CsvSerializer::class);
             $sortie = fopen('php://output', 'w');
-            fputcsv($sortie, ['compostage', 'note', 'statut']);
+            fputcsv($sortie, $csv->neutraliserLigne(['compostage', 'note', 'statut']));
 
             foreach ($epreuve->compostages->sortBy('numero') as $compostage) {
                 $note = $notes->get($compostage->etudiant_id);
-                fputcsv($sortie, [
+                fputcsv($sortie, $csv->neutraliserLigne([
                     $compostage->numero,
                     $note?->valeur,
                     $note?->statut ?? $statuts->get($compostage->etudiant_id)?->statut,
-                ]);
+                ]));
             }
 
             fclose($sortie);
-        }, 'notes-anonymes-epreuve-'.$epreuve->id.'.csv', ['Content-Type' => 'text/csv']);
+        }, 'notes-anonymes-epreuve-'.$epreuve->id.'.csv', [
+            'Content-Type' => 'text/csv',
+            'Cache-Control' => 'no-store, no-cache, must-revalidate, private, max-age=0',
+            'X-Robots-Tag' => 'noindex, nofollow',
+        ]);
     }
 
     /**
@@ -177,12 +242,16 @@ class NoteEpreuveController
 
         if ($request->hasFile('fichier')) {
             $fichier = $request->file('fichier');
-            $handle = fopen($fichier->getRealPath(), 'r');
+            $chemin = $fichier->getRealPath();
+            $extrait = file_get_contents($chemin, false, null, 0, 1024) ?: '';
+            $delimiteur = (strpos($extrait, ';') !== false && strpos($extrait, ',') === false) ? ';' : ',';
+
+            $handle = fopen($chemin, 'r');
             if ($handle === false) {
                 return back()->withErrors(['fichier' => 'Impossible de lire le fichier.']);
             }
 
-            $entetes = fgetcsv($handle, 1000, ',');
+            $entetes = fgetcsv($handle, 1000, $delimiteur);
             if ($entetes === false || $entetes === null) {
                 fclose($handle);
 
@@ -214,13 +283,30 @@ class NoteEpreuveController
                 return back()->withErrors(['fichier' => 'Le fichier CSV doit contenir les colonnes compostage (ou numero) et note.']);
             }
 
-            while (($ligne = fgetcsv($handle, 1000, ',')) !== false) {
+            $nbLignes = 0;
+            $numerosVus = [];
+            while (($ligne = fgetcsv($handle, 1000, $delimiteur)) !== false) {
+                $nbLignes++;
+                if ($nbLignes > 2000) {
+                    fclose($handle);
+
+                    return back()->withErrors(['fichier' => 'Fichier trop volumineux (2000 lignes maximum).']);
+                }
+
                 if (! isset($ligne[$colCompostage])) {
                     continue;
                 }
                 $num = trim((string) $ligne[$colCompostage]);
                 $val = isset($ligne[$colNote]) && trim((string) $ligne[$colNote]) !== '' ? (float) str_replace(',', '.', trim((string) $ligne[$colNote])) : null;
                 if ($num !== '') {
+                    $cleNumero = mb_strtoupper($num);
+                    if (isset($numerosVus[$cleNumero])) {
+                        fclose($handle);
+
+                        return back()->withErrors(['fichier' => "Doublon détecté dans le fichier pour le compostage « {$num} » (ligne {$nbLignes})."]);
+                    }
+                    $numerosVus[$cleNumero] = true;
+
                     $lignes[] = [
                         'numero' => $num,
                         'valeur' => $val,
@@ -243,10 +329,17 @@ class NoteEpreuveController
         }
 
         if ($resultat['erreurs'] !== []) {
+            $this->journaliserRejets($epreuve, $resultat['erreurs'], 'import_anonyme');
+
             return back()->withErrors($resultat['erreurs'])->withInput();
         }
 
-        return back()->with('succes', "{$resultat['saisies']} note(s) importée(s).");
+        $message = "{$resultat['saisies']} note(s) importée(s).";
+        if ($resultat['ignorees'] > 0) {
+            $message .= " ({$resultat['ignorees']} ignorée(s) : verrouillées ou sans modification)";
+        }
+
+        return back()->with('succes', $message);
     }
 
     /**
@@ -254,7 +347,7 @@ class NoteEpreuveController
      * (preview). Contexte épreuve posé depuis la route, jamais depuis
      * le fichier. Formats : CSV, XLSX, ODS, JSON, XML.
      */
-    public function importMulti(Epreuve $epreuve, Request $request, DataImportService $imports): View|RedirectResponse
+    public function importMulti(Epreuve $epreuve, Request $request, EvaluationImportService $importService): Response|RedirectResponse
     {
         if ($epreuve->faculteId() !== null && request()->user()?->faculteRestreinteId() !== null
             && ! request()->user()->peutAccederFaculte($epreuve->faculteId())) {
@@ -272,13 +365,13 @@ class NoteEpreuveController
         }
 
         try {
-            $preparation = $imports->preparer(
+            $preparation = $importService->analyser(
                 $request->file('fichier'),
-                'notes-epreuve-anonymes',
-                (int) $request->user()->id,
-                ['epreuve_id' => $epreuve->id]
+                $epreuve,
+                $request->user(),
+                'anonyme'
             );
-        } catch (IoException $e) {
+        } catch (IoException|DomainException $e) {
             EvaluationChanged::dispatch('notes.import.failed', $epreuve->id);
 
             return back()->withErrors(['fichier' => $e->getMessage()])->withInput();
@@ -286,12 +379,14 @@ class NoteEpreuveController
 
         EvaluationChanged::dispatch('notes.import.previewed', $epreuve->id);
 
-        return view('modules.evaluation.notes-import-preview', [
-            'epreuve' => $epreuve,
-            'token' => $preparation['token'],
-            'format' => $preparation['format'],
-            'resultat' => $preparation['resultat'],
-        ]);
+        return response()
+            ->view('modules.evaluation.notes-import-preview', [
+                'epreuve' => $epreuve,
+                'token' => $preparation['token'],
+                'format' => $preparation['format'],
+                'resultat' => $preparation['resultat'],
+            ])
+            ->withHeaders($this->entetesSensibles());
     }
 
     /**
@@ -300,7 +395,7 @@ class NoteEpreuveController
      * que le token + le mode). Verrou posé entre-temps → refus propre,
      * rien n'est écrit.
      */
-    public function importMultiConfirmer(Epreuve $epreuve, Request $request, DataImportService $imports): View|RedirectResponse
+    public function importMultiConfirmer(Epreuve $epreuve, Request $request, EvaluationImportService $importService): Response|RedirectResponse
     {
         if ($epreuve->faculteId() !== null && request()->user()?->faculteRestreinteId() !== null
             && ! request()->user()->peutAccederFaculte($epreuve->faculteId())) {
@@ -317,10 +412,11 @@ class NoteEpreuveController
         EvaluationChanged::dispatch('notes.import.confirmed', $epreuve->id);
 
         try {
-            $resultat = $imports->confirmer(
+            $resultat = $importService->confirmer(
                 $request->input('token'),
-                $request->input('mode'),
-                (int) $request->user()->id
+                $epreuve,
+                $request->user(),
+                $request->input('mode')
             );
         } catch (IoException|DomainException $e) {
             EvaluationChanged::dispatch('notes.import.failed', $epreuve->id);
@@ -335,10 +431,12 @@ class NoteEpreuveController
 
         EvaluationChanged::dispatch('notes.import.completed', $epreuve->id);
 
-        return view('modules.evaluation.notes-import-rapport', [
-            'epreuve' => $epreuve,
-            'rapport' => $resultat['rapport'],
-        ]);
+        return response()
+            ->view('modules.evaluation.notes-import-rapport', [
+                'epreuve' => $epreuve,
+                'rapport' => $resultat['rapport'],
+            ])
+            ->withHeaders($this->entetesSensibles());
     }
 
     /**
@@ -365,6 +463,42 @@ class NoteEpreuveController
         }
 
         return back()->with('succes', 'Note validée et synchronisée.');
+    }
+
+    /**
+     * Validation en masse de toutes les notes saisies d'une épreuve (§14.4).
+     */
+    public function validerTout(Request $request, Epreuve $epreuve, SaisieNoteService $service): RedirectResponse
+    {
+        Gate::authorize('validerNotesEpreuve', $epreuve);
+
+        try {
+            $resultat = $service->validerTout($epreuve, (int) $request->user()->id, $request->string('motif')->toString() ?: 'Validation collective');
+        } catch (DomainException $e) {
+            return back()->withErrors(['epreuve' => $e->getMessage()]);
+        }
+
+        if ($resultat['erreurs'] !== []) {
+            return back()->withErrors($resultat['erreurs'])->with('succes', "{$resultat['validees']} note(s) validée(s).");
+        }
+
+        return back()->with('succes', "Toutes les notes saisies ({$resultat['validees']}) ont été validées et synchronisées.");
+    }
+
+    /**
+     * Soumission groupée des notes saisies d'une épreuve pour validation (Lot 3).
+     */
+    public function soumettre(Request $request, Epreuve $epreuve, EvaluationWorkflowService $workflow): RedirectResponse
+    {
+        Gate::authorize('saisirNote', $epreuve);
+
+        try {
+            $resultat = $workflow->soumettreNotesEpreuve($epreuve, $request->user());
+        } catch (DomainException $e) {
+            return back()->withErrors(['epreuve' => $e->getMessage()]);
+        }
+
+        return back()->with('succes', "{$resultat['soumises']} note(s) soumise(s) pour validation officielle.");
     }
 
     public function verrouiller(Request $request, NoteEpreuve $note, SaisieNoteService $service): RedirectResponse

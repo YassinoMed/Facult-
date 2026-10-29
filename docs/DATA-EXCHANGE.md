@@ -196,8 +196,9 @@ ImportExportBenchmarkTest` (mesures + bornes).
 
 - Entité `notes` (`NoteImportDefinition`) : colonnes
   `matricule, cin, date_naissance, code_matiere, annee, semestre, note,
-  session` + alias (`N°CIN`, `Code étudiant`, `matiere`, `annee_universitaire`…,
-  insensibles casse/espaces, ambiguïté refusée).
+  session, evaluation_code, statut` (`evaluation_code` : épreuve/examen
+  optionnel, `statut` : libre) + alias (`N°CIN`, `Code étudiant`, `matiere`,
+  `annee_universitaire`…, insensibles casse/espaces, ambiguïté refusée).
 - Chaîne d'identification : CIN exact → matricule → `num_inscription` →
   CIN + date de naissance. Jamais de nom seul.
 - `ImportValidationAvancee` (contrat optionnel, rétrocompatible) :
@@ -210,8 +211,43 @@ ImportExportBenchmarkTest` (mesures + bornes).
 - Idempotence fichier : `import_reports.file_hash` (SHA-256) +
   avertissement `IMPORT_ALREADY_PROCESSED` ; confirmation idempotente
   (token à usage unique).
-- Exemples : `docs/notes/exemple-notes.{csv,json,xml}` (+ modèle XLSX via
+- Exemples : `docs/notes/exemple-notes.{csv,json,xml}`, échantillon complet
+  10 lignes `docs/notes/exemple-notes-10-lignes.csv` (+ modèle XLSX via
   `/admin/donnees/notes/modele/xlsx`).
+
+## Import des délibérations et décisions de jury (entités `deliberations` / `decisions-jury`)
+
+- Entité `deliberations` (`DeliberationDefinition`) : 16 colonnes —
+  `code, annee_code, parcours_code, niveau_code, semestre_code,
+  date_deliberation, statut, session, programme, niveau, matricule, cin,
+  moyenne, credits_obtenus, decision, commentaire` (alias `parcours`,
+  `ects`, `verdict`, `resultat`, `avis_jury`…). Entité `decisions-jury`
+  (`DecisionJuryDefinition`) : `code, deliberation_code,
+  etudiant_matricule, decision, moyenne, credits_obtenus`.
+- Deux types de lignes dans un même fichier `deliberations` :
+  - **Ligne délibération** : `code` rempli + `decision` vide → délibération
+    créée/mise à jour par `code` (année/programme/niveau/semestre
+    facultatifs ; `date_deliberation` indicative, non persistée) ;
+    `statut` déduit par sous-chaîne sans accents : `prep` → prepared,
+    `val` → validated, `pub` → published, sinon draft.
+  - **Ligne décision** : `decision` remplie → résout session d'examen
+    (code), programme (code) et étudiant (matricule du dossier puis CIN) ;
+    crée au besoin la délibération parente **publiée** (session +
+    programme + année) et enregistre la décision `publie=true` avec
+    l'inscription de l'année → résultat visible sur le portail étudiant.
+  - `decisions-jury` : décision rattachée à une délibération existante par
+    `deliberation_code` (étudiant : `num_inscription` → matricule → CIN) —
+    sans publication automatique (le passage `publie=true` reste réservé au
+    workflow délibération).
+- Codes métier : `SESSION_NOT_FOUND`, `PROGRAMME_NOT_FOUND`,
+  `STUDENT_NOT_FOUND`, `STUDENT_IDENTIFIER_MISSING`, `DELIBERATION_NOT_FOUND`,
+  `FACULTY_SCOPE_VIOLATION` ; `credits_obtenus` vide → `0` (jamais NULL).
+- Prérequis démo locale : session d'examen `DEMO-S1` (2026-2027), programme
+  `DEMO-LGL`, étudiants `MAT-DEMO-001…`.
+- Exemples : `docs/evaluation/exemple-deliberations.csv` (2 délibérations
+  par code, statuts publiée/préparée) et
+  `docs/evaluation/exemple-decisions-jury.csv` (9 décisions démo publiées,
+  session `DEMO-S1`).
 
 ## Reste à faire (réel)
 

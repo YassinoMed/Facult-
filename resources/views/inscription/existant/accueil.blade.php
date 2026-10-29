@@ -21,7 +21,7 @@
         $succes = 'rounded-2xl border border-emerald-200 bg-emerald-50 px-5 py-4 text-sm leading-relaxed text-black';
         $alerte = 'rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4 text-sm leading-relaxed text-black';
         $overlay = 'absolute inset-0 bg-slate-900/60 backdrop-blur-sm';
-        $panneau = 'relative w-full max-h-[92vh] overflow-y-auto rounded-3xl bg-white text-black shadow-2xl ring-1 ring-slate-900/10';
+        $panneau = 'relative w-full max-h-[92vh] overflow-y-auto overflow-x-hidden rounded-3xl bg-white text-black shadow-2xl ring-1 ring-slate-900/10';
         $bloc = 'rounded-3xl border border-slate-200 bg-white p-6 sm:p-8';
     @endphp
 
@@ -896,7 +896,7 @@
                             <li><span aria-hidden="true">2</span> Code e-mail</li>
                             <li><span aria-hidden="true">3</span> Dossier</li>
                         </ol>
-                        <button type="button" id="btn-commencer-accueil" @click="ouvrir()" class="{{ $btnMain }}"
+                        <button type="button" id="btn-commencer-accueil" @click="ouvrir()" @if($periodeOuverte) data-magnetic="0.1" @endif class="{{ $btnMain }}"
                             @disabled(!$periodeOuverte) @if(!$periodeOuverte) aria-disabled="true"
                                 title="Inscriptions fermées — aucune inscription ou modification n’est possible pour le moment."
                             @endif>
@@ -928,7 +928,7 @@
                         <h3 class="carte-titre carte-titre-sm">Adresse e-mail</h3>
                         <p class="carte-texte">Changer mon adresse e-mail sans passer par la scolarité : votre mot de passe
                             et un code de confirmation suffisent.</p>
-                        <button type="button" @click="ouvrirAutonome()" class="{{ $btnSec }}" @disabled(!$periodeOuverte) {{ !$periodeOuverte ? 'aria-disabled="true" title="Inscriptions fermées."' : '' }}>@if($periodeOuverte)
+                        <button type="button" @click="ouvrirAutonome()" class="{{ $btnSec }}" @disabled(!$periodeOuverte) @if(!$periodeOuverte) aria-disabled="true" title="Inscriptions fermées." @endif>@if($periodeOuverte)
                             Modifier mon adresse
                         @else
                                 🔒 Modifier mon adresse
@@ -965,7 +965,8 @@
                 @keydown.tab="if (ouvert) { const f = [...$el.querySelectorAll('a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled])')].filter(e => e.offsetParent !== null); if (f.length) { const p = f[0], d = f[f.length - 1]; if ($event.shiftKey && document.activeElement === p) { d.focus(); $event.preventDefault(); } else if (!$event.shiftKey && document.activeElement === d) { p.focus(); $event.preventDefault(); } } }">
                 <div class="{{ $overlay }}" @click="fermer()" aria-hidden="true"></div>
 
-                <div class="{{ $panneau }} max-w-3xl rounded-b-none sm:rounded-b-3xl" data-panneau-defilant
+                <div class="{{ $panneau }} overscroll-contain max-w-3xl rounded-b-none sm:rounded-b-3xl" data-panneau-defilant
+                    data-lenis-prevent x-ref="panneau"
                     x-transition:enter="transition ease-out duration-300"
                     x-transition:enter-start="translate-y-6 scale-95 opacity-0"
                     x-transition:enter-end="translate-y-0 scale-100 opacity-100">
@@ -1047,7 +1048,7 @@
                             <p class="mt-2 text-sm leading-loose">Nous enverrons un code à l'adresse enregistrée sur votre
                                 dossier.</p>
                             <div x-show="message" x-cloak class="{{ $info }} mt-5" role="status" x-text="message"></div>
-                            <form action="/inscription/existant/recherche" method="POST" class="mt-8 space-y-8"
+                            <form action="{{ route('inscription.existant.recherche') }}" method="POST" class="mt-8 space-y-8"
                                 @submit.prevent="rechercherDossier($el)">
                                 @csrf
                                 <div class="grid grid-cols-1 gap-6 sm:grid-cols-2">
@@ -1055,15 +1056,24 @@
                                         <label for="m-ex-cin" class="{{ $label }}">Numéro de CIN <span>*</span></label>
                                         <input type="text" id="m-ex-cin" name="cin" required minlength="8" maxlength="8"
                                             inputmode="numeric" pattern="[0-9]{8}" autocomplete="off" placeholder="12345678"
+                                            aria-describedby="m-ex-erreur-identite"
+                                            :aria-invalid="erreurs.cin || erreurs.date_naissance || erreurs.identite ? 'true' : 'false'"
                                             class="{{ $input }} font-mono">
+                                        <p class="mt-2 text-xs">Le CIN doit contenir exactement 8 chiffres.</p>
                                     </div>
                                     <div>
                                         <label for="m-ex-dob" class="{{ $label }}">Date de naissance
                                             <span>*</span></label>
                                         <input type="date" id="m-ex-dob" name="date_naissance" required min="1900-01-01"
-                                            max="{{ date('Y-m-d') }}" oninput="limiterAnnee(this)" class="{{ $input }}">
+                                            max="{{ date('Y-m-d') }}" oninput="limiterAnnee(this)"
+                                            aria-describedby="m-ex-erreur-identite"
+                                            :aria-invalid="erreurs.cin || erreurs.date_naissance || erreurs.identite ? 'true' : 'false'"
+                                            class="{{ $input }}">
                                     </div>
                                 </div>
+                                <p id="m-ex-erreur-identite" x-show="premiereErreur()" x-cloak
+                                    class="{{ $erreur }} -mt-2" role="alert">⚠ <span
+                                        x-text="premiereErreur()"></span></p>
                                 <div class="flex flex-col-reverse gap-4 sm:flex-row sm:justify-end">
                                     <button type="button" @click="precedant()" class="{{ $btnSec }}">Retour</button>
                                     <button type="submit" :disabled="envoi || {{ $periodeOuverte ? 'false' : 'true' }}"
@@ -1081,8 +1091,12 @@
                             <h4 class="text-lg font-black">Vérifier votre identité</h4>
                             <p class="mt-2 text-sm leading-loose">Saisissez le code à 6 chiffres reçu par e-mail. Il est
                                 valable 10 minutes et ne sert qu'une fois.</p>
+                            <p id="m-ex-email" class="mt-2 text-sm leading-loose" x-show="emailDestinataire" x-cloak>
+                                Code envoyé à <strong class="font-mono font-bold break-all"
+                                    x-text="emailDestinataire"></strong>.
+                            </p>
                             <div x-show="message" x-cloak class="{{ $info }} mt-5" role="status" x-text="message"></div>
-                            <form action="/inscription/existant/verification" method="POST" class="mt-8 space-y-8"
+                            <form action="{{ route('inscription.existant.verification') }}" method="POST" class="mt-8 space-y-8"
                                 @submit.prevent="verifierCode($el)">
                                 @csrf
                                 <div class="max-w-xs">
@@ -1090,6 +1104,7 @@
                                         <span>*</span></label>
                                     <input type="text" id="m-ex-code" name="code" required inputmode="numeric"
                                         pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code" placeholder="••••••"
+                                        aria-describedby="m-ex-email"
                                         class="{{ $input }} text-center font-mono text-xl tracking-[.5em]">
                                     <p x-show="erreurs.code" x-cloak class="{{ $erreur }}" role="alert">⚠ <span
                                             x-text="erreurs.code && erreurs.code[0]"></span></p>
@@ -1272,7 +1287,7 @@
                             </div>
                             <div x-show="identMessage" x-cloak class="{{ $info }}" role="status" x-text="identMessage">
                             </div>
-                            <form action="/inscription/identifier" method="POST" class="space-y-6"
+                            <form action="{{ route('inscription.identifier') }}" method="POST" class="space-y-6"
                                 @submit.prevent="identifierNouveau($el)">
                                 @csrf
                                 <div class="grid grid-cols-1 gap-6 sm:grid-cols-2">
@@ -1435,6 +1450,7 @@
                                     pattern="[0-9]{8}" autocomplete="off"
                                     oninput="this.value = this.value.replace(/[^0-9]/g, '').slice(0, 8)"
                                     class="{{ $input }} font-mono @error('cin') border-rose-400 bg-rose-50/50 @enderror">
+                                <p class="mt-2 text-xs">Le CIN doit contenir exactement 8 chiffres.</p>
                                 @error('cin')
                                 <p class="{{ $erreur }}" role="alert">⚠ {{ $message }}</p>@enderror
                                 <p x-show="erreurs.cin" x-cloak class="{{ $erreur }}" role="alert">⚠ <span
@@ -1448,6 +1464,7 @@
                                     inputmode="numeric" pattern="^(0[1-9]|[12][0-9]|3[01])/(0[1-9]|1[0-2])/(19|20)[0-9]{2}$"
                                     autocomplete="off" oninput="formaterDateNaissance(this)"
                                     class="{{ $input }} @error('date_naissance') border-rose-400 bg-rose-50/50 @enderror">
+                                <p class="mt-2 text-xs">Format obligatoire : JJ/MM/AAAA (ex : 17/05/2003).</p>
                                 @error('date_naissance')
                                 <p class="{{ $erreur }}" role="alert">⚠ {{ $message }}</p>@enderror
                                 <p x-show="erreurs.date_naissance" x-cloak class="{{ $erreur }}" role="alert">⚠ <span
@@ -1593,8 +1610,9 @@
                                     le changement</span><span x-show="envoi" x-cloak>Vérification…</span></button>
                         </div>
                     </form>
-                    <p class="mt-6 text-xs leading-loose">Aucun code reçu ? Vérifiez la nouvelle adresse puis refaites la
-                        demande pour en recevoir un nouveau.</p>
+                    <p class="mt-6 text-xs leading-loose">Aucun code reçu ? Vérifiez toutes les informations saisies (CIN,
+                        date de naissance, ancienne adresse, mot de passe et nouvelle adresse), puis refaites la demande
+                        pour en recevoir un nouveau.</p>
                 </div>
             </div>
         </div>{{-- /autonomeEmail --}}
@@ -1693,18 +1711,10 @@
             </div>
         </details>
 
-
         {{-- ===================== ORIENTATION ALTERNATIVE ===================== --}}
         <footer class="pied-ins">
             <p class="pied-texte">Autres démarches</p>
             <div class="pied-actions">
-                @if($periodeOuverte)
-                    <a href="{{ route('inscription.create') }}" class="btn-s">Nouvelle inscription</a>
-                @else
-                    <span class="btn-s" aria-disabled="true"
-                        title="Inscriptions fermées — aucune nouvelle inscription n’est possible pour le moment." role="link">🔒
-                        Nouvelle inscription</span>
-                @endif
                 <a href="{{ route('inscription.suivi') }}" @click.prevent="$dispatch('ouvrir-suivi')" class="btn-s">Suivre mon dossier</a>
             </div>
             @if(!$periodeOuverte)

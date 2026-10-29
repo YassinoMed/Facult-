@@ -69,6 +69,11 @@ class FileTraitementController extends Controller
         // Requête de base via le moteur central ListeEtudiantsService
         $query = $this->listes->requete($valide, $utilisateur);
 
+        // La file n'affiche ni sous-groupe ni affectation détaillée : on
+        // repart d'un eager-loading explicite (une requête inutile en
+        // moins par page), sans modifier le moteur d'export partagé.
+        $query->setEagerLoads([]);
+
         // Eager-loading complet pour éviter tout N+1
         $query->with([
             'faculte',
@@ -136,21 +141,33 @@ class FileTraitementController extends Controller
         // bornée [5,100] par PreferencesService, défaut 12. Les KPIs
         // restent calculés sur tout le périmètre filtré, jamais sur la page.
         $preferences = app(PreferencesService::class)->lire((int) $utilisateur->id);
+
+        // Même builder que la liste : les KPI décrivent exactement la
+        // population filtrée (D-01). On retire uniquement la présentation
+        // (ordre, colonnes, eager-loading) avant les agrégats.
+        $kpiBase = clone $query;
+        $kpiBase->reorder();
+        $kpiBase->getQuery()->columns = null;
+        $kpiBase->setEagerLoads([]);
+
         $etudiants = $query->paginate($preferences['lignes_par_page'])->withQueryString();
 
         // Enrichissement des métriques par lot (zéro N+1)
         $this->fileService->enrichirEtudiants($etudiants);
 
-        // KPIs consolidés
-        $kpis = $this->fileService->kpis($utilisateur, $valide['faculte_id'] ?? null);
+        // KPIs consolidés sur le périmètre filtré (faculté + filtres métier)
+        $kpis = $this->fileService->kpis($utilisateur, $valide['faculte_id'] ?? null, $kpiBase);
 
-        // Référentiels pour les filtres
+        // Référentiels des filtres : strictement dans le périmètre de
+        // l'utilisateur. Un admin facultaire ne doit jamais recevoir les
+        // programmes d'une autre faculté dans le HTML.
         $facultes = $faculteRestreinteId !== null
             ? Faculte::where('id', $faculteRestreinteId)->get()
             : Faculte::orderBy('nom')->get();
 
-        $programmes = Programme::when($valide['faculte_id'] ?? null, fn ($q, $fid) => $q->where('faculte_id', $fid))
-            ->where('actif', true)
+        $programmes = Programme::query()
+            ->actifs()
+            ->when($valide['faculte_id'] ?? null, fn ($q, $fid) => $q->where('faculte_id', $fid))
             ->orderBy('nom')
             ->get();
 
@@ -175,7 +192,7 @@ class FileTraitementController extends Controller
      */
     private function compterFiltresActifs(array $valide, ?int $faculteRestreinteId): int
     {
-        $cles = ['search', 'statut', 'action_attendue', 'depose_depuis', 'programme_id', 'niveau'];
+        $cles = ['search', 'statut', 'action_attendue', 'categorie', 'depose_depuis', 'programme_id', 'niveau'];
 
         if ($faculteRestreinteId === null) {
             $cles[] = 'faculte_id';

@@ -10,7 +10,7 @@ Support (`Permissions`, `ApiScopes`, `Recherche`, `ModuleRegistry`).
 |---|---|---|
 | Attendance | `presences`, `attendance_justifications` | `attendance.*`, `attendance.justify` |
 | StudentDossiers | `student_dossiers`, `student_documents`, `..._versions`, `generated_documents` | `student_dossiers.*`, `student_documents.*` |
-| OnlineRequests | `online_requests`, `request_types`, `..._attachments`, `..._documents` | `demandes.*` (14) |
+| OnlineRequests | `online_requests`, `request_types`, `..._attachments`, `..._documents`, `request_delegations` (LOOP 01) | `demandes.*` (14) |
 | Schedule | `schedules`, `schedule_slots/exceptions/changes/imports`, `rooms`, `teachers`, `groups` | `schedules.*` |
 | Referentiel | `type_diplomes` → `maquettes` (11 tables, FK restrict) | `referentiel.*`, `maquettes.approve` |
 | Enseignement | `types_enseignement`, `enseignements`, `affectations_enseignement`, `sous_groupes`, `enseignement_groupe`, `seuils_service`, `composantes_evaluation` | `enseignements.*` |

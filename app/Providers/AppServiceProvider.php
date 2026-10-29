@@ -16,6 +16,15 @@ use App\Models\InscriptionAcademique;
 use App\Models\Note;
 use App\Models\Parametre;
 use App\Models\User;
+use App\Modules\Enseignement\Models\Enseignement;
+use App\Modules\Evaluation\Models\DecisionDeliberation;
+use App\Modules\Evaluation\Models\Epreuve;
+use App\Modules\Evaluation\Models\NoteEpreuve;
+use App\Modules\GouvernanceConformite\Observers\ObserverPermissionsUser;
+use App\Modules\OnlineRequests\Models\OnlineRequest;
+use App\Modules\OnlineRequests\Services\DelegationDemandeService;
+use App\Modules\StudentDossiers\Models\GeneratedDocument;
+use App\Modules\Tasks\Models\Task;
 use App\Policies\AdmissionPolicy;
 use App\Policies\ArchivePolicy;
 use App\Policies\CampagneCourrielPolicy;
@@ -27,6 +36,7 @@ use App\Policies\NotePolicy;
 use App\Policies\ParametrePolicy;
 use App\Policies\QualitePolicy;
 use App\Services\CanalNotificationExterneSimule;
+use App\Services\DisponibiliteWorkerService;
 use App\Services\DonneesFormulaireInscription;
 use App\Services\Identity\ArabicTransliterationService;
 use App\Services\Identity\Engines\NullOcrEngine;
@@ -34,6 +44,7 @@ use App\Services\Identity\OcrEngineInterface;
 use App\Services\Identity\OcrService;
 use App\Services\Identity\OcrServiceInterface;
 use App\Services\Identity\TransliterationServiceInterface;
+use App\Services\Kpi\VersionKpi;
 use App\Services\NotificationService;
 use App\Services\PreferencesService;
 use App\Services\Recherche\Providers;
@@ -43,6 +54,7 @@ use App\Services\Verification\VerificationEngine;
 use App\Support\Actions\QuickActionRegistry;
 use App\Support\Modules\ModuleRegistry;
 use App\Support\Permissions;
+use Illuminate\Auth\Notifications\ResetPassword;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Foundation\DevCommands;
 use Illuminate\Foundation\Http\Middleware\TrimStrings;
@@ -52,6 +64,7 @@ use Illuminate\Mail\Events\MessageSent;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\View;
@@ -157,6 +170,31 @@ class AppServiceProvider extends ServiceProvider
         // le 16/10/2026. En local/test elles restent autorisées (récupération).
         DB::prohibitDestructiveCommands($this->app->isProduction());
 
+        // Lot 19 — Gouvernance : journal STRUCTURÉ des créations de comptes et
+        // changements de rôle (Observer fail-soft, aucun contrôleur modifié).
+        User::observe(ObserverPermissionsUser::class);
+
+        // LOOP-03 — invalidation exacte des caches KPI/BI : toute écriture
+        // Eloquent sur une source de vérité incrémente la version globale.
+        // L'empreinte max(updated_at)+count() seule ne voit pas une mise à
+        // jour qui ne déplace ni le maximum ni le nombre de lignes.
+        foreach ([
+            InscriptionAcademique::class,
+            Etudiant::class,
+            Note::class,
+            DecisionDeliberation::class,
+            Task::class,
+            AnomalieQualite::class,
+            OnlineRequest::class,
+            Epreuve::class,
+            NoteEpreuve::class,
+            Enseignement::class,
+            GeneratedDocument::class,
+        ] as $modeleSourceKpi) {
+            $modeleSourceKpi::saved(static fn ($modele) => VersionKpi::incrementer());
+            $modeleSourceKpi::deleted(static fn ($modele) => VersionKpi::incrementer());
+        }
+
         // ── Règle CIN (§3) : ne pas trimmer silencieusement la CIN afin que tout espace la rende invalide ──
         TrimStrings::except(['cin']);
 
@@ -172,6 +210,16 @@ class AppServiceProvider extends ServiceProvider
             Gate::define($permission, fn ($user) => $user->hasPermission($permission));
         }
 
+        // ── LOT 01 : l'autorité de validation des demandes se délègue ──
+        // Fenêtre bornée, révocable (DelegationDemandeService). Routes,
+        // policies, FormRequests et service résolvent tous par la Gate :
+        // RBAC OU délégation active. Les autres permissions (view,
+        // process, assign…) ne se délèguent pas.
+        Gate::define('demandes.approve',
+            fn ($user) => app(DelegationDemandeService::class)->peutValider($user, 'demandes.approve'));
+        Gate::define('demandes.reject',
+            fn ($user) => app(DelegationDemandeService::class)->peutValider($user, 'demandes.reject'));
+
         // ── Verrouillage secondaire (LOOP N, B2 ; LOOP P : ordre) : l'endpoint
         // Livewire `/livewire/update` traverse `secondaire.verrou` APRÈS le
         // groupe `web` — le verrou lit la session et l'utilisateur, donc la
@@ -179,8 +227,19 @@ class AppServiceProvider extends ServiceProvider
         // traversent, garde `user() === null`).
         if (class_exists(Livewire::class)) {
             Livewire::setUpdateRoute(fn ($gestionnaire) => Route::post('/livewire/update', $gestionnaire)
-                ->middleware(['web', 'secondaire.verrou']));
+                ->middleware(['web', 'mfa.obligatoire', 'secondaire.verrou']));
         }
+
+        // ── Réinitialisation de mot de passe back-office : l'URL du lien
+        // envoyé par notification est construite depuis la route canonique
+        // `admin.mot-de-passe.reinitialiser` (l'implémentation par défaut
+        // de Laravel référence `password.reset`, absente ici → 500).
+        ResetPassword::createUrlUsing(function ($notifiable, string $token): string {
+            return route('admin.mot-de-passe.reinitialiser', [
+                'token' => $token,
+                'email' => $notifiable->getEmailForPasswordReset(),
+            ]);
+        });
 
         // ── Journal passif des courriels (LOOP-MAIL-ENTERPRISE-01, LOOP 04) :
         // métadonnées expurgées uniquement, fail-soft (le journal ne doit
@@ -232,7 +291,7 @@ class AppServiceProvider extends ServiceProvider
         $actions->enregistrer([
             'key' => 'etudiant.archive',
             'label' => 'Voir l’archive',
-            'icon' => '🗂️',
+            'icon' => '',
             'contextes' => ['etudiant.show'],
             'visible' => fn (?User $u, mixed $s) => $u !== null
                 && $u->can('student_archive.view')
@@ -244,7 +303,7 @@ class AppServiceProvider extends ServiceProvider
         $actions->enregistrer([
             'key' => 'etudiant.export',
             'label' => 'Exporter le dossier (JSON)',
-            'icon' => '📥',
+            'icon' => '',
             'contextes' => ['etudiant.show'],
             'visible' => fn (?User $u, mixed $s) => $u !== null
                 && $u->can('archives.view')
@@ -335,6 +394,21 @@ class AppServiceProvider extends ServiceProvider
                 return Limit::perMinute($quota)->by($request->ip());
             });
         }
+
+        // ── Assistance de saisie MENS (/admin/mens) : auto-complétion et
+        // pré-remplissage CIN — seau isolé PAR UTILISATEUR (les
+        // `throttle:N,1` numériques partagent un compteur unique par
+        // compte : une saisie assistée ne doit jamais y puiser). ──
+        RateLimiter::for('mens-assistance', function (Request $request) {
+            return Limit::perMinute(60)->by($request->user()?->getAuthIdentifier() ?: $request->ip());
+        });
+
+        // ── Détection de disponibilité des workers de file d'attente (§52) :
+        // Le battement de cœur en cache permet de savoir en temps réel si un worker
+        // consomme la file pour déclencher le fallback synchrone automatique sinon. ──
+        Queue::looping(function () {
+            app(DisponibiliteWorkerService::class)->enregistrerBattement();
+        });
 
         // ── Cloche de notifications : compteur + 6 dernières, par espace.
         // Une seule requête bornée par page (index user/étudiant).

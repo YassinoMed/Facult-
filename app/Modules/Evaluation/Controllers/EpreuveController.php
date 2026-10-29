@@ -4,6 +4,7 @@ namespace App\Modules\Evaluation\Controllers;
 
 use App\Models\Matiere;
 use App\Modules\Evaluation\Models\Candidat;
+use App\Modules\Evaluation\Models\EmargementHorsLigne;
 use App\Modules\Evaluation\Models\Epreuve;
 use App\Modules\Evaluation\Models\Examen;
 use App\Modules\Evaluation\Models\SessionExamen;
@@ -11,6 +12,7 @@ use App\Modules\Evaluation\Models\Surveillance;
 use App\Modules\Evaluation\Requests\StoreEpreuveRequest;
 use App\Modules\Evaluation\Services\ConflitEpreuveService;
 use App\Modules\Evaluation\Services\ConvocationService;
+use App\Modules\Evaluation\Services\CorrespondanceExamenService;
 use App\Modules\Evaluation\Services\EpreuveService;
 use App\Modules\Evaluation\Services\ExamRoomAssignmentService;
 use App\Modules\Referentiel\Models\Programme;
@@ -19,9 +21,12 @@ use App\Modules\Schedule\Models\ScheduleSlot;
 use App\Modules\Schedule\Models\Teacher;
 use DomainException;
 use Illuminate\Contracts\View\View;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Validation\Rule;
 use Symfony\Component\HttpFoundation\Response;
 
 class EpreuveController
@@ -162,6 +167,7 @@ class EpreuveController
 
         return view('modules.evaluation.epreuves-show', [
             'epreuve' => $epreuve,
+            'correspondanceEpreuve' => app(CorrespondanceExamenService::class)->analyserEpreuve($epreuve),
             'sallesDisponibles' => Room::where('actif', true)->orderBy('code')->get(),
             'enseignantsDisponibles' => $enseignantsDisponibles,
         ]);
@@ -176,7 +182,11 @@ class EpreuveController
             'date' => ['nullable', 'date'],
             'heure_debut' => ['nullable', 'date_format:H:i'],
             'heure_fin' => ['nullable', 'date_format:H:i', 'after:heure_debut'],
-            'salle_id' => ['nullable', 'exists:rooms,id'],
+            // DM-01 : salle active à capacité connue uniquement.
+            'salle_id' => ['nullable', Rule::exists('rooms', 'id')->where(fn ($q) => $q
+                ->where('actif', true)
+                ->whereNotNull('capacite')
+                ->where('capacite', '>', 0))],
             'capacite_necessaire' => ['nullable', 'integer', 'min:0'],
         ]);
 
@@ -253,7 +263,7 @@ class EpreuveController
         $valides = $request->validate([
             'presences' => ['required', 'array'],
             'presences.*.candidat_id' => ['required', 'integer'],
-            'presences.*.statut' => ['required', 'in:present,absent,absent_justifie,absent_injustifie,excuse,retard'],
+            'presences.*.statut' => ['required', 'in:non_pointe,present,absent,absent_justifie,absent_injustifie,excuse,retard'],
             'presences.*.justification' => ['nullable', 'string', 'max:500'],
         ]);
 
@@ -268,6 +278,103 @@ class EpreuveController
     }
 
     /**
+     * Lot 10 — synchronisation d'une file d'émargement constituée hors ligne.
+     *
+     * Chaque entrée porte une clé d'idempotence : un rejeu réseau ne produit
+     * jamais un second pointage. Le serveur ne fait confiance à aucune donnée
+     * locale : le candidat doit appartenir à l'épreuve, le statut doit être
+     * légal, et l'épreuve ne doit pas être verrouillée.
+     *
+     * Aucune donnée personnelle n'est acceptée ni journalisée (identifiants
+     * techniques + statut uniquement).
+     */
+    public function enregistrerEmargementHorsLigne(
+        Request $request,
+        Epreuve $epreuve,
+        EpreuveService $service,
+    ): JsonResponse {
+        $this->verifierFaculte($epreuve);
+        Gate::authorize('update', $epreuve);
+
+        $valides = $request->validate([
+            'presences' => ['required', 'array', 'min:1', 'max:500'],
+            'presences.*.cle_idempotence' => ['required', 'uuid'],
+            'presences.*.candidat_id' => ['required', 'integer'],
+            'presences.*.statut' => ['required', Rule::in(Candidat::STATUTS)],
+        ]);
+
+        $auteurId = (int) $request->user()->id;
+
+        try {
+            $resultat = DB::transaction(function () use ($epreuve, $service, $valides, $auteurId) {
+                /** @var Epreuve $verrouillee */
+                $verrouillee = Epreuve::whereKey($epreuve->id)->lockForUpdate()->firstOrFail();
+
+                if ($verrouillee->estVerrouillee()) {
+                    throw new DomainException('Épreuve verrouillée : synchronisation hors ligne refusée.');
+                }
+
+                $aAppliquer = [];
+                $dejaSynchronises = 0;
+                $ignores = 0;
+
+                foreach ($valides['presences'] as $entree) {
+                    $cle = (string) $entree['cle_idempotence'];
+
+                    if (EmargementHorsLigne::where('epreuve_id', $verrouillee->id)
+                        ->where('cle_idempotence', $cle)
+                        ->exists()) {
+                        $dejaSynchronises++;
+
+                        continue;
+                    }
+
+                    // Le candidat doit appartenir à CETTE épreuve : un identifiant
+                    // forgé ne peut pas pointer un candidat d'une autre épreuve.
+                    $appartient = Candidat::whereKey((int) $entree['candidat_id'])
+                        ->where('epreuve_id', $verrouillee->id)
+                        ->exists();
+
+                    if (! $appartient) {
+                        $ignores++;
+
+                        continue;
+                    }
+
+                    EmargementHorsLigne::create([
+                        'epreuve_id' => $verrouillee->id,
+                        'candidat_id' => (int) $entree['candidat_id'],
+                        'cle_idempotence' => $cle,
+                        'statut' => (string) $entree['statut'],
+                        'auteur_id' => $auteurId,
+                        'recu_a' => now(),
+                    ]);
+
+                    $aAppliquer[] = [
+                        'candidat_id' => (int) $entree['candidat_id'],
+                        'statut' => (string) $entree['statut'],
+                    ];
+                }
+
+                $bilan = $aAppliquer !== []
+                    ? $service->enregistrerEmargement($verrouillee, $aAppliquer, $auteurId)
+                    : ['total' => 0, 'presents' => 0, 'absents' => 0, 'retards' => 0, 'non_pointes' => 0];
+
+                return [
+                    'synchronises' => count($aAppliquer),
+                    'deja_synchronises' => $dejaSynchronises,
+                    'ignores' => $ignores,
+                    'bilan' => $bilan,
+                ];
+            }, 5);
+        } catch (DomainException $e) {
+            return response()->json(['erreur' => $e->getMessage()], 409);
+        }
+
+        return response()->json($resultat);
+    }
+
+    /**
      * Affectation ou répartition multi-salles pour l'épreuve (§8, §10).
      */
     public function repartirSalles(Request $request, Epreuve $epreuve, ExamRoomAssignmentService $assignmentService): RedirectResponse
@@ -279,7 +386,11 @@ class EpreuveController
 
         if ($action === 'unique') {
             $valides = $request->validate([
-                'salle_id' => ['required', 'exists:rooms,id'],
+                // DM-01 : salle active à capacité connue uniquement.
+                'salle_id' => ['required', Rule::exists('rooms', 'id')->where(fn ($q) => $q
+                    ->where('actif', true)
+                    ->whereNotNull('capacite')
+                    ->where('capacite', '>', 0))],
             ]);
 
             try {
@@ -333,7 +444,11 @@ class EpreuveController
     {
         Gate::authorize('view', $candidat->epreuve);
 
-        return $convocations->convocation($candidat);
+        try {
+            return $convocations->convocation($candidat);
+        } catch (DomainException $e) {
+            abort(403, $e->getMessage());
+        }
     }
 
     public function store(StoreEpreuveRequest $request, Examen $examen, EpreuveService $service): RedirectResponse

@@ -9,6 +9,7 @@ use App\Modules\Referentiel\Models\Niveau;
 use App\Services\DataExchange\Contracts\ExportDefinitionInterface;
 use App\Services\DataExchange\Contracts\ImportDefinitionInterface;
 use App\Services\DataExchange\Contracts\ImportValidationAvancee;
+use App\Services\InscriptionService;
 use App\Support\Recherche;
 use Illuminate\Http\Request;
 
@@ -71,16 +72,39 @@ class ProgressionDefinition implements ExportDefinitionInterface, ImportDefiniti
             ];
         }
 
-        $niveau = Niveau::where('code', mb_strtoupper(trim((string) $ligne['niveau_cible'])))->first();
+        $niveau = $this->resoudreNiveauCible($ligne, $etudiant);
         if ($niveau === null) {
             $erreurs[] = [
                 'champ' => 'niveau_cible',
-                'message' => "Le niveau cible « {$ligne['niveau_cible']} » est introuvable.",
+                'message' => "Le niveau cible « {$ligne['niveau_cible']} » est introuvable ou ambigu (programme de l'étudiant inconnu).",
                 'code' => 'NIVEAU_NOT_FOUND',
             ];
         }
 
         return $erreurs;
+    }
+
+    /**
+     * Le format « progressions » ne porte pas de programme : on le déduit
+     * de la dernière inscription de l'étudiant. Sans programme connu,
+     * seul un code globalement unique est accepté — jamais le premier
+     * niveau venu.
+     */
+    private function resoudreNiveauCible(array $ligne, ?Etudiant $etudiant): ?Niveau
+    {
+        $code = $ligne['niveau_cible'] ?? null;
+
+        if ($etudiant === null) {
+            return Niveau::resoudreCodeUnique($code);
+        }
+
+        $programmeId = $etudiant->inscriptionsAcademiques()
+            ->latest('annee_universitaire_id')
+            ->value('programme_id');
+
+        return $programmeId !== null
+            ? Niveau::resoudreDansProgramme($code, (int) $programmeId)
+            : Niveau::resoudreCodeUnique($code);
     }
 
     public function cleMetier(array $ligne): ?string
@@ -110,7 +134,7 @@ class ProgressionDefinition implements ExportDefinitionInterface, ImportDefiniti
     public function persister(array $ligne, string $mode, ?int $auteurId): string
     {
         $etudiant = $this->resoudreEtudiant(trim((string) $ligne['etudiant_matricule']));
-        $niveauCible = Niveau::where('code', mb_strtoupper(trim((string) $ligne['niveau_cible'])))->first();
+        $niveauCible = $this->resoudreNiveauCible($ligne, $etudiant);
 
         if ($etudiant === null || $niveauCible === null) {
             throw new \DomainException('Étudiant ou niveau cible introuvable.');
@@ -125,16 +149,41 @@ class ProgressionDefinition implements ExportDefinitionInterface, ImportDefiniti
             'date_fin' => substr($anneeLibelle, 5, 4).'-08-31',
         ]);
 
-        $inscription = InscriptionAcademique::updateOrCreate([
-            'etudiant_id' => $etudiant->id,
-            'annee_universitaire_id' => $anneeCible->id,
-        ], [
-            'programme_id' => $niveauCible->programme_id ?? $etudiant->inscriptionsAcademiques()->latest('id')->value('programme_id'),
+        $inscriptions = app(InscriptionService::class);
+
+        $attributs = [
+            'programme_id' => $niveauCible->programme_id,
             'niveau_id' => $niveauCible->id,
             'niveau' => $niveauCible->code,
             'statut' => 'valide',
             'observation' => 'Progression académique importée',
-        ]);
+        ];
+
+        // Upsert sous la règle d'unicité annuelle CENTRALISÉE : lecture,
+        // puis création sous garde ; si une création concurrente gagne la
+        // paire (étudiant, année), on retombe sur sa mise à jour — jamais
+        // de doublon ni d'erreur technique (idempotence d'import).
+        $inscription = $inscriptions->inscriptionAnnuelle($etudiant->id, $anneeCible->id);
+
+        if ($inscription === null) {
+            try {
+                $inscription = $inscriptions->creerInscriptionAnnuelle(
+                    (int) $etudiant->id,
+                    (int) $anneeCible->id,
+                    $attributs,
+                );
+            } catch (\DomainException) {
+                $inscription = $inscriptions->inscriptionAnnuelle($etudiant->id, $anneeCible->id);
+
+                if ($inscription === null) {
+                    throw new \DomainException('Progression refusée : inscription annuelle en conflit introuvable.');
+                }
+
+                $inscription->update($attributs);
+            }
+        } else {
+            $inscription->update($attributs);
+        }
 
         return "progression validée : {$etudiant->nom} {$etudiant->prenom} vers {$niveauCible->code} ({$anneeCible->libelle})";
     }

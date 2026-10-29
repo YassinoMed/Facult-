@@ -12,7 +12,12 @@
   section maintenance réservée super-admin.
 - **Étudiants** : registre (recherche LIKE neutralisée, filtres,
   pagination), fiche (identité, académique, groupe, modules liés,
-  suppression protégée + cascade fichiers).
+  suppression protégée + cascade fichiers), **création
+  administrative** (identité, faculté/parcours/niveau/groupe,
+  inscription validée avec motif tracé, **statut de paiement oui/non**
+  renseigné manuellement — paiement effectué sur un site externe.
+  Aucune facture ni transaction de paiement locale n'est créée par ce
+  flux ; le module Finances reste indépendant.
 - **Inscriptions** : création publique validée, statuts
   (en_attente/valide/rejete) via `definirStatut()`, anti-doublons
   UNIQUE. Pas de suspension/transfert (voir Reste à faire).

@@ -248,4 +248,32 @@ class InscriptionAccueilParcoursTest extends TestCase
         $this->assertSame(1, Etudiant::count());
         $this->assertSame('BEN ALI', Etudiant::where('cin', '12345678')->sole()->nom);
     }
+
+    public function test_bouton_email_periode_fermee_expose_un_aria_disabled_valide(): void
+    {
+        // Régression LOOP-13 : l'attribut était produit par une expression
+        // Blade `{{ }}` → guillemets échappés (`aria-disabled="&quot;true&quot;"`),
+        // valeur ARIA invalide (axe-core : aria-valid-attr-value, critical).
+        RegistrationPeriod::query()->update(['closed_at' => now()->subDay()]);
+
+        $html = $this->get('/')->assertOk()->getContent();
+
+        $this->assertStringNotContainsString('&quot;true&quot;', $html);
+        $this->assertStringContainsString(
+            'aria-disabled="true" title="Inscriptions fermées."',
+            $html,
+            'Le bouton « Modifier mon adresse » doit porter un aria-disabled valide.'
+        );
+    }
+
+    public function test_accueil_public_ne_monte_pas_le_popup_ia(): void
+    {
+        // Le popup résout un acteur connecté et répond 401 aux anonymes :
+        // le monter sur une page publique ne produisait qu'une requête
+        // inutile et une erreur console à chaque visite.
+        $html = $this->get('/')->assertOk()->getContent();
+
+        $this->assertStringNotContainsString('x-data="uniregistreAiPopup()"', $html);
+        $this->assertStringNotContainsString('/assistant-ia/popup/initialiser', $html);
+    }
 }

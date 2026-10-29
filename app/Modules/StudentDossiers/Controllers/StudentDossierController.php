@@ -8,6 +8,7 @@ use App\Models\HistoriqueAcademique;
 use App\Modules\StudentDossiers\Models\StudentDossier;
 use App\Modules\StudentDossiers\Requests\StoreStudentDossierRequest;
 use App\Modules\StudentDossiers\Services\Pdf\PdfDocumentService;
+use App\Modules\StudentDossiers\Services\ReutilisationDocumentsService;
 use App\Modules\StudentDossiers\Services\StudentDossierService;
 use App\Support\Recherche;
 use Illuminate\Http\RedirectResponse;
@@ -26,6 +27,7 @@ class StudentDossierController extends Controller
     public function __construct(
         private readonly StudentDossierService $dossiers,
         private readonly PdfDocumentService $pdfs,
+        private readonly ReutilisationDocumentsService $reutilisation,
     ) {}
 
     public function index(Request $request): View
@@ -84,11 +86,20 @@ class StudentDossierController extends Controller
                 ->get()
             : collect();
 
+        // LOOP-UNIREGISTRE-DOCUMENTS-REUTILISABLES-01 : état documentaire
+        // de la dernière inscription ouverte (lecture seule).
+        $inscriptionCourante = $this->reutilisation->derniereInscriptionActive($dossier->etudiant);
+        $reutilisation = $inscriptionCourante !== null
+            ? $this->reutilisation->etatInscription($inscriptionCourante)
+            : null;
+
         return view('modules.student-dossiers.show', [
             'dossier' => $dossier,
             'peutVoirAudit' => $peutVoirAudit,
             'audit' => $audit,
             'pdf' => $this->pdfs->dernierPdf($dossier),
+            'inscriptionCourante' => $inscriptionCourante,
+            'reutilisation' => $reutilisation,
         ]);
     }
 

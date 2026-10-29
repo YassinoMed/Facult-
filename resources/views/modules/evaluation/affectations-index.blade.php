@@ -3,173 +3,209 @@
 @section('title', 'Affectation des enseignants — Examens & Épreuves')
 
 @section('content')
-    <div class="mx-auto max-w-7xl px-4 sm:px-6 py-8"
-         x-data="{
-             sessionSelectionnee: '{{ request('session_id', '') }}',
-             alerteSession: false,
-             enCoursAuto: false,
-             enCoursOptimiser: false,
-             modaleAffecter: false,
-             modaleConfirmationAuto: false,
-             detailsAffiches: false,
-             epreuveSelectionnee: null,
+    @php
+        $sessionParDefaut = (string) (request('session_id') ?: ($sessions->firstWhere('epreuves_count', '>', 0)?->id ?? $sessions->first()?->id ?? ''));
+    @endphp
 
-             sessionsData: {
-                 @foreach($sessions as $s)
-                     '{{ $s->id }}': {
-                         id: {{ $s->id }},
-                         nom: @json($s->nom),
-                         epreuves: {{ $s->epreuves_count ?? 0 }}
-                     },
-                 @endforeach
-             },
-             enseignantsDisposCount: {{ $kpis['enseignants_disponibles'] }},
+    <script>
+        function affectationsManager() {
+            return {
+                sessionSelectionnee: '{{ $sessionParDefaut }}',
+                alerteSession: false,
+                enCoursAuto: false,
+                enCoursOptimiser: false,
+                modaleAffecter: false,
+                modaleConfirmationAuto: false,
+                detailsAffiches: false,
+                epreuveSelectionnee: null,
 
-             runActif: @json($activeRun?->progression()),
-             pollingTimer: null,
-             notificationLancement: false,
+                sessionsData: {
+                    @foreach($sessions as $s)
+                        '{{ $s->id }}': {
+                            id: {{ $s->id }},
+                            nom: @json($s->nom),
+                            epreuves: {{ $s->epreuves_count ?? 0 }}
+                        },
+                    @endforeach
+                },
+                enseignantsDisposCount: {{ $kpis['enseignants_disponibles'] }},
 
-             init() {
-                 if (this.runActif && !this.runActif.is_terminated) {
-                     this.demarrerPolling();
-                 }
-             },
+                runActif: @json($activeRun?->progression()),
+                pollingTimer: null,
+                notificationLancement: false,
 
-             validerSession() {
-                 if (!this.sessionSelectionnee) {
-                     this.alerteSession = true;
-                     window.scrollTo({ top: 0, behavior: 'smooth' });
-                     return false;
-                 }
-                 this.alerteSession = false;
-                 return true;
-             },
+                init() {
+                    if (this.runActif && !this.runActif.is_terminated) {
+                        this.demarrerPolling();
+                    }
+                },
 
-             sessionNom() {
-                 if (this.sessionSelectionnee && this.sessionsData[this.sessionSelectionnee]) {
-                     return this.sessionsData[this.sessionSelectionnee].nom;
-                 }
-                 return 'Session sélectionnée';
-             },
+                validerSession() {
+                    if (!this.sessionSelectionnee) {
+                        const ids = Object.keys(this.sessionsData);
+                        if (ids.length > 0) {
+                            const foundWithEpreuves = ids.find(id => this.sessionsData[id].epreuves > 0);
+                            this.sessionSelectionnee = foundWithEpreuves || ids[0];
+                        }
+                    }
+                    if (!this.sessionSelectionnee) {
+                        this.alerteSession = true;
+                        window.scrollTo({ top: 0, behavior: 'smooth' });
+                        return false;
+                    }
+                    const sess = this.sessionsData[this.sessionSelectionnee];
+                    if (sess && sess.epreuves === 0) {
+                        alert("La session sélectionnée (« " + (sess.nom || '') + " ») ne contient aucune épreuve. Veuillez choisir une session comportant des épreuves.");
+                        return false;
+                    }
+                    this.alerteSession = false;
+                    return true;
+                },
 
-             sessionEpreuvesCount() {
-                 if (this.sessionSelectionnee && this.sessionsData[this.sessionSelectionnee]) {
-                     return this.sessionsData[this.sessionSelectionnee].epreuves;
-                 }
-                 return {{ $kpis['total_examens'] }};
-             },
+                changerSession(id) {
+                    this.alerteSession = false;
+                    if (id && id !== '{{ request('session_id') }}') {
+                        window.location.href = '{{ route('admin.evaluations.affectations.index') }}?session_id=' + encodeURIComponent(id);
+                    }
+                },
 
-             ouvrirConfirmationAuto() {
-                 if (!this.validerSession()) return;
-                 this.modaleConfirmationAuto = true;
-             },
+                sessionNom() {
+                    if (this.sessionSelectionnee && this.sessionsData[this.sessionSelectionnee]) {
+                        return this.sessionsData[this.sessionSelectionnee].nom;
+                    }
+                    return 'Session sélectionnée';
+                },
 
-             async lancerAffectationAuto() {
-                 this.modaleConfirmationAuto = false;
-                 this.enCoursAuto = true;
-                 try {
-                     const resp = await fetch('{{ route('admin.evaluations.affectations.auto') }}', {
-                         method: 'POST',
-                         headers: {
-                             'Content-Type': 'application/json',
-                             'Accept': 'application/json',
-                             'X-CSRF-TOKEN': '{{ csrf_token() }}'
-                         },
-                         body: JSON.stringify({ session_id: this.sessionSelectionnee })
-                     });
-                     const data = await resp.json();
-                     if ((resp.ok || resp.status === 409) && data.run) {
-                         this.runActif = data.run;
-                         this.notificationLancement = true;
-                         this.demarrerPolling();
-                         window.scrollTo({ top: 0, behavior: 'smooth' });
-                     } else {
-                         alert(data.message || 'Erreur lors du lancement.');
-                     }
-                 } catch (e) {
-                     console.error(e);
-                     alert('Impossible de contacter le serveur.');
-                 } finally {
-                     this.enCoursAuto = false;
-                 }
-             },
+                sessionEpreuvesCount() {
+                    if (this.sessionSelectionnee && this.sessionsData[this.sessionSelectionnee]) {
+                        return this.sessionsData[this.sessionSelectionnee].epreuves;
+                    }
+                    return {{ $kpis['total_examens'] }};
+                },
 
-             async lancerOptimisation() {
-                 if (!this.validerSession()) return;
-                 this.enCoursOptimiser = true;
-                 try {
-                     const resp = await fetch('{{ route('admin.evaluations.affectations.optimiser') }}', {
-                         method: 'POST',
-                         headers: {
-                             'Content-Type': 'application/json',
-                             'Accept': 'application/json',
-                             'X-CSRF-TOKEN': '{{ csrf_token() }}'
-                         },
-                         body: JSON.stringify({ session_id: this.sessionSelectionnee })
-                     });
-                     const data = await resp.json();
-                     if (data.redirect) {
-                         window.location.href = data.redirect;
-                         return;
-                     }
-                     if ((resp.ok || resp.status === 409) && data.run) {
-                         this.runActif = data.run;
-                         this.notificationLancement = true;
-                         this.demarrerPolling();
-                         window.scrollTo({ top: 0, behavior: 'smooth' });
-                     } else {
-                         alert(data.message || 'Erreur lors du lancement de l\'optimisation.');
-                     }
-                 } catch (e) {
-                     console.error(e);
-                     alert('Impossible de contacter le serveur.');
-                 } finally {
-                     this.enCoursOptimiser = false;
-                 }
-             },
+                ouvrirConfirmationAuto() {
+                    if (!this.validerSession()) return;
+                    this.modaleConfirmationAuto = true;
+                },
 
-             demarrerPolling() {
-                 if (this.pollingTimer) clearInterval(this.pollingTimer);
-                 this.pollingTimer = setInterval(() => {
-                     this.actualiserStatut();
-                 }, 2500);
-             },
+                async lancerAffectationAuto() {
+                    this.modaleConfirmationAuto = false;
+                    this.enCoursAuto = true;
+                    try {
+                        const resp = await fetch('{{ route('admin.evaluations.affectations.auto') }}', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'Accept': 'application/json',
+                                'X-CSRF-TOKEN': '{{ csrf_token() }}'
+                            },
+                            body: JSON.stringify({ session_id: this.sessionSelectionnee })
+                        });
+                        const data = await resp.json();
+                        if ((resp.ok || resp.status === 409) && data.run) {
+                            this.runActif = data.run;
+                            this.notificationLancement = true;
+                            this.demarrerPolling();
+                            window.scrollTo({ top: 0, behavior: 'smooth' });
+                        } else {
+                            alert(data.message || 'Erreur lors du lancement.');
+                        }
+                    } catch (e) {
+                        console.error(e);
+                        alert('Impossible de contacter le serveur.');
+                    } finally {
+                        this.enCoursAuto = false;
+                    }
+                },
 
-             async actualiserStatut() {
-                 if (!this.runActif || !this.runActif.id) return;
-                 try {
-                     const resp = await fetch('{{ url('admin/evaluations/affectations/runs') }}/' + this.runActif.id + '/status', {
-                         headers: { 'Accept': 'application/json' }
-                     });
-                     if (resp.ok) {
-                         const data = await resp.json();
-                         this.runActif = data;
-                         if (data.is_terminated) {
-                             clearInterval(this.pollingTimer);
-                             this.pollingTimer = null;
-                         }
-                     } else if (resp.status === 423) {
-                         // Session verrouillée (verrou secondaire) : recharger
-                         // pour afficher l'écran de verrouillage serveur.
-                         window.location.reload();
-                     }
-                 } catch (e) {
-                     console.error('Erreur actualisation statut:', e);
-                 }
-             },
+                async lancerOptimisation() {
+                    if (!this.validerSession()) return;
+                    this.enCoursOptimiser = true;
+                    try {
+                        const resp = await fetch('{{ route('admin.evaluations.affectations.optimiser') }}', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'Accept': 'application/json',
+                                'X-CSRF-TOKEN': '{{ csrf_token() }}'
+                            },
+                            body: JSON.stringify({ session_id: this.sessionSelectionnee })
+                        });
+                        const data = await resp.json();
+                        if (data.redirect) {
+                            window.location.href = data.redirect;
+                            return;
+                        }
+                        if ((resp.ok || resp.status === 409) && data.run) {
+                            this.runActif = data.run;
+                            this.notificationLancement = true;
+                            this.demarrerPolling();
+                            window.scrollTo({ top: 0, behavior: 'smooth' });
+                        } else {
+                            alert(data.message || 'Erreur lors du lancement de l\'optimisation.');
+                        }
+                    } catch (e) {
+                        console.error(e);
+                        alert('Impossible de contacter le serveur.');
+                    } finally {
+                        this.enCoursOptimiser = false;
+                    }
+                },
 
-             formaterTemps(secondes) {
-                 if (!secondes || secondes < 0) return '00:00';
-                 const mins = Math.floor(secondes / 60);
-                 const secs = secondes % 60;
-                 return String(mins).padStart(2, '0') + ':' + String(secs).padStart(2, '0');
-             },
+                demarrerPolling() {
+                    if (this.pollingTimer) clearInterval(this.pollingTimer);
+                    this.pollingTimer = setInterval(() => {
+                        this.actualiserStatut();
+                    }, 2500);
+                },
 
-             ouvrirAffectation(epreuve) {
-                 this.epreuveSelectionnee = epreuve;
-                 this.modaleAffecter = true;
-             }
-         }">
+                async actualiserStatut() {
+                    if (!this.runActif || !this.runActif.id) return;
+                    try {
+                        const resp = await fetch('{{ url('admin/evaluations/affectations/runs') }}/' + this.runActif.id + '/status', {
+                            headers: { 'Accept': 'application/json' }
+                        });
+                        if (resp.ok) {
+                            const data = await resp.json();
+                            this.runActif = data;
+                            if (data.is_terminated) {
+                                clearInterval(this.pollingTimer);
+                                this.pollingTimer = null;
+                            }
+                        } else if (resp.status === 423) {
+                            window.location.reload();
+                        }
+                    } catch (e) {
+                        console.error('Erreur actualisation statut:', e);
+                    }
+                },
+
+                formaterTemps(secondes) {
+                    if (!secondes || secondes < 0) return '00:00';
+                    const mins = Math.floor(secondes / 60);
+                    const secs = secondes % 60;
+                    return String(mins).padStart(2, '0') + ':' + String(secs).padStart(2, '0');
+                },
+
+                ouvrirAffectation(epreuve) {
+                    this.epreuveSelectionnee = epreuve;
+                    this.modaleAffecter = true;
+                }
+            };
+        }
+
+        if (window.Alpine) {
+            window.Alpine.data('affectationsManager', affectationsManager);
+        } else {
+            document.addEventListener('alpine:init', () => {
+                if (window.Alpine) {
+                    window.Alpine.data('affectationsManager', affectationsManager);
+                }
+            });
+        }
+    </script>
+
+    <div class="mx-auto max-w-7xl px-4 sm:px-6 py-8" x-data="affectationsManager()">
 
         <!-- En-tête de page -->
         <x-page-header
@@ -182,11 +218,11 @@
                         <label for="header_session_id" class="text-xs font-bold text-slate-700 dark:text-slate-300 whitespace-nowrap">Session :</label>
                         <select id="header_session_id"
                                 x-model="sessionSelectionnee"
-                                @change="alerteSession = false"
+                                @change="changerSession($event.target.value)"
                                 class="rounded-lg border-0 bg-transparent text-slate-800 dark:text-slate-200 py-0.5 pl-1 pr-6 text-xs font-semibold focus:ring-1 focus:ring-indigo-500 cursor-pointer">
                             <option value="">-- Choisir une session --</option>
                             @foreach($sessions as $s)
-                                <option value="{{ $s->id }}" @selected(request('session_id') == $s->id)>{{ $s->nom }}</option>
+                                <option value="{{ $s->id }}" @selected($sessionParDefaut == $s->id)>{{ $s->nom }} ({{ $s->epreuves_count ?? 0 }} épreuves)</option>
                             @endforeach
                         </select>
                     </div>
@@ -196,7 +232,7 @@
                               class="inline-block"
                               @submit.prevent="ouvrirConfirmationAuto()">
                             @csrf
-                            <input type="hidden" name="session_id" :value="sessionSelectionnee" value="{{ request('session_id') }}">
+                            <input type="hidden" name="session_id" :value="sessionSelectionnee" value="{{ $sessionParDefaut }}">
                             <button type="submit"
                                     title="⚡ Affectation automatique"
                                     :disabled="enCoursAuto || enCoursOptimiser || (runActif && !runActif.is_terminated)"
@@ -212,7 +248,7 @@
                               class="inline-block"
                               @submit.prevent="lancerOptimisation()">
                             @csrf
-                            <input type="hidden" name="session_id" :value="sessionSelectionnee" value="{{ request('session_id') }}">
+                            <input type="hidden" name="session_id" :value="sessionSelectionnee" value="{{ $sessionParDefaut }}">
                             <button type="submit"
                                     title="Optimiser les affectations"
                                     :disabled="enCoursAuto || enCoursOptimiser || (runActif && !runActif.is_terminated)"
@@ -510,7 +546,7 @@
                                 class="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 px-3 py-2 text-sm focus:border-indigo-500">
                             <option value="">Toutes les sessions</option>
                             @foreach($sessions as $s)
-                                <option value="{{ $s->id }}" @selected(request('session_id') == $s->id)>{{ $s->nom }}</option>
+                                <option value="{{ $s->id }}" @selected($sessionParDefaut == $s->id)>{{ $s->nom }} ({{ $s->epreuves_count ?? 0 }} épreuves)</option>
                             @endforeach
                         </select>
                     </div>

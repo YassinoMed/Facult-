@@ -142,3 +142,19 @@ Limites honnêtes : `Room` n'a ni type ni équipements (capacité seule
 affichée) ; pas de compte enseignant (pas de vue « mes groupes » —
 l'exploration back-office couvre le besoin) ; vue mois non implémentée
 (les exceptions vivent dans la fiche planning).
+
+## Remplacements : candidatures pédagogiques (LOOP 09)
+
+Volontariat enseignant par matière (`remplacement_candidatures`) : dépôt
+au portail (`enseignant/remplacement-candidatures`, session
+enseignant, throttle 10/min, qualification exigée, doublon actif
+refusé), retrait libre par le propriétaire. Côté administration
+(`admin/remplacement-candidatures`, `schedules.view/manage`) :
+registre filtrable, acceptation POUR un créneau précis — l'acceptation
+ne duplique rien : elle invoque `ScheduleRepairService::remplacerEnseignant`
+(transactionnel, gardes qualification/disponibilité/chevauchement,
+historisation `ScheduleChange`) ; en cas d'échec la candidature reste
+soumise et l'EDT inchangé (transaction commune). `suggererRemplacants`
+priorise les candidats déclarés (+30, flag `candidat_declare`). Rollback
+migration : drop de la table (l'historique des remplacements vit dans
+`schedule_changes`).

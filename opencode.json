@@ -13,6 +13,14 @@
     "swe-bench-style": {
       "path": ".opencode/skills/swe-bench-style/SKILL.md",
       "auto_load": true
+    },
+    "reverse-engineer-anything": {
+      "path": ".opencode/skills/reverse-engineer-anything/SKILL.md",
+      "auto_load": false
+    },
+    "monid": {
+      "path": ".opencode/skills/monid/SKILL.md",
+      "auto_load": true
     }
   },
   "agents": {
@@ -43,8 +51,19 @@
     },
     "filesystem": {
       "type": "local",
-      "command": ["npx", "-y", "@modelcontextprotocol/server-filesystem", "/chemin/autorise"],
+      "command": ["npx", "-y", "@modelcontextprotocol/server-filesystem", "/Users/mohamedyassine/Desktop/PFE/inscription-etudiants"],
       "enabled": true
+    },
+    "servers": {
+      "rea": {
+        "type": "local",
+        "command": [
+          "npx",
+          "-y",
+          "rea-agents@6.7.0",
+          "mcp"
+        ]
+      }
     }
   },
   "plugins": [],

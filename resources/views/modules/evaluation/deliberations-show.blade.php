@@ -21,7 +21,8 @@
                     </form>
                 @endcan
                 @can('deliberations.publish')
-                    <form method="post" action="{{ route('admin.evaluations.deliberations.publier', $deliberation) }}" class="inline">
+                    <form method="post" action="{{ route('admin.evaluations.deliberations.publier', $deliberation) }}" class="inline"
+                        onsubmit="return confirm('La publication rend les décisions visibles par les étudiants concernés. Confirmer ?')">
                         @csrf
                         <x-btn type="submit">Publier</x-btn>
                     </form>
@@ -44,7 +45,22 @@
         </x-page-header>
 
         <section class="mt-4 ds-card p-5">
+            @php
+                $presents = $deliberation->membres->where('present', true);
+                $presidentPresent = $presents->contains(fn ($membre) => $membre->fonction === 'president');
+                $quorumAtteint = $presidentPresent && $presents->count() >= 3;
+            @endphp
             <h2 class="text-sm font-black uppercase tracking-wider text-slate-500">Jury (quorum : président + 2 présents)</h2>
+            <p class="mt-1 text-sm">
+                <span class="font-bold tabular-nums">{{ $presents->count() }}/{{ $deliberation->membres->count() }} membre(s) présent(s)</span>
+                <span class="mx-1 text-slate-300" aria-hidden="true">·</span>
+                <span class="font-semibold {{ $quorumAtteint ? 'text-emerald-700' : 'text-amber-700' }}">
+                    Quorum {{ $quorumAtteint ? 'atteint' : 'non atteint' }}
+                </span>
+                @unless($quorumAtteint)
+                    <span class="text-slate-400">— la validation exige un président présent et au moins 3 membres présents.</span>
+                @endunless
+            </p>
             <ul class="mt-2 divide-y divide-slate-100 text-sm">
                 @foreach($deliberation->membres as $membre)
                     <li class="flex items-center justify-between py-1.5">

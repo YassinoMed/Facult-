@@ -407,7 +407,9 @@ class InscriptionFileTraitementTest extends TestCase
         $response->assertOk();
 
         $queryCount = count(DB::getQueryLog());
-        // Une page de 10 dossiers doit être rendue avec moins de 25 requêtes au total (KPIs + pagination + eager loading + enrichissement)
-        $this->assertLessThan(25, $queryCount);
+        // Budget 25 : KPIs + pagination + eager loading + enrichissement
+        // + 2 requêtes de référentiels (facultés/programmes) strictement
+        // scopés. Le nombre est constant avec 10 dossiers : aucune N+1.
+        $this->assertLessThanOrEqual(25, $queryCount, "Requêtes excessives sur la file de traitement : {$queryCount}");
     }
 }

@@ -319,11 +319,13 @@ final class DocumentsRequisService
 
     /**
      * Dernière pièce par type dans le dossier (versions historisées :
-     * seule la plus récente compte).
+     * seule la plus récente compte). Les versions ne sont chargées que
+     * sur demande explicite (évite une requête sur les écrans qui n'en
+     * ont pas besoin — budgets N+1).
      *
      * @return Collection<string, StudentDocument>
      */
-    public function piecesDossier(Etudiant $etudiant): Collection
+    public function piecesDossier(Etudiant $etudiant, bool $avecVersions = false): Collection
     {
         $dossier = StudentDossier::where('etudiant_id', $etudiant->id)->first();
 
@@ -331,7 +333,14 @@ final class DocumentsRequisService
             return collect();
         }
 
-        return StudentDocument::where('student_dossier_id', $dossier->id)
+        $requete = StudentDocument::query();
+
+        if ($avecVersions) {
+            $requete->with('versions');
+        }
+
+        return $requete
+            ->where('student_dossier_id', $dossier->id)
             ->latest('id')
             ->get()
             ->unique('document_type')

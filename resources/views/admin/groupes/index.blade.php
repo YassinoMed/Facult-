@@ -33,7 +33,7 @@
                 <x-stat-card libelle="Places disponibles" :valeur="$stats['places_disponibles']" couleur="emerald" />
                 <x-stat-card libelle="Presque complets" :valeur="$stats['presque_complets']" couleur="amber" />
                 <div class="rounded-2xl border border-slate-200 bg-white p-4 text-sm">
-                    <p class="text-xs font-bold uppercase tracking-wider text-slate-400">Remplissage moyen</p>
+                    <p class="text-xs font-bold uppercase tracking-wider text-slate-600 font-semibold">Remplissage moyen</p>
                     <p class="mt-1 text-2xl font-black tabular-nums">{{ $stats['effectif'] > 0 && $stats['capacite_totale'] > 0 ? (int) round($stats['effectif'] / $stats['capacite_totale'] * 100) : 0 }} %</p>
                 </div>
             </div>
@@ -79,7 +79,7 @@
             @if($groupes->isNotEmpty())
                 <table class="w-full min-w-[760px] text-left text-xs sm:text-sm">
                     <thead>
-                        <tr class="border-b border-slate-100 text-[11px] uppercase tracking-wider text-slate-400">
+                        <tr class="border-b border-slate-100 text-[11px] uppercase tracking-wider text-slate-700 font-bold">
                             <th scope="col" class="px-5 py-3 font-bold">Code</th>
                             <th scope="col" class="px-5 py-3 font-bold">Nom</th>
                             <th scope="col" class="px-5 py-3 font-bold">Faculté</th>

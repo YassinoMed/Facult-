@@ -14,9 +14,13 @@ horodatages `submitted/processed/completed/rejected_at`),
 (PDF générés, registre dédié — aucune dépendance StudentDossiers).
 
 `status` n'est JAMAIS mass-assignable : défaut modèle `draft`,
-transitions via `RequestWorkflowService::TRANSITIONS`
-(draft→submitted→received→in_review→{waiting_student|approved|rejected}→completed ;
-`rejected → completed` impossible par construction).
+transitions définies par `WorkflowDemandeEtudianteDefinition`
+(moteur de workflows universitaires, domaine `demande` — la façade
+statique `RequestWorkflowService` délègue depuis LOOP 01 ;
+draft→submitted→received→in_review→{waiting_student|approved|rejected}→completed ;
+`rejected → completed` impossible par construction). Colonne
+`version_workflow` épinglée à la création (LOOP 01) : une demande
+créée sous la version N conserve les règles de la version N.
 
 ## §2. Workflow et pièces
 
@@ -66,3 +70,28 @@ Registre `online-requests` (`MODULE_ONLINE_REQUESTS`, défaut false) :
 liens Demandes / Mes demandes (permission puis session), widgets
 scolarité (nouvelles/en cours/retard) et étudiant (en cours/documents
 prêts) via view composers — le cœur ne charge rien.
+
+## §8. Validation configurable, quatre yeux et délégations (LOOP 01)
+
+Source unique : `App\Services\Workflow` (moteur générique) — définition
+versionnée `WorkflowDemandeEtudianteDefinition` (domaine `demande`),
+permissions réelles par transition (`demandes.approve/reject/process` ;
+les actions du portail étudiant sont libres), et séparation stricte des
+fonctions sur l'approbation : l'agent assigné à l'examination
+(`assigned_to`) ne peut jamais approuver sa propre évaluation. Le
+contrôleur transmet l'acteur, le service re-vérifie sous verrou
+(topologie, permission, quatre yeux, isolation) — la policy reste la
+première barrière côté HTTP.
+
+Délégations de l'autorité de validation (`request_delegations`) : le
+titulaire de `demandes.approve` délègue approbation ET rejet à un
+collègue pour une fenêtre bornée (≤ 90 jours), révocable, jamais
+auto-accordée, jamais chaînable (le délégataire ne peut pas
+re-déléguer), éteinte dès que le délégant perd le pouvoir. Résolution
+unique par Gate — `demandes.approve`/`demandes.reject` = RBAC OU
+délégation active — : routes, policies, FormRequests et service
+convergent. Endpoints `admin/demandes/delegations` (POST/DELETE,
+`can:demandes.assign`, zéro permission nouvelle), audit
+`delegation_validation.creee/revoquee` via le canal référentiel
+(sans étudiant). Le quatre yeux s'applique pleinement au délégataire.
+UI de gestion à venir (réserve).

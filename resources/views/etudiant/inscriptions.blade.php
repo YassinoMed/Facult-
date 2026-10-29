@@ -4,6 +4,16 @@
 @section('meta_description', 'Consultation de vos inscriptions académiques par année universitaire.')
 
 @section('content')
+@php
+    // Pastilles décoratives par statut d'inscription (couleurs
+    // alignées sur le composant x-status-badge).
+    $pastillesStatut = [
+        'valide' => 'bg-emerald-600',
+        'en_cours' => 'bg-amber-500',
+        'ajourne' => 'bg-rose-600',
+        'abandon' => 'bg-slate-400',
+    ];
+@endphp
 <div class="mx-auto max-w-5xl px-4 sm:px-6 py-8 space-y-6 relative">
 
     {{-- Academic banner header --}}
@@ -12,7 +22,7 @@
         <div class="absolute inset-0 opacity-5 bg-grid-pattern-dark"></div>
         {{-- Decorative floating academic glyphs --}}
         <div class="absolute top-0 left-0 h-64 w-64 rounded-full bg-primary-500/10 blur-xl opacity-60 -translate-y-1/2 -translate-x-1/2 animate-float" aria-hidden="true"></div>
-        <div class="absolute bottom-0 right-0 h-72 w-72 rounded-full bg-accent-500/10 blur-xl opacity-60 translateY-1/3 translateX-1/3 animate-float" aria-hidden="true"></div>
+        <div class="absolute bottom-0 right-0 h-72 w-72 rounded-full bg-accent-500/10 blur-xl opacity-60 translate-y-1/3 translate-x-1/3 animate-float" aria-hidden="true"></div>
         
         <div class="relative z-10 px-6 py-8 sm:px-10 lg:px-16">
             <div class="flex items-center justify-between mb-4">
@@ -33,7 +43,7 @@
             {{-- Academic year filter/selector --}}
             <div class="mt-4 pt-4 border-t border-slate-100">
                 <p class="text-xs font-bold uppercase tracking-wider text-slate-400">Année universitaire en cours</p>
-                <p class="mt-1 text-sm font-medium text-slate-600">{{ $inscriptions->isNotEmpty() ? $inscriptions->first()->anneeUniversitaire->libelle : 'Aucune année' }}</p>
+                <p class="mt-1 text-sm font-medium text-slate-600">{{ $inscriptions->first()?->anneeUniversitaire?->libelle ?? 'Aucune année' }}</p>
             </div>
         </div>
     </div>
@@ -109,6 +119,7 @@
 
     <div class="space-y-6">
         @foreach($inscriptions as $inscription)
+            @php $publiee = in_array((int) $inscription->id, $resultatsPublies, true); @endphp
             {{-- Academic year card --}}
             <div class="rounded-3xl border border-slate-200/70 bg-white shadow-sm overflow-hidden card-hover animate-fade-up"
                  style="animation-delay: {{ $loop->iteration * 0.08 }}s">
@@ -121,13 +132,11 @@
                         </span>
                         <h2 class="text-lg font-black text-slate-900 flex-1 truncate">{{ $inscription->anneeUniversitaire?->libelle ?? '—' }}</h2>
                         {{-- Status badge --}}
-                        <span class="rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider bg-slate-50 text-slate-700 border border-slate-200">
-                            {{ ucfirst($inscription->statut) }}
-                        </span>
+                        <x-status-badge :statut="$inscription->statut" />
                     </div>
                     
                     {{-- Visual indicator dot --}}
-                    <div class="h-3 w-3 rounded-full {{ statusDotClass($inscription->statut)}}"></div>
+                    <div class="h-3 w-3 rounded-full {{ $pastillesStatut[$inscription->statut] ?? 'bg-slate-400' }}" aria-hidden="true"></div>
                 </div>
 
                 {{-- Inscription details grid --}}
@@ -155,18 +164,24 @@
                         </div>
                     @endif
 
-                    {{-- Crédits --}}
+                    {{-- Crédits (D-01 : uniquement après publication) --}}
                     <div>
                         <p class="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Crédits</p>
-                        <p class="mt-1 text-right">{{ $inscription->credits_obtenus ?? '—' }}/{{ $inscription->credits_totaux ?? '—' }}</p>
+                        <p class="mt-1 text-right">
+                            @if($publiee)
+                                {{ $inscription->credits_obtenus }}/{{ $inscription->credits_total }}
+                            @else
+                                <span class="text-slate-500">En attente</span>
+                            @endif
+                        </p>
                     </div>
 
                     {{-- Moyenne --}}
-                    @if($inscription->moyenne_generale !== null)
+                    @if($publiee && $inscription->moyenne_annuelle !== null)
                         <div>
                             <p class="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Moyenne</p>
                             <p class="mt-1 text-right">
-                                <span class="{{ moyenneColorClass($inscription->moyenne_generale) }}" x-text="number_format($inscription->moyenne_generale, 2)"></span>
+                                <span class="{{ (float) $inscription->moyenne_annuelle >= 10 ? 'text-emerald-600' : 'text-rose-600' }}">{{ number_format((float) $inscription->moyenne_annuelle, 2) }}</span>
                                 <span class="text-[10px] text-slate-400">/20</span>
                             </p>
                         </div>
@@ -176,7 +191,13 @@
                     <div>
                         <p class="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Décision</p>
                         <p class="mt-1 text-right">
-                            <span class="{{ decisionColorClass($inscription->decision) }}" x-text="$inscription->decision ?? 'En cours'"></span>
+                            @if(! $publiee)
+                                <span class="text-slate-500">En attente de publication</span>
+                            @elseif($inscription->decision)
+                                <x-status-badge :statut="$inscription->decision" />
+                            @else
+                                <span class="text-slate-500">En cours</span>
+                            @endif
                         </p>
                     </div>
                 </div>
@@ -189,47 +210,26 @@
                         <span class="text-slate-300">semestre</span>
                     </div>
                 </div>
+
+                @if(config('modules.finances.active') && config('inscriptions-paiements.actif'))
+                    {{-- LOOP-UNIREGISTRE-INSCRIPTIONS-PAIEMENTS-01 : dossier de
+                         paiement propre à CETTE inscription annuelle. --}}
+                    <div class="px-6 pb-5 sm:px-8 lg:px-12">
+                        <div class="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+                            <div class="flex items-center gap-2">
+                                <span class="text-[11px] font-bold uppercase tracking-wider text-slate-500">Paiement</span>
+                                <x-status-badge :statut="$inscription->dossierPaiement?->statut ?? 'NON_PAYE'" />
+                            </div>
+                            <a href="{{ route('etudiant.paiements.inscription', $inscription) }}"
+                               class="text-xs font-bold text-primary-800 underline underline-offset-2">
+                                Voir le dossier de paiement →
+                            </a>
+                        </div>
+                    </div>
+                @endif
             </div>
-        </div>
         @endforeach
     </div>
 </div>
 
 @endsection
-
-@push('scripts')
-<script>
-    // Helper functions for inline classes
-    function statusDotClass(statut) {
-        const dots = {
-            'valide': 'bg-emerald-500',
-            'en_cours': 'bg-amber-500', 
-            'ajourne': 'bg-amber-500',
-            'abandon': 'bg-rose-500'
-        };
-        return dots[statut] || 'bg-slate-400';
-    }
-
-    function badgeStatusClass(statut) {
-        const badges = {
-            'valide': 'bg-emerald-100 text-emerald-800',
-            'en_cours': 'bg-amber-100 text-amber-800',
-            'ajourne': 'bg-amber-100 text-amber-800',
-            'abandon': 'bg-rose-100 text-rose-800'
-        };
-        return badges[statut] || 'bg-slate-100 text-slate-700';
-    }
-
-    function moyenneColorClass(moyenne) {
-        return moyenne >= 10 ? 'text-emerald-600' : 'text-rose-600';
-    }
-
-    function decisionColorClass(decision) {
-        if (!decision) return 'text-slate-500';
-        const lower = decision.toLowerCase();
-        if (lower.includes('valid') || lower.includes('admis')) return 'text-emerald-600';
-        if (lower.includes('rattrap') || lower.includes('non valid')) return 'text-amber-600';
-        return 'text-rose-600';
-    }
-</script>
-@endpush

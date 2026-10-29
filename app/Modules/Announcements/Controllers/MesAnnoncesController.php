@@ -55,13 +55,10 @@ class MesAnnoncesController extends Controller
     public function indexEnseignant(Request $request): View
     {
         $enseignant = Teacher::with('departement')->findOrFail($request->session()->get('enseignant_auth_id'));
-        $faculteId = $enseignant->faculteId();
 
-        $annonces = Annonce::where('statut', 'published')
-            ->where(fn ($q) => $q->whereNull('publiee_a')->orWhere('publiee_a', '<=', now()))
-            ->where(fn ($q) => $q->whereNull('expire_a')->orWhere('expire_a', '>', now()))
-            ->whereIn('audience', ['tous', 'enseignants'])
-            ->when($faculteId !== null, fn ($q) => $q->where(fn ($w) => $w->whereNull('faculte_id')->orWhere('faculte_id', $faculteId)))
+        // Portée unique (statut + fenêtre + audience + faculté stricte) :
+        // le widget du tableau de bord et l'index ne peuvent plus diverger.
+        $annonces = Annonce::visiblesPourEnseignant($enseignant)
             ->orderByDesc('epinglee')
             ->latest('publiee_a')
             ->paginate(15);

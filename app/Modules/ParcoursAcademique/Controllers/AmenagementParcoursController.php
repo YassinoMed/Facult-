@@ -15,6 +15,7 @@ use App\Modules\ParcoursAcademique\Services\RisqueAcademiqueService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Validation\Rule;
 use Illuminate\View\View;
 
 /**
@@ -76,11 +77,23 @@ class AmenagementParcoursController extends Controller
         Gate::authorize('parcours.gerer');
 
         // Concurrence : deux admins = second 409 via lockForUpdate.
-        $valides = $request->validate([
-            'statut' => ['required', 'string'],
-            'decision' => ['nullable', 'string', 'max:200'],
+        // FSM : statut/décision doit être une transition existante,
+        // liste dérivée de la source unique AmenagementParcoursService::TRANSITIONS.
+        $transitions = AmenagementParcoursService::TRANSITIONS[$categorie];
+        $regles = [
             'justification' => ['nullable', 'string', 'max:2000'],
-        ]);
+        ];
+        if ($transitions['champ'] === 'statut') {
+            $regles['statut'] = ['required', 'string', Rule::in(array_keys($transitions['entrees']))];
+            $regles['decision'] = ['nullable', 'string', 'max:200'];
+        } else {
+            // Équivalences : statut d'affichage ignoré (dérivé de la décision),
+            // absence de décision conservée = refusee.
+            $regles['statut'] = ['nullable', 'string'];
+            $regles['decision'] = ['nullable', 'string', Rule::in(array_keys($transitions['entrees']))];
+        }
+
+        $valides = $request->validate($regles);
 
         match ($categorie) {
             'equivalences' => $service->deciderEquivalence($element, $valides['decision'] ?? 'refusee', $valides['justification'] ?? null, $request->user()->id),

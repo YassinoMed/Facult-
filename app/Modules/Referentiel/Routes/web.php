@@ -1,5 +1,6 @@
 <?php
 
+use App\Modules\Referentiel\Controllers\CompetencesController;
 use App\Modules\Referentiel\Controllers\EcuesController;
 use App\Modules\Referentiel\Controllers\MaquetteController;
 use App\Modules\Referentiel\Controllers\ReferentielController;
@@ -76,6 +77,39 @@ Route::middleware(['auth', 'admin', 'secondaire.verrou', 'module:referentiel'])-
             ->middleware(['can:referentiel.manage', 'throttle:20,1'])->name('ecues.prerequis.destroy');
         Route::post('reordonner', [ReordonnancementController::class, 'store'])
             ->middleware(['can:referentiel.manage', 'throttle:20,1'])->name('reordonner');
+
+        // Compétences et couverture pédagogique (Lot 20) : catalogue
+        // SAISI, associations canoniques, rapport par maquette, import
+        // par codes avec ambiguïtés détectées. Permissions RÉUTILISÉES
+        // (referentiel.*, maquettes.approve, referentiel.import) —
+        // avant les routes {entite} génériques.
+        Route::get('competences', [CompetencesController::class, 'index'])
+            ->middleware('can:referentiel.view')->name('competences.index');
+        Route::post('competences', [CompetencesController::class, 'store'])
+            ->middleware(['can:referentiel.manage', 'throttle:30,1,pc-cat'])->name('competences.store');
+        Route::post('competences/import', [CompetencesController::class, 'importer'])
+            ->middleware(['can:referentiel.import', 'throttle:10,1,pc-import'])->name('competences.import');
+        Route::get('competences/coherence', [CompetencesController::class, 'coherence'])
+            ->middleware('can:referentiel.view')->name('competences.coherence');
+        Route::post('competences/{id}/reviser', [CompetencesController::class, 'reviser'])
+            ->middleware(['can:referentiel.manage', 'throttle:30,1,pc-cat'])
+            ->whereNumber('id')->name('competences.reviser');
+        Route::post('competences/{id}/approuver', [CompetencesController::class, 'approuver'])
+            ->middleware(['can:maquettes.approve', 'throttle:30,1,pc-cat'])
+            ->whereNumber('id')->name('competences.approuver');
+        Route::post('competences/{id}/archiver', [CompetencesController::class, 'archiver'])
+            ->middleware(['can:referentiel.manage', 'throttle:30,1,pc-cat'])
+            ->whereNumber('id')->name('competences.archiver');
+        Route::post('competences/{id}/objectifs', [CompetencesController::class, 'associer'])
+            ->middleware(['can:referentiel.manage', 'throttle:60,1,pc-assoc'])
+            ->whereNumber('id')->name('competences.objectifs.associer');
+        Route::delete('competences/{id}/objectifs', [CompetencesController::class, 'dissocier'])
+            ->middleware(['can:referentiel.manage', 'throttle:60,1,pc-assoc'])
+            ->whereNumber('id')->name('competences.objectifs.dissocier');
+        Route::get('maquettes/{maquette}/couverture-competences', [CompetencesController::class, 'couverture'])
+            ->middleware('can:referentiel.view')->name('maquettes.couverture');
+        Route::post('maquettes/{maquette}/couverture-competences/figer', [CompetencesController::class, 'figerCouverture'])
+            ->middleware(['can:referentiel.export', 'throttle:10,1,pc-snap'])->name('maquettes.couverture.figer');
 
         // CRUD générique des entités (neuf référentiels).
         Route::get('{entite}', [ReferentielController::class, 'index'])

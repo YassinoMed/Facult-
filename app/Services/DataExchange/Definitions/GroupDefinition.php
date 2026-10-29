@@ -143,16 +143,16 @@ class GroupDefinition implements ExportDefinitionInterface, ImportDefinitionInte
             return null;
         }
 
-        $query = Niveau::where('code', mb_strtoupper(trim((string) $ligne['niveau_ref'])));
-
-        if ($programmeId !== null) {
-            $query->where('programme_id', $programmeId);
-        }
-
-        $niveau = $query->first();
+        $niveau = $programmeId !== null
+            ? Niveau::resoudreDansProgramme($ligne['niveau_ref'], $programmeId)
+            : Niveau::resoudreCodeUnique($ligne['niveau_ref']);
 
         if ($niveau === null) {
-            throw IoException::malforme("Niveau « {$ligne['niveau_ref']} » introuvable (ligne {$ligne['ligne']}).");
+            throw IoException::malforme(
+                $programmeId !== null
+                    ? "Niveau « {$ligne['niveau_ref']} » introuvable pour ce programme (ligne {$ligne['ligne']})."
+                    : "Niveau « {$ligne['niveau_ref']} » ambigu : programme requis (ligne {$ligne['ligne']})."
+            );
         }
 
         return $niveau->id;

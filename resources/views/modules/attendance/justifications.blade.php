@@ -23,6 +23,10 @@
                                 <td class="px-4 py-2"><x-status-badge :statut="$justification->statut" /></td>
                                 <td class="px-4 py-2 text-right">
                                     @can('attendance.justify')
+                                        @if($justification->piece_chemin)
+                                            <a href="{{ route('admin.justifications.piece', $justification) }}"
+                                               class="mr-3 text-xs font-bold text-indigo-700 underline underline-offset-2">Pièce</a>
+                                        @endif
                                         @if($justification->statut === 'pending')
                                             <form method="post" action="{{ route('admin.justifications.valider', $justification) }}" class="inline">
                                                 @csrf

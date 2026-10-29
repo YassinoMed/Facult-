@@ -25,7 +25,14 @@
                                 <strong class="tabular-nums text-slate-900">{{ $presence->date->format('d/m/Y') }}</strong>
                                 @if($presence->seance) · {{ $presence->seance }} @endif
                             </span>
-                            <x-status-badge statut="{{ $presence->statut }}" />
+                            <span class="flex items-center gap-3">
+                                @if($presence->derniereJustification?->statut === 'approved' && $presence->derniereJustification->piece_chemin)
+                                    <a href="{{ route('etudiant.absences.justificatif', $presence->derniereJustification) }}"
+                                       class="text-xs font-bold text-indigo-700 underline underline-offset-2"
+                                       aria-label="Télécharger le justificatif d'absence">Justificatif</a>
+                                @endif
+                                <x-status-badge statut="{{ $presence->statut }}" />
+                            </span>
                         </li>
                     @endforeach
                 </ul>

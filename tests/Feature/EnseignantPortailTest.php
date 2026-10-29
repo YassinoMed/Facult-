@@ -198,6 +198,9 @@ class EnseignantPortailTest extends TestCase
         $response = $this->withSession(['enseignant_auth_id' => $this->enseignantA->id])
             ->patch(route('enseignant.profil.update'), [
                 'email' => 'sami.nouveau@univ.test',
+                // L'email est un identifiant de connexion : le changer exige
+                // le mot de passe actuel (LOOP-SECURITY-REMEDIATION-01).
+                'current_password' => 'Secret@123',
                 'telephone' => '0699887766',
                 'bureau' => 'B301',
                 // Tentative d'injection de champs administratifs

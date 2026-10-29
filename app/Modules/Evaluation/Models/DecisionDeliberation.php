@@ -4,6 +4,7 @@ namespace App\Modules\Evaluation\Models;
 
 use App\Models\Etudiant;
 use App\Models\InscriptionAcademique;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
@@ -26,6 +27,37 @@ class DecisionDeliberation extends Model
     protected function casts(): array
     {
         return ['moyenne' => 'decimal:2', 'publie' => 'boolean'];
+    }
+
+    /**
+     * Publication officielle : une décision non publiée n'est jamais
+     * un résultat communicable à l'étudiant (Phase 14 §14.7).
+     */
+    public function scopePubliee(Builder $query): Builder
+    {
+        return $query->where('publie', true);
+    }
+
+    /**
+     * Inscriptions dont les résultats sont publiés pour un étudiant.
+     *
+     * Source unique de la règle « visible par l'étudiant » : évite que
+     * le tableau de bord, les inscriptions, l'archive et l'API
+     * divergent sur la notion de publication.
+     *
+     * @return array<int, int>
+     */
+    public static function inscriptionsPublieesPour(int $etudiantId): array
+    {
+        return static::query()
+            ->publiee()
+            ->where('etudiant_id', $etudiantId)
+            ->whereNotNull('inscription_academique_id')
+            ->pluck('inscription_academique_id')
+            ->map(fn ($id) => (int) $id)
+            ->unique()
+            ->values()
+            ->all();
     }
 
     public function deliberation(): BelongsTo

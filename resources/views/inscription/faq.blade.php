@@ -6,15 +6,15 @@
 @section('content')
 <div class="mx-auto max-w-4xl px-4 py-10 sm:px-6 lg:px-8">
 
-    <header class="text-center">
-        <p class="text-xs font-bold uppercase tracking-[0.25em] text-primary-700">Inscriptions universitaires</p>
-        <h1 class="mt-2 text-3xl font-black tracking-tight text-slate-900 sm:text-4xl">Assistant & Questions fréquentes</h1>
-        <p class="mx-auto mt-3 max-w-2xl text-sm leading-relaxed text-slate-600">
+    <header class="text-center" data-motion-hero>
+        <p class="text-xs font-bold uppercase tracking-[0.25em] text-primary-700" data-motion-hero-item>Inscriptions universitaires</p>
+        <h1 class="mt-2 text-3xl font-black tracking-tight text-slate-900 sm:text-4xl" data-motion-hero-item>Assistant & Questions fréquentes</h1>
+        <p class="mx-auto mt-3 max-w-2xl text-sm leading-relaxed text-slate-600" data-motion-hero-item>
             Réponses officielles établies à partir des règles et procédures réelles du parcours d'inscription.
             Chaque réponse cite sa page de référence officielle sans inventer de règles.
         </p>
-        <div class="mt-5 flex flex-wrap justify-center gap-3">
-            <a href="{{ route('inscription.create') }}"
+        <div class="mt-5 flex flex-wrap justify-center gap-3" data-motion-hero-item>
+            <a href="{{ route('inscription.create') }}" data-magnetic="0.1"
                class="inline-flex items-center gap-2 rounded-xl bg-primary-800 px-5 py-2.5 text-sm font-bold text-white shadow-sm hover:bg-primary-700 transition">
                 S'inscrire
             </a>
@@ -27,7 +27,7 @@
 
     {{-- Assistant interactif fondé sur les sources officielles (LOOP 15) --}}
     <section class="mt-8 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8"
-             aria-labelledby="titre-assistant"
+             aria-labelledby="titre-assistant" data-reveal="fade-up"
              x-data="assistantFaq({
                  initialQuestion: '{{ addslashes($questionRecherchee ?? '') }}',
                  initialResultat: {{ json_encode($reponseAssistant ?? null) }},
@@ -278,7 +278,7 @@
         @foreach($categories as $categorie => $entreesGroupees)
             <a href="#{{ \Illuminate\Support\Str::slug($categorie) }}"
                class="rounded-full border border-slate-200 bg-white px-4 py-1.5 text-xs font-bold text-slate-700 hover:border-primary-500 hover:text-primary-800 transition">
-                {{ $categorie }} <span class="ml-1 text-slate-400">({{ $entreesGroupees->count() }})</span>
+                {{ $categorie }} <span class="ml-1 text-slate-500">({{ $entreesGroupees->count() }})</span>
             </a>
         @endforeach
     </nav>
@@ -286,7 +286,7 @@
     @foreach($categories as $categorie => $entreesGroupees)
         <section id="{{ \Illuminate\Support\Str::slug($categorie) }}"
                  aria-labelledby="titre-{{ \Illuminate\Support\Str::slug($categorie) }}"
-                 class="mt-10 scroll-mt-24">
+                 class="mt-10 scroll-mt-24" data-reveal="fade-up">
             <h2 id="titre-{{ \Illuminate\Support\Str::slug($categorie) }}"
                 class="text-lg font-black uppercase tracking-wider text-slate-900">{{ $categorie }}</h2>
 
@@ -314,7 +314,7 @@
         </section>
     @endforeach
 
-    <section id="autres-questions" aria-labelledby="titre-autres" class="mt-12 scroll-mt-24 rounded-2xl border-2 border-dashed border-primary-300 bg-primary-50/60 p-6 text-center">
+    <section id="autres-questions" aria-labelledby="titre-autres" data-reveal="fade-up" class="mt-12 scroll-mt-24 rounded-2xl border-2 border-dashed border-primary-300 bg-primary-50/60 p-6 text-center">
         <h2 id="titre-autres" class="text-lg font-black text-primary-900">Votre question n'est pas traitée ici ?</h2>
         <p class="mx-auto mt-2 max-w-xl text-sm leading-relaxed text-primary-900/80">
             Les situations personnelles (dossier en cours, pièce précise, décision) ne peuvent être traitées

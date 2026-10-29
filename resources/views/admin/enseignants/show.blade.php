@@ -47,7 +47,7 @@
             @endif
         </section>
         <section aria-label="Enseignements de l'enseignant" class="mt-4 ds-card p-5">
-            <h2 class="text-base font-black text-slate-900">Enseignements ({{ $enseignant->affectationsEnseignement->where('statut', 'active')->count() }})</h2>
+            <h2 class="text-base font-black text-slate-900">Enseignements ({{ $enseignements->count() }})</h2>
             @if($enseignements->isNotEmpty())
                 <ul class="mt-3 space-y-1.5 text-sm">
                     @foreach($enseignements as $ens)

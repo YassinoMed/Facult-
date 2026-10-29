@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\HistoriqueAcademique;
 use App\Modules\Schedule\Models\Teacher;
+use App\Services\Io\CsvSerializer;
 use App\Support\Recherche;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
@@ -94,19 +95,20 @@ class AuditController extends Controller
         }
 
         return response()->streamDownload(function () use ($query) {
+            $csv = app(CsvSerializer::class);
             $sortie = fopen('php://output', 'w');
             fwrite($sortie, "\xEF\xBB\xBF");
-            fputcsv($sortie, ['date', 'action', 'entite', 'entite_id', 'etudiant', 'utilisateur'], ';');
+            fputcsv($sortie, $csv->neutraliserLigne(['date', 'action', 'entite', 'entite_id', 'etudiant', 'utilisateur']), ';');
 
             foreach ($query->cursor() as $entree) {
-                fputcsv($sortie, [
+                fputcsv($sortie, $csv->neutraliserLigne([
                     $entree->created_at?->format('Y-m-d H:i:s'),
                     $entree->action,
                     $entree->entite,
                     $entree->entite_id,
                     $entree->etudiant?->nom_complet,
                     $entree->utilisateur?->name,
-                ], ';');
+                ]), ';');
             }
 
             fclose($sortie);

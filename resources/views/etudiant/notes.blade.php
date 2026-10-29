@@ -33,31 +33,46 @@
                     </p>
                     <span class="text-xs text-slate-500">{{ $semestre->notes->count() }} matière(s)</span>
                 </div>
-                <table class="w-full text-sm">
-                    <thead>
-                        <tr class="border-b border-slate-100 text-left text-xs uppercase tracking-wider text-slate-400">
-                            <th class="px-6 py-2.5">Matière</th>
-                            <th class="px-4 py-2.5">Note</th>
-                            <th class="px-4 py-2.5">Session</th>
-                            <th class="px-4 py-2.5 text-right">Crédits</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        @foreach($semestre->notes as $note)
-                            <tr class="border-b border-slate-50 last:border-0">
-                                <td class="px-6 py-2.5 font-semibold text-slate-800">
-                                    {{ $note->matiere?->nom ?? '—' }}
-                                    <span class="ml-1 font-mono text-xs text-slate-400">{{ $note->matiere?->code }}</span>
-                                </td>
-                                <td class="px-4 py-2.5 font-black {{ ($note->note_finale ?? 0) >= 10 ? 'text-emerald-600' : 'text-rose-600' }}">
-                                    {{ $note->note_finale ?? '—' }}/20
-                                </td>
-                                <td class="px-4 py-2.5 text-slate-500 text-xs">{{ $note->session ?? '—' }}</td>
-                                <td class="px-4 py-2.5 text-right text-slate-600">{{ $note->matiere?->credits ?? '—' }}</td>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-sm min-w-[540px]">
+                        <thead>
+                            <tr class="border-b border-slate-100 text-left text-xs uppercase tracking-wider text-slate-700 font-bold">
+                                <th scope="col" class="px-6 py-2.5">Matière</th>
+                                <th scope="col" class="px-4 py-2.5">Note</th>
+                                <th scope="col" class="px-4 py-2.5">Coeff.</th>
+                                <th scope="col" class="px-4 py-2.5">Session</th>
+                                <th scope="col" class="px-4 py-2.5 text-right">Crédits</th>
                             </tr>
-                        @endforeach
-                    </tbody>
-                </table>
+                        </thead>
+                        <tbody>
+                            @foreach($semestre->notes as $note)
+                                @php
+                                    $valeurNote = $note->note !== null ? (float) $note->note : null;
+                                @endphp
+                                <tr class="border-b border-slate-50 last:border-0 hover:bg-slate-50/50 transition-colors">
+                                    <td class="px-6 py-2.5 font-semibold text-slate-800">
+                                        {{ $note->matiere?->nom ?? '—' }}
+                                        <span class="ml-1 font-mono text-xs text-slate-500 font-medium">{{ $note->matiere?->code }}</span>
+                                    </td>
+                                    <td class="px-4 py-2.5 font-black {{ $valeurNote !== null ? ($valeurNote >= 10 ? 'text-emerald-600' : 'text-rose-600') : 'text-slate-500' }}">
+                                        {{ $valeurNote !== null ? number_format($valeurNote, 2) : '—' }}/20
+                                    </td>
+                                    <td class="px-4 py-2.5 text-xs text-slate-500 font-mono">
+                                        {{ $note->coefficient !== null ? number_format((float) $note->coefficient, 1) : ($note->matiere?->coefficient ?? '—') }}
+                                    </td>
+                                    <td class="px-4 py-2.5 text-slate-500 text-xs">
+                                        <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium {{ $note->session === 'rattrapage' ? 'bg-amber-100 text-amber-800' : 'bg-slate-100 text-slate-700' }}">
+                                            {{ ucfirst($note->session ?? 'Normale') }}
+                                        </span>
+                                    </td>
+                                    <td class="px-4 py-2.5 text-right text-slate-600 font-medium">
+                                        {{ $note->credits ?? $note->matiere?->credits ?? '—' }}
+                                    </td>
+                                </tr>
+                            @endforeach
+                        </tbody>
+                    </table>
+                </div>
             </div>
         @endforeach
     @endforeach

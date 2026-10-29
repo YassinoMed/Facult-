@@ -2,7 +2,9 @@
 
 namespace Tests\Feature;
 
+use App\Jobs\ExecuterAffectationMasseLot;
 use App\Models\AffectationGroupe;
+use App\Models\AffectationMasseLot;
 use App\Models\AnneeUniversitaire;
 use App\Models\AppNotification;
 use App\Models\Etudiant;
@@ -17,6 +19,7 @@ use App\Services\AffectationService;
 use App\Services\DataExchange\Definitions\AffectationGroupeDefinition;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Queue;
 use Symfony\Component\HttpKernel\Exception\HttpException;
 use Tests\TestCase;
 
@@ -287,6 +290,27 @@ class AffectationMoteurTest extends TestCase
         $this->assertStringContainsString('(ré)inscrire', $contenu);
     }
 
+    public function test_simuler_auto_annonce_la_bascule_arriere_plan_au_dela_du_seuil(): void
+    {
+        // LOOP GROS VOLUMES : au-delà du seuil, la simulation prévient
+        // que l'application passera par le lot en arrière-plan.
+        config(['affectations.lots.seuil_sync' => 2]);
+
+        $ids = [];
+
+        for ($i = 1; $i <= 3; $i++) {
+            $ids[] = $this->creerEtudiant('HNT'.str_pad((string) $i, 5, '0', STR_PAD_LEFT))->id;
+        }
+
+        $contenu = (string) $this->actingAs($this->admin)->post(route('admin.affectations.auto.simuler'), [
+            'groupe_ids' => [$this->groupe->id],
+            'annee_universitaire_id' => $this->annee->id,
+            'etudiant_ids_text' => implode("\n", $ids),
+        ])->assertOk()->getContent();
+
+        $this->assertStringContainsString('exécution passera en arrière-plan', $contenu);
+    }
+
     public function test_idor_inter_facultes(): void
     {
         $etudiant = $this->creerEtudiant();
@@ -468,5 +492,70 @@ class AffectationMoteurTest extends TestCase
 
         $this->assertStringContainsString('Tranche appliquée', $contenu);
         $this->assertSame(500, AffectationGroupe::where('groupe_id', $this->groupe->id)->where('statut', 'active')->count());
+    }
+
+    public function test_appliquer_volume_au_dela_du_seuil_bascule_en_lot(): void
+    {
+        // LOOP GROS VOLUMES : 4 ids > seuil (3) → lot + Job dispatché,
+        // aucune écriture directe dans la requête HTTP.
+        config(['affectations.lots.seuil_sync' => 3]);
+        Queue::fake();
+
+        $ids = [];
+
+        for ($i = 1; $i <= 4; $i++) {
+            $ids[] = $this->creerEtudiant('GRV'.str_pad((string) $i, 5, '0', STR_PAD_LEFT))->id;
+        }
+
+        $reponse = $this->actingAs($this->admin)->post(route('admin.affectations.auto.appliquer'), [
+            'annee_universitaire_id' => $this->annee->id,
+            'repartition_json' => json_encode([$this->groupe->id => $ids]),
+            'motif' => 'Rentrée',
+            'confirmer' => '1',
+        ]);
+
+        $lot = AffectationMasseLot::firstOrFail();
+
+        $reponse->assertRedirect(route('admin.affectations.masse.lots.show', $lot))
+            ->assertSessionHas('info');
+
+        $this->assertSame('en_attente', $lot->statut);
+        $this->assertSame(4, $lot->total);
+        $this->assertSame($ids, array_column($lot->selections, 'student_id'));
+        $this->assertSame(0, AffectationGroupe::count());
+        Queue::assertPushed(ExecuterAffectationMasseLot::class, fn ($job) => $job->lotId === $lot->id);
+
+        // Exécution différée : le Job existant va au bout du lot.
+        app()->call([new ExecuterAffectationMasseLot($lot->id), 'handle']);
+
+        $this->assertSame('termine', $lot->fresh()->statut);
+        $this->assertSame(4, AffectationGroupe::where('groupe_id', $this->groupe->id)->where('statut', 'active')->count());
+    }
+
+    public function test_appliquer_bascule_lot_re_cloisonne_le_perimetre(): void
+    {
+        config(['affectations.lots.seuil_sync' => 1]);
+        Queue::fake();
+
+        $autreFaculte = Faculte::create(['nom' => 'FB', 'code' => 'FB', 'description' => 'T', 'active' => true]);
+        $adminFaculte = User::creerCompteBackOffice([
+            'name' => 'Fac', 'email' => 'fac.gros@universite.test', 'password' => 'Motdepasse@123',
+            'faculte_id' => $this->faculte->id,
+        ], 'admin_faculte');
+
+        $dedans = $this->creerEtudiant('PER00001');
+        $dehors = $this->creerEtudiant('PER00002');
+        $dehors->update(['faculte_id' => $autreFaculte->id]);
+
+        $this->actingAs($adminFaculte)->post(route('admin.affectations.auto.appliquer'), [
+            'annee_universitaire_id' => $this->annee->id,
+            'repartition_json' => json_encode([$this->groupe->id => [$dedans->id, $dehors->id]]),
+            'motif' => 'Rentrée',
+            'confirmer' => '1',
+        ])->assertRedirect();
+
+        $lot = AffectationMasseLot::firstOrFail();
+
+        $this->assertSame([$dedans->id], array_column($lot->selections, 'student_id'));
     }
 }

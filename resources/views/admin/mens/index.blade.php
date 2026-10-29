@@ -4,9 +4,10 @@
 
 @section('content')
     <div class="mx-auto max-w-7xl px-4 sm:px-6 py-8" x-data="{ modaleDossier: false, mensCourant: null }" @mens-creer-dossier.window="mensCourant = $event.detail; modaleDossier = true">
-        <x-page-header titre="Référentiel MENS" description="Données nationales importées pour les inscriptions de la faculté (lecture seule — import via le centre Données)."
+        <x-page-header titre="Référentiel MENS" description="Données nationales pour les inscriptions de la faculté — ajout, consultation, correction et suppression directes ; import de masse via le centre Données."
             :fil="['Données' => route('admin.donnees.hub'), 'MENS' => '#']">
             <x-slot:actions>
+                <x-btn href="{{ route('admin.mens.create') }}">Ajouter une référence</x-btn>
                 <x-btn href="{{ route('admin.donnees.import.form', 'referentiel-mens') }}" variant="secondary">Importer un fichier</x-btn>
                 <x-btn href="{{ route('admin.donnees.modele', ['referentiel-mens', 'csv']) }}" variant="ghost">Modèle CSV</x-btn>
             </x-slot:actions>
@@ -32,7 +33,7 @@
             @if($references->isNotEmpty())
                 <table class="w-full min-w-[840px] text-left text-xs sm:text-sm">
                     <thead>
-                        <tr class="border-b border-slate-100 text-[11px] uppercase tracking-wider text-slate-400">
+                        <tr class="border-b border-slate-100 text-[11px] uppercase tracking-wider text-slate-700 font-bold">
                             <th scope="col" class="px-4 py-3 font-bold">CIN</th>
                             <th scope="col" class="px-4 py-3 font-bold">Nom</th>
                             <th scope="col" class="px-4 py-3 font-bold">Prénom</th>
@@ -62,9 +63,12 @@
                                     @endif
                                 </td>
                                 <td class="px-4 py-3">
-                                    @if((int) ($reference->appariement_local ?? 0) !== 1)
-                                        <button type="button" @click="$dispatch('mens-creer-dossier', {{ Js::from(['id' => $reference->id, 'nom' => $reference->nom, 'prenom' => $reference->prenom, 'sexe' => $reference->sexe, 'niveau' => $reference->niveau, 'programme' => $reference->programme_code, 'annee' => $reference->annee]) }})" class="rounded-lg bg-primary-50 px-2.5 py-1 text-[11px] font-bold text-primary-700 hover:bg-primary-100">Créer le dossier</button>
-                                    @endif
+                                    <div class="flex items-center justify-end gap-2">
+                                        <a href="{{ route('admin.mens.show', $reference) }}" class="rounded-lg border border-slate-200 px-2.5 py-1 text-[11px] font-bold text-slate-700 hover:bg-slate-50">Détails</a>
+                                        @if((int) ($reference->appariement_local ?? 0) !== 1)
+                                            <button type="button" @click="$dispatch('mens-creer-dossier', {{ Js::from(['id' => $reference->id, 'nom' => $reference->nom, 'prenom' => $reference->prenom, 'sexe' => $reference->sexe, 'niveau' => $reference->niveau, 'programme' => $reference->programme_code, 'annee' => $reference->annee]) }})" class="rounded-lg bg-primary-50 px-2.5 py-1 text-[11px] font-bold text-primary-700 hover:bg-primary-100">Créer le dossier</button>
+                                        @endif
+                                    </div>
                                 </td>
                             </tr>
                         @endforeach
@@ -72,7 +76,7 @@
                 </table>
                 <div class="px-5 py-3 border-t border-slate-100">{{ $references->links() }}</div>
             @else
-                <div class="p-5"><x-empty-state message="Aucune référence MENS. Importez le fichier officiel depuis le centre Données." /></div>
+                <div class="p-5"><x-empty-state message="Aucune référence MENS. Importez le fichier officiel depuis le centre Données ou ajoutez une référence manuellement." /></div>
             @endif
         </div>
 

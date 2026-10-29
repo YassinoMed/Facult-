@@ -43,9 +43,86 @@
             <x-stat-card libelle="Refusés" :valeur="$dossier->documents->where('status', 'rejected')->count()" detail="À corriger" couleur="rose" />
         </div>
 
-        {{-- Checklist documentaire officielle (LOOP 4) : rendue uniquement
-             quand la matrice impose des pièces (vide = rien imposé). --}}
-        @if(($checklist['requis'] ?? 0) > 0)
+        {{-- LOOP-UNIREGISTRE-DOCUMENTS-REUTILISABLES-01 : état de l'inscription
+             annuelle ouverte. Les pièces validées du dossier permanent sont
+             réutilisées ; seules les pièces réellement manquantes, refusées,
+             expirées ou non conformes sont demandées. --}}
+        @if(($reutilisation ?? null) !== null)
+            @php
+                $anneeLibelle = $inscriptionCourante?->anneeUniversitaire?->libelle ?? 'année en cours';
+                $piecesValides = collect($reutilisation['pieces'])->filter(
+                    fn ($piece) => in_array($piece['decision'], ['reutilise', 'associe'], true)
+                );
+                $piecesEnAttente = collect($reutilisation['pieces'])->filter(
+                    fn ($piece) => $piece['obligatoire'] === true
+                        && $piece['decision'] === 'en_attente'
+                );
+                $piecesACompleter = collect($reutilisation['pieces'])->filter(
+                    fn ($piece) => $piece['obligatoire'] === true
+                        && in_array($piece['decision'], ['manquant', 'rejete', 'expire', 'non_conforme'], true)
+                );
+            @endphp
+            <section aria-label="Pièces de l'inscription {{ $anneeLibelle }}" class="mt-6 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                <div class="flex flex-wrap items-center justify-between gap-2">
+                    <h2 class="text-base font-black uppercase tracking-wider text-slate-900">Inscription {{ $anneeLibelle }} — pièces</h2>
+                    <span class="text-xs font-bold {{ $reutilisation['complet'] ? 'text-emerald-700' : 'text-amber-700' }}">
+                        {{ $reutilisation['complet'] ? '✓ Aucune pièce à fournir' : $reutilisation['progression'] }}
+                    </span>
+                </div>
+                <p class="mt-1 text-xs text-slate-500">
+                    Les pièces validées de votre dossier permanent sont réutilisées automatiquement : aucun nouvel envoi n’est nécessaire.
+                    Seules les pièces ci-dessous sont demandées.
+                </p>
+
+                @if($piecesValides->isNotEmpty())
+                    <h3 class="mt-3 text-[11px] font-bold uppercase tracking-wider text-slate-400">Réutilisées / déjà validées</h3>
+                    <ul class="mt-1.5 space-y-1.5 text-sm">
+                        @foreach($piecesValides as $piece)
+                            <li class="flex flex-wrap items-center gap-2 rounded-lg bg-emerald-50 px-3 py-1.5 text-emerald-800">
+                                <span class="h-1.5 w-1.5 rounded-full bg-emerald-600" aria-hidden="true"></span>
+                                <span class="font-bold">{{ $piece['libelle'] }}</span>
+                                <span class="text-xs">{{ $piece['decision_libelle'] }}</span>
+                            </li>
+                        @endforeach
+                    </ul>
+                @endif
+
+                @if($piecesEnAttente->isNotEmpty())
+                    <h3 class="mt-3 text-[11px] font-bold uppercase tracking-wider text-slate-400">En attente de contrôle</h3>
+                    <ul class="mt-1.5 space-y-1.5 text-sm">
+                        @foreach($piecesEnAttente as $piece)
+                            <li class="rounded-lg bg-amber-50 px-3 py-1.5 text-amber-800">
+                                <div class="flex flex-wrap items-center gap-2">
+                                    <span class="h-1.5 w-1.5 rounded-full bg-current" aria-hidden="true"></span>
+                                    <span class="font-bold">{{ $piece['libelle'] }}</span>
+                                    <span class="text-xs font-semibold">{{ $piece['decision_libelle'] }}</span>
+                                </div>
+                            </li>
+                        @endforeach
+                    </ul>
+                    <p class="mt-2 text-xs text-slate-500">Aucun nouvel envoi n’est nécessaire : la scolarité doit contrôler la pièce déjà transmise.</p>
+                @endif
+
+                @if($piecesACompleter->isNotEmpty())
+                    <h3 class="mt-3 text-[11px] font-bold uppercase tracking-wider text-slate-400">À fournir ou à renouveler</h3>
+                    <ul class="mt-1.5 space-y-1.5 text-sm">
+                        @foreach($piecesACompleter as $piece)
+                            <li class="rounded-lg bg-rose-50 px-3 py-1.5 text-rose-800">
+                                <div class="flex flex-wrap items-center gap-2">
+                                    <span class="h-1.5 w-1.5 rounded-full bg-current" aria-hidden="true"></span>
+                                    <span class="font-bold">{{ $piece['libelle'] }}</span>
+                                    <span class="text-xs font-semibold">{{ $piece['decision_libelle'] }}</span>
+                                </div>
+                                @if($piece['motif'])
+                                    <p class="mt-0.5 text-[11px]">{{ $piece['motif'] }}</p>
+                                @endif
+                            </li>
+                        @endforeach
+                    </ul>
+                    <p class="mt-2 text-xs text-slate-500">Transmettez uniquement la pièce concernée via le formulaire ci-dessous ; les autres restent réutilisées.</p>
+                @endif
+            </section>
+        @elseif(($checklist['requis'] ?? 0) > 0)
             <section aria-label="Pièces obligatoires" class="mt-6 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
                 <div class="flex flex-wrap items-center justify-between gap-2">
                     <h2 class="text-base font-black uppercase tracking-wider text-slate-900">Pièces obligatoires</h2>

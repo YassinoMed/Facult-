@@ -12,11 +12,16 @@ use App\Models\AppNotification;
 use App\Models\Etudiant;
 use App\Models\Faculte;
 use App\Models\RegistrationPeriod;
+use App\Notifications\ConfirmationDepotInscription;
+use App\Notifications\DecisionDossierInscription;
 use App\Services\CanalNotificationExterneSimule;
 use App\Services\NotificationService;
 use App\Services\StudentStatusService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Notifications\ChannelManager;
+use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Queue;
+use Mockery;
 use RuntimeException;
 use Tests\TestCase;
 
@@ -110,6 +115,38 @@ class InscriptionNotificationsEcheancesTest extends TestCase
             ->where('type', 'dossier.depot')->count());
     }
 
+    public function test_depot_recu_envoie_email_reference_sans_pii_et_sans_double_sur_rejeu(): void
+    {
+        Notification::fake();
+
+        $etudiant = $this->creerEtudiant('CIN-DEPOT2');
+
+        StudentRegistered::dispatch($etudiant);
+
+        Notification::assertSentToTimes($etudiant, ConfirmationDepotInscription::class, 1);
+
+        $notification = Notification::sent($etudiant, ConfirmationDepotInscription::class)->first();
+        $this->assertSame($etudiant->num_inscription, $notification->reference);
+
+        $message = $notification->toMail($etudiant->fresh());
+        $this->assertSame('Votre dossier d\'inscription a bien été reçu', $message->subject);
+
+        $contenu = implode("\n", array_merge($message->introLines, $message->outroLines ?? []));
+        $this->assertStringContainsString($etudiant->num_inscription, $contenu);
+        $this->assertStringContainsString('scolarité', $contenu);
+
+        // Zéro PII : ni CIN, ni mot de passe, ni date de naissance.
+        $this->assertStringNotContainsString('CIN-DEPOT2', $contenu);
+        $this->assertStringNotContainsString('Secret@123', $contenu);
+        $this->assertStringNotContainsString('2004-02-10', $contenu);
+
+        // Rejeu de l'événement → aucune seconde émission (même clé de
+        // déduplication que la notification in-app).
+        StudentRegistered::dispatch($etudiant->fresh());
+
+        Notification::assertSentToTimes($etudiant, ConfirmationDepotInscription::class, 1);
+    }
+
     // ── 2. Décision prise (validé ou rejeté) ───────────────────────────────────
 
     public function test_decision_validation_notifie_etudiant_avec_lien_suivi(): void
@@ -152,6 +189,75 @@ class InscriptionNotificationsEcheancesTest extends TestCase
         // Message sobre orientant vers l'espace sécurisé
         $this->assertStringContainsString('espace sécurisé', $notif->message);
         $this->assertSame(route('etudiant.suivi'), $notif->lien);
+    }
+
+    public function test_decision_validee_envoie_email_et_rejeu_sans_double_emission(): void
+    {
+        Notification::fake();
+
+        $etudiant = $this->creerEtudiant('CIN-DEC-VAL2');
+        app(StudentStatusService::class)->changer($etudiant, 'valide', null, 'Dossier complet et admis');
+
+        Notification::assertSentToTimes($etudiant, DecisionDossierInscription::class, 1);
+
+        $notification = Notification::sent($etudiant, DecisionDossierInscription::class)->first();
+        $this->assertSame('valide', $notification->statut);
+        $this->assertSame($etudiant->num_inscription, $notification->reference);
+
+        $message = $notification->toMail($etudiant->fresh());
+        $this->assertSame('Votre inscription universitaire est validée', $message->subject);
+
+        $contenu = implode("\n", array_merge($message->introLines, $message->outroLines ?? []));
+        $this->assertStringContainsString($etudiant->num_inscription, $contenu);
+        $this->assertStringContainsString('approuvé', $contenu);
+        $this->assertStringContainsString('scolarité', $contenu);
+        $this->assertStringNotContainsString('CIN-DEC-VAL2', $contenu);
+        $this->assertStringNotContainsString('Secret@123', $contenu);
+
+        // Rejeu de la même décision → pas de second email (clé de dédup).
+        DossierDecisionPrise::dispatch($etudiant->fresh(), 'valide', 'Dossier complet et admis', null);
+
+        Notification::assertSentToTimes($etudiant, DecisionDossierInscription::class, 1);
+    }
+
+    public function test_decision_rejet_email_sobre_avec_motif_sans_pii(): void
+    {
+        Notification::fake();
+
+        $etudiant = $this->creerEtudiant('CIN-DEC-REJ2');
+        app(StudentStatusService::class)->changer($etudiant, 'rejete', null, 'Capacité d’accueil atteinte');
+
+        $notification = Notification::sent($etudiant, DecisionDossierInscription::class)->first();
+        $this->assertNotNull($notification);
+        $this->assertSame('rejete', $notification->statut);
+
+        $message = $notification->toMail($etudiant->fresh());
+        $this->assertSame('Décision concernant votre dossier d\'inscription', $message->subject);
+
+        $contenu = implode("\n", array_merge($message->introLines, $message->outroLines ?? []));
+        $this->assertStringContainsString('Motif communiqué', $contenu);
+        $this->assertStringContainsString('Capacité d’accueil atteinte', $contenu);
+        $this->assertStringContainsString('scolarité', $contenu);
+        $this->assertStringNotContainsString('CIN-DEC-REJ2', $contenu);
+        $this->assertStringNotContainsString('Secret@123', $contenu);
+    }
+
+    public function test_panne_transport_email_decision_fail_soft_et_decision_conservee(): void
+    {
+        // Panne du transport de notifications : l'email de décision échoue.
+        $this->mock(ChannelManager::class, function (Mockery\MockInterface $mock): void {
+            $mock->shouldReceive('send')->andThrow(new RuntimeException('SMTP indisponible'));
+        });
+
+        $etudiant = $this->creerEtudiant('CIN-DEC-PANNE');
+        app(StudentStatusService::class)->changer($etudiant, 'valide', null, 'Admis');
+
+        // La décision est commise malgré l'échec d'envoi de l'email.
+        $this->assertSame('valide', $etudiant->fresh()->statut);
+
+        // La notification in-app (canal indépendant) reste créée.
+        $this->assertSame(1, AppNotification::where('etudiant_id', $etudiant->id)
+            ->where('type', 'dossier.decision')->count());
     }
 
     // ── 3. Notification d'ouverture de période d'inscription ───────────────────

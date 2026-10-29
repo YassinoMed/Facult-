@@ -1,15 +1,25 @@
 <?php
 
 use App\Modules\Evaluation\Controllers\AffectationEnseignantController;
+use App\Modules\Evaluation\Controllers\AnomalieController;
 use App\Modules\Evaluation\Controllers\ContrainteSurveillanceController;
 use App\Modules\Evaluation\Controllers\DeliberationController;
+use App\Modules\Evaluation\Controllers\DocumentBatchController;
 use App\Modules\Evaluation\Controllers\EmploiSurveillanceController;
 use App\Modules\Evaluation\Controllers\EpreuveController;
+use App\Modules\Evaluation\Controllers\ExamDecisionCapaciteController;
+use App\Modules\Evaluation\Controllers\ExamDocumentsProfessionnelsController;
+use App\Modules\Evaluation\Controllers\ExamenAdvancedMenuController;
 use App\Modules\Evaluation\Controllers\ExamenController;
+use App\Modules\Evaluation\Controllers\ExamGouvernanceController;
+use App\Modules\Evaluation\Controllers\ExamReconciliationController;
+use App\Modules\Evaluation\Controllers\GroupeVirtuelExamenController;
+use App\Modules\Evaluation\Controllers\HistoriqueNotesController;
 use App\Modules\Evaluation\Controllers\IncidentController;
 use App\Modules\Evaluation\Controllers\MesNotesController;
 use App\Modules\Evaluation\Controllers\MesSurveillancesController;
 use App\Modules\Evaluation\Controllers\NoteEpreuveController;
+use App\Modules\Evaluation\Controllers\PreparationExamenController;
 use App\Modules\Evaluation\Controllers\RegleEvaluationController;
 use App\Modules\Evaluation\Controllers\SessionExamenController;
 use App\Modules\Evaluation\Controllers\SurveillanceController;
@@ -28,6 +38,17 @@ Route::middleware(['auth', 'admin', 'secondaire.verrou', 'module:evaluation'])->
     Route::get('evaluations', [TableauBordEvaluationController::class, 'index'])
         ->middleware('can:evaluations.view')
         ->name('evaluations.index');
+
+    // Centre de contrôle des anomalies (LOOP-UNIREGISTRE-NOTES-EVALUATIONS-ADVANCED-02 — Lot 1)
+    Route::get('evaluations/anomalies', [AnomalieController::class, 'index'])
+        ->middleware('can:evaluations.view')
+        ->name('evaluations.anomalies.index');
+    Route::post('evaluations/anomalies/resoudre-groupee', [AnomalieController::class, 'resoudreGroupee'])
+        ->middleware(['can:notes_eval.validate', 'throttle:10,1'])
+        ->name('evaluations.anomalies.resoudre-groupee');
+    Route::get('evaluations/anomalies/export', [AnomalieController::class, 'exporter'])
+        ->middleware(['can:evaluations.view', 'throttle:10,1'])
+        ->name('evaluations.anomalies.export');
 
     Route::get('evaluations/types', [TypeEvaluationController::class, 'index'])
         ->middleware('can:evaluations.view')
@@ -100,6 +121,75 @@ Route::middleware(['auth', 'admin', 'secondaire.verrou', 'module:evaluation'])->
         ->middleware(['can:evaluations.update', 'throttle:20,1'])
         ->whereIn('cible', ['planned', 'scheduled', 'published', 'ongoing', 'completed', 'locked', 'cancelled', 'archived'])
         ->name('evaluations.examens.transiter');
+    Route::post('evaluations/examens/{examen}/planifier/scenarios', [ExamenController::class, 'genererScenarios'])
+        ->middleware(['can:evaluations.update', 'throttle:15,1'])
+        ->name('evaluations.examens.planifier.scenarios');
+    Route::post('evaluations/examens/{examen}/planifier/appliquer', [ExamenController::class, 'appliquerScenario'])
+        ->middleware(['can:evaluations.update', 'throttle:15,1'])
+        ->name('evaluations.examens.planifier.appliquer');
+    Route::get('evaluations/examens/{examen}/audit-conformite', [ExamenController::class, 'auditConformite'])
+        ->middleware(['can:evaluations.view', 'throttle:30,1'])
+        ->name('evaluations.examens.audit-conformite');
+
+    /*
+    |----------------------------------------------------------------------
+    | §2.7 / §2.8 — Circuit de gouvernance du planning (lot D)
+    |----------------------------------------------------------------------
+    | La publication officielle n'est atteignable qu'ici : soumission par
+    | le préparateur, certification par un tiers, puis DEUX approbations
+    | distinctes. Rejet motivé, escalade bloquante, arbitrage séparé.
+    */
+    Route::post('evaluations/examens/{examen}/gouvernance/soumettre', [ExamGouvernanceController::class, 'soumettre'])
+        ->middleware(['can:evaluations.update', 'throttle:20,1'])
+        ->name('evaluations.gouvernance.soumettre');
+    Route::post('evaluations/examens/{examen}/gouvernance/nouvelle-version', [ExamGouvernanceController::class, 'nouvelleVersion'])
+        ->middleware(['can:evaluations.publish', 'throttle:10,1'])
+        ->name('evaluations.gouvernance.nouvelle-version');
+    Route::post('evaluations/gouvernance/{validation}/certifier', [ExamGouvernanceController::class, 'certifier'])
+        ->middleware(['can:evaluations.certify', 'throttle:20,1'])
+        ->name('evaluations.gouvernance.certifier');
+    Route::post('evaluations/gouvernance/{validation}/approuver-1', [ExamGouvernanceController::class, 'approuverPremierNiveau'])
+        ->middleware(['can:evaluations.approve', 'throttle:20,1'])
+        ->name('evaluations.gouvernance.approuver-1');
+    Route::post('evaluations/gouvernance/{validation}/approuver-2', [ExamGouvernanceController::class, 'approuverSecondNiveau'])
+        ->middleware(['can:evaluations.approve', 'throttle:20,1'])
+        ->name('evaluations.gouvernance.approuver-2');
+    Route::post('evaluations/gouvernance/{validation}/refuser', [ExamGouvernanceController::class, 'refuser'])
+        ->middleware(['can:evaluations.approve', 'throttle:20,1'])
+        ->name('evaluations.gouvernance.refuser');
+    Route::post('evaluations/gouvernance/{validation}/escalader', [ExamGouvernanceController::class, 'escalader'])
+        ->middleware(['can:evaluations.approve', 'throttle:20,1'])
+        ->name('evaluations.gouvernance.escalader');
+    Route::post('evaluations/gouvernance/{validation}/resoudre', [ExamGouvernanceController::class, 'resoudre'])
+        ->middleware(['can:evaluations.publish', 'throttle:10,1'])
+        ->name('evaluations.gouvernance.resoudre');
+    Route::post('evaluations/gouvernance/{validation}/publier', [ExamGouvernanceController::class, 'publier'])
+        ->middleware(['can:evaluations.publish', 'throttle:10,1'])
+        ->name('evaluations.gouvernance.publier');
+
+    /*
+    |----------------------------------------------------------------------
+    | §2.15 — Réconciliation tri-sources : dossier d'écart persistant
+    |----------------------------------------------------------------------
+    | L'analyse papier → serveur crée un dossier par divergence. Le circuit
+    | est à quatre yeux : instruction par un vérificateur, validation par
+    | une personne distincte. Aucun dossier n'est supprimé.
+    */
+    Route::get('evaluations/reconciliation', [ExamReconciliationController::class, 'index'])
+        ->middleware('can:evaluations.view')
+        ->name('evaluations.reconciliation.index');
+    Route::post('evaluations/reconciliation/analyser', [ExamReconciliationController::class, 'analyser'])
+        ->middleware(['can:evaluations.update', 'throttle:10,1'])
+        ->name('evaluations.reconciliation.analyser');
+    Route::get('evaluations/reconciliation/{ecart}', [ExamReconciliationController::class, 'show'])
+        ->middleware('can:evaluations.view')
+        ->name('evaluations.reconciliation.show');
+    Route::post('evaluations/reconciliation/{ecart}/instruire', [ExamReconciliationController::class, 'instruire'])
+        ->middleware(['can:evaluations.update', 'throttle:20,1'])
+        ->name('evaluations.reconciliation.instruire');
+    Route::post('evaluations/reconciliation/{ecart}/valider', [ExamReconciliationController::class, 'valider'])
+        ->middleware(['can:evaluations.update', 'throttle:20,1'])
+        ->name('evaluations.reconciliation.valider');
 
     Route::get('evaluations/planning', [EpreuveController::class, 'planning'])
         ->middleware('can:epreuves.view')
@@ -127,6 +217,10 @@ Route::middleware(['auth', 'admin', 'secondaire.verrou', 'module:evaluation'])->
     Route::post('evaluations/epreuves/{epreuve}/emargement', [EpreuveController::class, 'enregistrerEmargement'])
         ->middleware(['can:epreuves.update', 'throttle:30,1'])
         ->name('evaluations.epreuves.emargement.store');
+    // Lot 10 — synchronisation de la file locale (hors ligne), idempotente.
+    Route::post('evaluations/epreuves/{epreuve}/emargement/hors-ligne', [EpreuveController::class, 'enregistrerEmargementHorsLigne'])
+        ->middleware(['can:epreuves.update', 'throttle:60,1'])
+        ->name('evaluations.epreuves.emargement.hors-ligne');
     Route::post('evaluations/epreuves/{epreuve}/repartir-salles', [EpreuveController::class, 'repartirSalles'])
         ->middleware(['can:epreuves.update', 'throttle:20,1'])
         ->name('evaluations.epreuves.repartir-salles');
@@ -288,9 +382,18 @@ Route::middleware(['auth', 'admin', 'secondaire.verrou', 'module:evaluation'])->
         ->middleware(['can:evaluations.update', 'throttle:20,1'])
         ->whereIn('cible', ['signale', 'en_cours', 'resolu'])
         ->name('evaluations.incidents.transiter');
+    Route::post('evaluations/incidents/{incident}/valider', [IncidentController::class, 'valider'])
+        ->middleware(['can:evaluations.update', 'throttle:20,1'])
+        ->name('evaluations.incidents.valider');
     Route::post('evaluations/notes/{note}/valider', [NoteEpreuveController::class, 'valider'])
         ->middleware(['can:notes_eval.validate', 'throttle:20,1'])
         ->name('evaluations.notes.valider');
+    Route::post('evaluations/epreuves/{epreuve}/notes/valider-tout', [NoteEpreuveController::class, 'validerTout'])
+        ->middleware(['can:notes_eval.validate', 'throttle:10,1'])
+        ->name('evaluations.epreuves.notes.valider-tout');
+    Route::post('evaluations/epreuves/{epreuve}/notes/soumettre', [NoteEpreuveController::class, 'soumettre'])
+        ->middleware(['can:notes_eval.enter', 'throttle:10,1'])
+        ->name('evaluations.epreuves.notes.soumettre');
     Route::post('evaluations/notes/{note}/verrouiller', [NoteEpreuveController::class, 'verrouiller'])
         ->middleware(['can:notes_eval.lock', 'throttle:10,1'])
         ->name('evaluations.notes.verrouiller');
@@ -337,6 +440,212 @@ Route::middleware(['auth', 'admin', 'secondaire.verrou', 'module:evaluation'])->
     Route::get('evaluations/deliberations/{deliberation}/pv', [DeliberationController::class, 'pv'])
         ->middleware(['can:deliberations.view', 'throttle:10,1'])
         ->name('evaluations.deliberations.pv');
+
+    /*
+    |----------------------------------------------------------------------
+    | LOOP-EXAM-PREPARATION-01 — assistant de préparation des examens
+    |----------------------------------------------------------------------
+    | Route cible /admin/examens/preparation : surface agrégée sur
+    | l'existant (sessions, épreuves, salles, surveillance) + comblement
+    | G1-G5 (validation de population, émargement par salle, aperçu,
+    | historique). Mêmes gates et la même isolation faculté.
+    */
+    Route::get('examens/preparation', [PreparationExamenController::class, 'index'])
+        ->middleware('can:evaluations.view')
+        ->name('examens.preparation.index');
+
+    Route::get('examens/preparation/epreuves/{epreuve}/emargement', [PreparationExamenController::class, 'emargement'])
+        ->middleware('can:evaluations.view')
+        ->name('examens.preparation.epreuves.emargement');
+
+    Route::post('examens/preparation/epreuves/{epreuve}/population', [PreparationExamenController::class, 'validerPopulation'])
+        ->middleware(['can:evaluations.update', 'throttle:20,1'])
+        ->name('examens.preparation.epreuves.population');
+
+    Route::get('examens/preparation/{session}', [PreparationExamenController::class, 'session'])
+        ->middleware('can:evaluations.view')
+        ->name('examens.preparation.session');
+
+    /*
+    |----------------------------------------------------------------------
+    | LOT 5 — Génération documentaire groupée (ZIP, émargements, feuilles, PV)
+    |----------------------------------------------------------------------
+    */
+    Route::get('evaluations/documents-batch', [DocumentBatchController::class, 'index'])
+        ->middleware('can:evaluations.view')
+        ->name('evaluations.documents-batch.index');
+
+    Route::post('evaluations/documents-batch/previsualiser', [DocumentBatchController::class, 'previsualiser'])
+        ->middleware('can:evaluations.view')
+        ->name('evaluations.documents-batch.previsualiser');
+
+    Route::post('evaluations/documents-batch/generer', [DocumentBatchController::class, 'generer'])
+        ->middleware(['can:evaluations.create', 'throttle:10,1'])
+        ->name('evaluations.documents-batch.generer');
+
+    Route::get('evaluations/documents-batch/{lotId}/telecharger', [DocumentBatchController::class, 'telecharger'])
+        ->middleware('can:evaluations.view')
+        ->name('evaluations.documents-batch.telecharger');
+
+    /*
+    |----------------------------------------------------------------------
+    | LOT 6 — Historique, audit et comparaison différentielle des notes
+    |----------------------------------------------------------------------
+    */
+    Route::get('evaluations/historique-notes', [HistoriqueNotesController::class, 'index'])
+        ->middleware('can:evaluations.view')
+        ->name('evaluations.historique-notes.index');
+
+    Route::get('evaluations/notes/{note}/historique', [HistoriqueNotesController::class, 'detail'])
+        ->middleware('can:evaluations.view')
+        ->name('evaluations.notes.historique');
+
+    Route::get('evaluations/epreuves/{epreuve}/historique', [HistoriqueNotesController::class, 'epreuve'])
+        ->middleware('can:evaluations.view')
+        ->name('evaluations.epreuves.historique');
+
+    Route::post('evaluations/notes/{note}/comparer', [HistoriqueNotesController::class, 'comparer'])
+        ->middleware(['can:evaluations.view', 'throttle:30,1'])
+        ->name('evaluations.notes.comparer');
+
+    /*
+    |----------------------------------------------------------------------
+    | Examens Advanced — Architecture multi-menus (12 Menus spécialisés)
+    |----------------------------------------------------------------------
+    */
+    Route::prefix('evaluation/examens')->name('evaluation.examens.')->group(function () {
+        Route::get('tableau-de-bord', [ExamenAdvancedMenuController::class, 'tableauDeBord'])
+            ->middleware('can:evaluations.view')
+            ->name('tableau-de-bord');
+
+        Route::get('sessions', [ExamenAdvancedMenuController::class, 'sessions'])
+            ->middleware('can:sessions_examen.view')
+            ->name('sessions');
+
+        Route::get('configurations', [ExamenAdvancedMenuController::class, 'configurations'])
+            ->middleware('can:evaluations.view')
+            ->name('configurations');
+
+        Route::get('eligibilite', [ExamenAdvancedMenuController::class, 'eligibilite'])
+            ->middleware('can:evaluations.view')
+            ->name('eligibilite');
+
+        Route::get('groupes', [ExamenAdvancedMenuController::class, 'groupes'])
+            ->middleware('can:epreuves.view')
+            ->name('groupes');
+
+        // Consultation, export multi-formats et impression professionnelle des groupes virtuels d'examens finaux
+        Route::prefix('groupes-virtuels')->name('groupes-virtuels.')->group(function () {
+            Route::get('/', [GroupeVirtuelExamenController::class, 'index'])
+                ->name('index');
+            Route::post('generer-automatique', [GroupeVirtuelExamenController::class, 'genererAutomatique'])
+                ->middleware('throttle:10,1')
+                ->name('generer-automatique');
+            Route::get('exporter/{format}', [GroupeVirtuelExamenController::class, 'exporterSelection'])
+                ->middleware('throttle:30,1')
+                ->whereIn('format', ['xlsx', 'csv', 'pdf', 'html'])
+                ->name('exporter');
+            Route::get('imprimer/{document}', [GroupeVirtuelExamenController::class, 'imprimerSelection'])
+                ->middleware('throttle:30,1')
+                ->whereIn('document', ['synthese_matiere', 'synthese_session'])
+                ->name('imprimer');
+            Route::get('pack-zip', [GroupeVirtuelExamenController::class, 'telechargerPackZip'])
+                ->middleware('throttle:15,1')
+                ->name('pack-zip');
+            Route::get('{groupeVirtuel}', [GroupeVirtuelExamenController::class, 'show'])
+                ->whereNumber('groupeVirtuel')
+                ->name('show');
+            Route::post('{groupeVirtuel}/resynchroniser', [GroupeVirtuelExamenController::class, 'resynchroniser'])
+                ->middleware('throttle:15,1')
+                ->whereNumber('groupeVirtuel')
+                ->name('groupe.resynchroniser');
+            Route::get('{groupeVirtuel}/exporter/{format}', [GroupeVirtuelExamenController::class, 'exporterGroupe'])
+                ->middleware('throttle:30,1')
+                ->whereNumber('groupeVirtuel')
+                ->whereIn('format', ['xlsx', 'csv', 'pdf', 'html'])
+                ->name('groupe.exporter');
+            Route::get('{groupeVirtuel}/imprimer/{document}', [GroupeVirtuelExamenController::class, 'imprimerGroupe'])
+                ->middleware('throttle:30,1')
+                ->whereNumber('groupeVirtuel')
+                ->whereIn('document', ['fiche', 'etudiants', 'emargement'])
+                ->name('groupe.imprimer');
+        });
+
+        // Décision D-04 V2 — capacité utile et permutations de salles.
+        Route::prefix('groupes/capacite')->name('groupes.capacite.')->group(function () {
+            Route::post('analyser', [ExamDecisionCapaciteController::class, 'analyser'])
+                ->middleware(['can:epreuves.view', 'throttle:30,1'])
+                ->name('analyser');
+            Route::post('generer', [ExamDecisionCapaciteController::class, 'generer'])
+                ->middleware(['can:epreuves.view', 'throttle:30,1'])
+                ->name('generer');
+            Route::get('previsualiser', [ExamDecisionCapaciteController::class, 'previsualiser'])
+                ->middleware(['can:epreuves.view', 'throttle:30,1'])
+                ->name('previsualiser');
+            Route::get('comparer', [ExamDecisionCapaciteController::class, 'comparer'])
+                ->middleware(['can:epreuves.view', 'throttle:30,1'])
+                ->name('comparer');
+            Route::get('conflits', [ExamDecisionCapaciteController::class, 'conflits'])
+                ->middleware(['can:epreuves.view', 'throttle:30,1'])
+                ->name('conflits');
+            Route::get('historique', [ExamDecisionCapaciteController::class, 'historique'])
+                ->middleware(['can:epreuves.view', 'throttle:30,1'])
+                ->name('historique');
+            Route::get('propositions-recentes', [ExamDecisionCapaciteController::class, 'propositionsRecentes'])
+                ->middleware(['can:epreuves.view', 'throttle:30,1'])
+                ->name('propositions-recentes');
+            Route::get('payload', [ExamDecisionCapaciteController::class, 'payloadVue'])
+                ->middleware(['can:epreuves.view', 'throttle:60,1'])
+                ->name('payload');
+            Route::post('accepter', [ExamDecisionCapaciteController::class, 'accepter'])
+                ->middleware(['can:epreuves.update', 'throttle:10,1'])
+                ->name('accepter');
+            Route::post('refuser', [ExamDecisionCapaciteController::class, 'refuser'])
+                ->middleware(['can:epreuves.update', 'throttle:10,1'])
+                ->name('refuser');
+            Route::post('annuler', [ExamDecisionCapaciteController::class, 'annuler'])
+                ->middleware(['can:epreuves.update', 'throttle:10,1'])
+                ->name('annuler');
+        });
+
+        Route::get('salles', [ExamenAdvancedMenuController::class, 'salles'])
+            ->middleware('can:evaluations.view')
+            ->name('salles');
+
+        Route::get('planification', [ExamenAdvancedMenuController::class, 'planification'])
+            ->middleware('can:epreuves.view')
+            ->name('planification');
+
+        Route::get('surveillance', [ExamenAdvancedMenuController::class, 'surveillance'])
+            ->middleware('can:epreuves.view')
+            ->name('surveillance');
+
+        Route::get('simulation', [ExamenAdvancedMenuController::class, 'simulation'])
+            ->middleware('can:evaluations.view')
+            ->name('simulation');
+
+        Route::get('publication', [ExamenAdvancedMenuController::class, 'publication'])
+            ->middleware('can:evaluations.view')
+            ->name('publication');
+
+        Route::get('convocations', [ExamenAdvancedMenuController::class, 'convocations'])
+            ->middleware('can:evaluations.view')
+            ->name('convocations');
+
+        Route::get('historique', [ExamenAdvancedMenuController::class, 'historique'])
+            ->middleware('can:evaluations.view')
+            ->name('historique');
+
+        // LOT 2 — Documents professionnels : Catalogue, Aperçu, PDF & Impression
+        Route::get('documents/catalogue', [ExamDocumentsProfessionnelsController::class, 'catalogue'])
+            ->name('documents.catalogue');
+        Route::get('documents/apercu', [ExamDocumentsProfessionnelsController::class, 'apercu'])
+            ->name('documents.apercu');
+        Route::get('documents/telecharger', [ExamDocumentsProfessionnelsController::class, 'telecharger'])
+            ->name('documents.telecharger');
+        Route::get('documents/imprimer', [ExamDocumentsProfessionnelsController::class, 'imprimer'])
+            ->name('documents.imprimer');
+    });
 });
 
 /*

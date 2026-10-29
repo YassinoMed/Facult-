@@ -50,6 +50,26 @@ class ServiceEnseignantService
     }
 
     /**
+     * Pont EDT → charge (LOT 09, audit §F9) : la charge contractuelle
+     * (affectations, référence du service) et la charge planifiée à
+     * l'EDT (créneaux actifs, coefficient de parité, calcul unique
+     * `Teacher::chargeHebdoPlanifiee`) côte à côte — jamais fusionnées
+     * silencieusement : `planifie_hebdo` est un diagnostic de
+     * réalisation, le volume affecté reste la référence des seuils.
+     *
+     * @return array{cm: float, td: float, tp: float, projet: float, autre: float, total: float, affecte: float, planifie_hebdo: float}
+     */
+    public function chargeAvecEdt(int $teacherId, ?int $anneeId, ?int $scheduleId = null): array
+    {
+        $contractuel = $this->charge($teacherId, $anneeId);
+
+        $teacher = Teacher::find($teacherId);
+        $contractuel['planifie_hebdo'] = $teacher?->chargeHebdoPlanifiee($scheduleId) ?? 0.0;
+
+        return $contractuel;
+    }
+
+    /**
      * Seuils applicables (grade > faculté > global), puis alertes.
      *
      * @return array{min: float, cible: float, max: float}

@@ -7,8 +7,11 @@ use App\Modules\Evaluation\Models\Candidat;
 use App\Modules\Evaluation\Models\Epreuve;
 use App\Modules\Evaluation\Models\EvaluationIncident;
 use App\Modules\Evaluation\Requests\StoreIncidentRequest;
+use App\Modules\Evaluation\Services\ExamUrgenceSuppleanceService;
+use DomainException;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
 
@@ -52,9 +55,22 @@ class IncidentController
             return back()->withErrors(['etudiant_id' => 'Étudiant non convoqué à cette épreuve.'])->withInput();
         }
 
+        $gravite = $valides['gravite'] ?? 'mineure';
+        $delaiMinutes = (int) ($valides['delai_cible_minutes'] ?? ($gravite === 'critique' ? 30 : 120));
+
         $incident = new EvaluationIncident($request->safe()->only(['type', 'description', 'etudiant_id']));
         $incident->epreuve_id = $epreuve->id;
         $incident->created_by = $request->user()->id;
+        $incident->gravite = $gravite;
+        $incident->delai_cible_at = now()->addMinutes($delaiMinutes);
+        $preuves = collect(preg_split('/\R/', (string) ($valides['preuves'] ?? '')) ?: [])
+            ->map(fn (string $preuve): string => trim($preuve))
+            ->filter(fn (string $preuve): bool => $preuve !== '')
+            ->take(10)
+            ->values()
+            ->all();
+        $incident->preuves = $preuves;
+        $incident->actions_prises = [];
         $incident->save();
 
         EvaluationChanged::dispatch('exam.incident.signale', $incident->id);
@@ -90,5 +106,42 @@ class IncidentController
         EvaluationChanged::dispatch('exam.incident.traite', $incident->id);
 
         return back()->with('succes', "Incident passé à « {$cible} ».");
+    }
+
+    /**
+     * Validation indépendante de la résolution (§2.11) : le déclarant et
+     * le responsable du traitement ne peuvent pas valider leur propre
+     * résolution, et une validation ne peut pas être rejouée.
+     */
+    public function valider(
+        Request $request,
+        EvaluationIncident $incident,
+        ExamUrgenceSuppleanceService $service
+    ): RedirectResponse {
+        $incident->loadMissing('epreuve');
+        $epreuve = $incident->epreuve;
+
+        if ($epreuve->faculteId() !== null && request()->user()?->faculteRestreinteId() !== null
+            && ! request()->user()->peutAccederFaculte($epreuve->faculteId())) {
+            abort(404);
+        }
+
+        Gate::authorize('update', $epreuve);
+
+        $valides = $request->validate([
+            'commentaire' => ['nullable', 'string', 'max:1000'],
+        ]);
+
+        try {
+            $service->validerResolutionIncident(
+                $incident,
+                (int) $request->user()->id,
+                $valides['commentaire'] ?? null
+            );
+        } catch (DomainException $e) {
+            return back()->withErrors(['validation' => $e->getMessage()]);
+        }
+
+        return back()->with('succes', 'Résolution validée de façon indépendante.');
     }
 }

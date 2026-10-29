@@ -27,7 +27,8 @@ délègue au même moteur (preview DataExchange obligatoire).
 ## Auto (`repartitionAutomatique`)
 
 Simulation équilibrée par places restantes, sans écriture ; confirmation via
-`appliquerAuto` (un `affecterLot` par groupe). Non-affectés motivés.
+`appliquerAuto` (un `affecterLot` par groupe, tranches 500 sous le seuil
+`affectations.lots.seuil_sync` ; au-delà, lot asynchrone `AffectationMasseLot` + page de progression). Non-affectés motivés.
 
 ## Changement/retrait
 

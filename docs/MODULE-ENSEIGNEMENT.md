@@ -31,3 +31,13 @@ MODIFIÉ : matieres (+responsable_teacher_id).
 - **Import/export** : définition `enseignements` via DataExchange
   (références ECUE/type/année résolues serveur, rollback sur erreur).
 - Flag `MODULE_ENSEIGNEMENT` (défaut true, fondation pour Phase 4).
+
+## Pont EDT → charge (LOOP 09)
+
+`ServiceEnseignantService::chargeAvecEdt(teacherId, anneeId, ?scheduleId)`
+expose la charge planifiée hebdomadaire à l'EDT
+(`Teacher::chargeHebdoPlanifiee` : créneaux actifs, coefficient de
+parité — calcul unique) sous la clé `planifie_hebdo`, à côté de la
+charge contractuelle inchangée. Jamais fusionnées : le volume affecté
+reste la référence des seuils, `planifie_hebdo` est un diagnostic de
+réalisation (surface UI à venir).

@@ -15,7 +15,7 @@
                     </svg>
                 </div>
                 <div>
-                    <h1 class="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">Facultés Universitaires</h1>
+                    <h1 class="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight" data-motion-block>Facultés Universitaires</h1>
                     <p class="mt-0.5 text-xs sm:text-sm text-slate-500">Administration des structures académiques, codes d'affectation et quotas.</p>
                 </div>
             </div>

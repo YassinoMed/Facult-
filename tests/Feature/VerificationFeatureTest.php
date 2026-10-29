@@ -437,6 +437,39 @@ class VerificationFeatureTest extends TestCase
         $this->assertNull($etudiant->refresh()->groupe_id);
     }
 
+    public function test_correction_par_champ_groupe_id_hors_faculte_refusee(): void
+    {
+        $etudiant = $this->creerEtudiant();
+
+        $programmeB = Programme::create([
+            'code' => 'DROIT',
+            'nom' => 'Droit',
+            'faculte_id' => $this->faculteB->id,
+            'duree_annees' => 3,
+            'semestres_nombre' => 6,
+            'credits_requis' => 180,
+        ]);
+
+        $groupeB = Group::create([
+            'code' => 'G-DROIT-1',
+            'nom' => 'Groupe Droit 1',
+            'programme_id' => $programmeB->id,
+            'faculte_id' => $this->faculteB->id,
+            'niveau' => 'L1',
+            'capacite' => 30,
+        ]);
+
+        $this->actingAs($this->adminScolarite)
+            ->post(route('admin.verification.corriger', $etudiant), [
+                'champ' => 'groupe_id',
+                'nouvelle_valeur' => (string) $groupeB->id,
+                'motif' => 'Tentative de rattachement à un groupe d’une autre faculté.',
+            ])
+            ->assertSessionHasErrors('groupe_id');
+
+        $this->assertNull($etudiant->refresh()->groupe_id);
+    }
+
     public function test_correction_par_champ_email_doublon_refusee(): void
     {
         $this->creerEtudiant(['email' => 'pris@univ.tn']);

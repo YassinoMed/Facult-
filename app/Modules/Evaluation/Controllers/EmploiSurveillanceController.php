@@ -11,6 +11,7 @@ use App\Modules\Schedule\Models\Group;
 use App\Modules\Schedule\Models\Room;
 use App\Modules\Schedule\Models\Teacher;
 use App\Modules\StudentDossiers\Contracts\PdfGeneratorInterface;
+use App\Services\Io\CsvSerializer;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Gate;
@@ -144,11 +145,12 @@ class EmploiSurveillanceController
         $nomFichier = 'emploi-surveillances-'.($mode === 'enseignant' ? 'enseignants-' : 'jours-').now()->format('Y-m-d-His').'.csv';
 
         return response()->streamDownload(function () use ($resultat, $mode) {
+            $csv = app(CsvSerializer::class);
             $sortie = fopen('php://output', 'w');
             fwrite($sortie, "\xEF\xBB\xBF");
 
             if ($mode === 'enseignant') {
-                fputcsv($sortie, ['Enseignant', 'Date', 'Horaire', 'Examen', 'Salle', 'Rôle'], ';');
+                fputcsv($sortie, $csv->neutraliserLigne(['Enseignant', 'Date', 'Horaire', 'Examen', 'Salle', 'Rôle']), ';');
                 foreach ($resultat['jours'] as $liste) {
                     foreach ($liste as $enrichie) {
                         $epreuve = $enrichie['epreuve'];
@@ -156,21 +158,21 @@ class EmploiSurveillanceController
                         $salle = $epreuve->salle?->code ?? '—';
                         $examenCode = $epreuve->code ?? ($epreuve->matiere?->code ?? 'EXAMEN');
                         foreach ($enrichie['actifs'] as $surv) {
-                            fputcsv($sortie, [
+                            fputcsv($sortie, $csv->neutraliserLigne([
                                 $surv->enseignant?->nomComplet() ?? 'Enseignant inconnu',
                                 $enrichie['date_iso'],
                                 $horaire,
                                 $examenCode,
                                 $salle,
                                 ucfirst((string) $surv->role),
-                            ], ';');
+                            ]), ';');
                         }
                     }
                 }
             } else {
-                fputcsv($sortie, [
+                fputcsv($sortie, $csv->neutraliserLigne([
                     'Date', 'Horaire', 'Examen', 'Matière', 'Niveau', 'Groupe', 'Salle', 'Enseignant', 'Rôle', 'Statut', 'Conflits',
-                ], ';');
+                ]), ';');
                 foreach ($resultat['jours'] as $liste) {
                     foreach ($liste as $enrichie) {
                         $epreuve = $enrichie['epreuve'];
@@ -184,7 +186,7 @@ class EmploiSurveillanceController
                         $conflits = implode(' | ', array_column($enrichie['conflits'], 'message'));
 
                         if ($enrichie['actifs']->isEmpty()) {
-                            fputcsv($sortie, [
+                            fputcsv($sortie, $csv->neutraliserLigne([
                                 $enrichie['date_iso'],
                                 $horaire,
                                 $examenCode,
@@ -196,10 +198,10 @@ class EmploiSurveillanceController
                                 '—',
                                 $statut,
                                 $conflits,
-                            ], ';');
+                            ]), ';');
                         } else {
                             foreach ($enrichie['actifs'] as $surv) {
-                                fputcsv($sortie, [
+                                fputcsv($sortie, $csv->neutraliserLigne([
                                     $enrichie['date_iso'],
                                     $horaire,
                                     $examenCode,
@@ -211,7 +213,7 @@ class EmploiSurveillanceController
                                     ucfirst((string) $surv->role),
                                     $statut,
                                     $conflits,
-                                ], ';');
+                                ]), ';');
                             }
                         }
                     }

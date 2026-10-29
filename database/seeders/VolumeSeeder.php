@@ -8,6 +8,7 @@ use App\Models\Faculte;
 use App\Modules\Schedule\Models\Group;
 use App\Modules\Schedule\Models\Room;
 use App\Modules\Schedule\Models\Teacher;
+use App\Support\DemoData;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
@@ -22,8 +23,8 @@ class VolumeSeeder extends Seeder
 {
     public function run(): void
     {
-        if (! app()->environment('local', 'testing')) {
-            $this->command?->warn('VolumeSeeder ignoré (environnement non local).');
+        if (! DemoData::autorisee()) {
+            $this->command?->warn('VolumeSeeder ignoré (SEED_DEMO_DATA non activé).');
 
             return;
         }

@@ -2,6 +2,7 @@
 
 namespace App\Modules\OnlineRequests\Requests;
 
+use App\Modules\OnlineRequests\Models\OnlineRequest;
 use Illuminate\Foundation\Http\FormRequest;
 
 /**
@@ -12,7 +13,19 @@ class UploadPieceRequest extends FormRequest
 {
     public function authorize(): bool
     {
-        return session()->has('etudiant_auth_id');
+        if (! session()->has('etudiant_auth_id')) {
+            return false;
+        }
+
+        $demande = $this->route('demande');
+        if ($demande instanceof OnlineRequest) {
+            abort_if((int) $demande->etudiant_id !== (int) session('etudiant_auth_id'), 404);
+        } elseif ($demande !== null) {
+            $etudiantId = OnlineRequest::whereKey($demande)->value('etudiant_id');
+            abort_if($etudiantId === null || (int) $etudiantId !== (int) session('etudiant_auth_id'), 404);
+        }
+
+        return true;
     }
 
     /**

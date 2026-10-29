@@ -58,7 +58,18 @@
                         <tbody class="divide-y divide-slate-100">
                             @foreach($controles as $type => $controle)
                                 <tr class="hover:bg-slate-50/60">
-                                    <td class="px-4 py-3 font-bold text-slate-900">{{ $catalogue[$type]['libelle'] ?? $type }}</td>
+                                    <td class="px-4 py-3 font-bold text-slate-900">
+                                        <div class="flex flex-col">
+                                            <span>{{ $catalogue[$type]['libelle'] ?? $type }}</span>
+                                            @if($type === 'attestation_inscription')
+                                                <span class="text-[11px] font-normal text-slate-500">شهادة ترسيم (Modèle standard officiel)</span>
+                                            @elseif($type === 'attestation_presence')
+                                                <span class="text-[11px] font-normal text-slate-500">شهادة حضور / Présence régulière</span>
+                                            @elseif($type === 'attestation_reussite')
+                                                <span class="text-[11px] font-normal text-slate-500">شهادة نجاح (Session & Mention)</span>
+                                            @endif
+                                        </div>
+                                    </td>
                                     <td class="px-4 py-3">
                                         @if(count($controle['satisfaits']) > 0)
                                             <ul class="space-y-1 text-emerald-700">
@@ -94,6 +105,10 @@
                                                         <option value="2">S2</option>
                                                     </select>
                                                 @endif
+                                                <select name="langue" aria-label="Langue du document" class="rounded-xl border border-slate-200 bg-white px-2 py-1.5 text-xs font-medium text-slate-700">
+                                                    <option value="ar" @selected(in_array($type, ['attestation_inscription', 'attestation_reussite', 'certificat_reussite']))>العربية</option>
+                                                    <option value="fr" @selected(!in_array($type, ['attestation_inscription', 'attestation_reussite', 'certificat_reussite']))>Français</option>
+                                                </select>
                                                 <x-btn type="submit">Générer</x-btn>
                                             </form>
                                         @else

@@ -45,12 +45,15 @@ class RequestAttachmentService
             'storage_path' => $chemin,
             'sha256' => $hash,
             'size' => strlen($contenu),
+            'disk' => 'private',
+            'categorie' => 'justificatif',
         ]);
 
         if (! $resultat->sain) {
             Storage::disk('private')->delete($chemin);
 
-            throw new RuntimeException('Pièce refusée par l’analyse antivirus'.($resultat->signature !== null ? " ({$resultat->signature})." : '.'));
+            $detail = $resultat->signature ?? $resultat->erreur;
+            throw new RuntimeException('Pièce refusée par l’analyse antivirus'.($detail !== null ? " ({$detail})." : '.'));
         }
 
         // Versionnement (Phase 9 §19) : l'historique est conservé, la

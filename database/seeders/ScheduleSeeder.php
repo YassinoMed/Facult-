@@ -11,6 +11,7 @@ use App\Modules\Schedule\Models\Room;
 use App\Modules\Schedule\Models\Schedule;
 use App\Modules\Schedule\Models\ScheduleSlot;
 use App\Modules\Schedule\Models\Teacher;
+use App\Support\DemoData;
 use Illuminate\Database\Seeder;
 
 /**
@@ -22,8 +23,8 @@ class ScheduleSeeder extends Seeder
 {
     public function run(): void
     {
-        if (! app()->environment('local', 'testing')) {
-            $this->command?->warn('ScheduleSeeder ignoré (environnement non local).');
+        if (! DemoData::autorisee()) {
+            $this->command?->warn('ScheduleSeeder ignoré (SEED_DEMO_DATA non activé).');
 
             return;
         }

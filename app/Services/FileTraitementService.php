@@ -7,6 +7,7 @@ use App\Models\DossierVerification;
 use App\Models\Etudiant;
 use App\Models\HistoriqueAcademique;
 use App\Models\InscriptionAcademique;
+use App\Models\SituationEtudiant;
 use App\Models\User;
 use DomainException;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
@@ -131,6 +132,11 @@ class FileTraitementService
     /**
      * Indicateurs consolidés de la file de traitement avec scoping faculté strict.
      *
+     * Le troisième argument permet de réutiliser exactement le builder de
+     * la liste filtrée (D-01) : les KPI décrivent alors la population
+     * affichée, jamais un périmètre faculté seul. Les colonnes, jointures
+     * de tri et l'ordre de présentation sont neutralisés avant agrégation.
+     *
      * @return array{
      *     total: int,
      *     en_attente: int,
@@ -145,62 +151,50 @@ class FileTraitementService
      *     actions: array<string, int>
      * }
      */
-    public function kpis(User $utilisateur, ?int $faculteId = null): array
+    public function kpis(User $utilisateur, ?int $faculteId = null, ?Builder $base = null): array
     {
         $faculteRestreinteId = $utilisateur->faculteRestreinteId();
         $faculteCible = $faculteRestreinteId ?? $faculteId;
 
-        $base = Etudiant::query()
-            ->when($faculteCible !== null, fn (Builder $q) => $q->where('faculte_id', $faculteCible));
+        $base = $base !== null ? clone $base : Etudiant::query();
+        $base->reorder();
+        $base->getQuery()->columns = null;
+        $base->setEagerLoads([]);
+        $base->when($faculteCible !== null, fn (Builder $q) => $q->where('etudiants.faculte_id', $faculteCible));
 
         // 1. Volumes généraux en une seule requête agrégée
         $statsVolumes = (clone $base)
             ->selectRaw('COUNT(*) as total')
-            ->selectRaw("SUM(statut = 'en_attente') as en_attente")
-            ->selectRaw("SUM(statut = 'valide') as valides")
-            ->selectRaw("SUM(statut = 'rejete') as rejetes")
+            ->selectRaw("SUM(etudiants.statut = 'en_attente') as en_attente")
+            ->selectRaw("SUM(etudiants.statut = 'valide') as valides")
+            ->selectRaw("SUM(etudiants.statut = 'rejete') as rejetes")
             ->first();
 
         $maintenant = Carbon::now();
         $seuil48h = (clone $maintenant)->subHours(48);
         $seuil7j = (clone $maintenant)->subDays(7);
 
-        // 2. Dossiers en souffrance (> 48h et > 7j)
-        $souffrance48h = (clone $base)
-            ->where('statut', 'en_attente')
-            ->where('created_at', '<=', $seuil48h)
-            ->count();
+        $enAttenteIds = (clone $base)
+            ->where('etudiants.statut', 'en_attente')
+            ->pluck('etudiants.id')
+            ->all();
 
-        $souffrance7j = (clone $base)
-            ->where('statut', 'en_attente')
-            ->where('created_at', '<=', $seuil7j)
-            ->count();
+        [$souffrance48h, $souffrance7j, $delaiMoyenHeures] = $this->metriquesAttente(
+            $enAttenteIds,
+            $seuil48h,
+            $seuil7j,
+            $maintenant
+        );
 
-        // 3. Délai moyen de traitement pour les dossiers en attente.
-        // Définition métier : moyenne des anciennetés (heures complètes,
-        // valeur nulle = 0h mais comptée), 0 si aucun dossier en attente.
-        // Optimisation portable (Phase C) : seules les dates sont chargées
-        // (pluck, sans hydratation de modèles). Pas d'agrégat SQL : la
-        // sémantique Carbon (heures absolues) n'a pas d'équivalent exact
-        // et portable (TIMESTAMPDIFF compte des frontières, MySQL seul,
-        // tests SQLite) — documenté plutôt que régressé.
-        $delaiMoyenHeures = $this->delaiMoyenHeuresAttente($base, $maintenant);
-
-        // 4. Flux du jour (validés et rejetés aujourd'hui)
+        // 2. Flux du jour : dernière transition de statut, jamais un simple
+        // updated_at. Fallback documenté pour les lignes historiques sans
+        // SituationEtudiant (imports/écritures directes antérieures).
         $debutJour = Carbon::today();
-        $validesAujourdhui = (clone $base)
-            ->where('statut', 'valide')
-            ->where('updated_at', '>=', $debutJour)
-            ->count();
+        $decisions = $this->decisionsDuJour($base, $debutJour);
+        $validesAujourdhui = (int) ($decisions['valide'] ?? 0);
+        $rejetesAujourdhui = (int) ($decisions['rejete'] ?? 0);
 
-        $rejetesAujourdhui = (clone $base)
-            ->where('statut', 'rejete')
-            ->where('updated_at', '>=', $debutJour)
-            ->count();
-
-        // 5. Répartition estimée des actions attendues
-        $enAttenteIds = (clone $base)->where('statut', 'en_attente')->pluck('id')->all();
-
+        // 3. Répartition estimée des actions attendues (sur le même périmètre)
         $avecComplementCount = 0;
         $avecAnomalieCount = 0;
         $avecSuiviCount = 0;
@@ -230,25 +224,21 @@ class FileTraitementService
         }
 
         $aAffecterCount = (clone $base)
-            ->where('statut', 'valide')
-            ->whereNull('groupe_id')
+            ->where('etudiants.statut', 'valide')
+            ->whereNull('etudiants.groupe_id')
             ->count();
 
         $totalEnAttente = (int) ($statsVolumes->en_attente ?? 0);
         $aInstruireCount = max(0, $totalEnAttente - $avecSuiviCount);
         $traitesCount = (int) ($statsVolumes->rejetes ?? 0) + ((int) ($statsVolumes->valides ?? 0) - $aAffecterCount);
 
-        // 6. LOOP D (§14) — métriques d'automatisation dérivées : agrégats
-        // SANS PII sur l'historique académique append-only (UNE requête
-        // groupée — garde-fou N+1 de la file < 25 requêtes), scopés
-        // faculté via jointure. Ensemble vide = taux null explicite
-        // (jamais 0 % trompeur). « Taux de changements nécessitant une
-        // intervention » : NOT_APPLICABLE par design — tout changement
-        // de groupe EST une décision humaine (les refus ne s'auditent
-        // pas : aucune écriture).
+        // 4. LOOP D (§14) — métriques d'automatisation dérivées : agrégats
+        // SANS PII sur l'historique académique append-only, restreints aux
+        // étudiants du périmètre filtré. Ensemble vide = taux null explicite.
+        $baseIds = (clone $base)->select('etudiants.id')->toBase();
         $compteursAuto = HistoriqueAcademique::query()
             ->join('etudiants', 'etudiants.id', '=', 'historique_academique.etudiant_id')
-            ->when($faculteCible !== null, fn (Builder $q) => $q->where('etudiants.faculte_id', $faculteCible))
+            ->whereIn('historique_academique.etudiant_id', $baseIds)
             ->whereIn('historique_academique.action', [
                 'affectation.auto_assignee', 'affectation.auto_non_assignee', 'affectation.changee',
             ])
@@ -294,28 +284,102 @@ class FileTraitementService
     }
 
     /**
-     * Délai moyen d'attente en heures (voir kpis() pour la définition).
+     * Souffrance et délai moyen à partir de la dernière transition vers
+     * `en_attente` (SituationEtudiant), avec repli documenté sur
+     * `etudiants.created_at` pour les dossiers historiques sans situation.
      *
-     * @param  Builder<Etudiant>  $base
+     * @param  array<int, int>  $enAttenteIds
+     * @return array{0: int, 1: int, 2: int}
      */
-    private function delaiMoyenHeuresAttente(Builder $base, Carbon $maintenant): int
+    private function metriquesAttente(array $enAttenteIds, Carbon $seuil48h, Carbon $seuil7j, Carbon $maintenant): array
     {
-        $dates = (clone $base)
-            ->where('statut', 'en_attente')
-            ->pluck('created_at');
-
-        if ($dates->isEmpty()) {
-            return 0;
+        if ($enAttenteIds === []) {
+            return [0, 0, 0];
         }
 
+        $situations = SituationEtudiant::whereIn('etudiant_id', $enAttenteIds)
+            ->where('type', 'statut')
+            ->where('nouvelle_valeur', 'en_attente')
+            ->whereIn('id', function ($sub) use ($enAttenteIds) {
+                $sub->selectRaw('MAX(id)')
+                    ->from('situations_etudiant')
+                    ->whereIn('etudiant_id', $enAttenteIds)
+                    ->groupBy('etudiant_id');
+            })
+            ->pluck('created_at', 'etudiant_id');
+
+        $creations = Etudiant::whereIn('id', $enAttenteIds)->pluck('created_at', 'id');
+
+        $souffrance48h = 0;
+        $souffrance7j = 0;
         $totalHeures = 0;
-        foreach ($dates as $date) {
-            if ($date !== null) {
-                $totalHeures += max(0, Carbon::parse($date)->diffInHours($maintenant));
+        $compteur = 0;
+
+        foreach ($enAttenteIds as $id) {
+            $debut = $situations[$id] ?? $creations[$id] ?? null;
+
+            if ($debut !== null) {
+                $carbon = Carbon::parse($debut);
+                if ($carbon->lessThanOrEqualTo($seuil48h)) {
+                    $souffrance48h++;
+                }
+                if ($carbon->lessThanOrEqualTo($seuil7j)) {
+                    $souffrance7j++;
+                }
+                $totalHeures += max(0, $carbon->diffInHours($maintenant));
             }
+
+            // Une date nulle reste comptée au dénominateur (0h), comme avant.
+            $compteur++;
         }
 
-        return (int) round($totalHeures / $dates->count());
+        return [$souffrance48h, $souffrance7j, (int) round($totalHeures / max(1, $compteur))];
+    }
+
+    /**
+     * Décisions (valide/rejete) enregistrées aujourd'hui, sur la dernière
+     * situation de statut. Repli `updated_at` uniquement pour les dossiers
+     * sans aucune SituationEtudiant (données historiques/imports).
+     *
+     * @return array<string, int>
+     */
+    private function decisionsDuJour(Builder $base, Carbon $debutJour): array
+    {
+        $baseIds = (clone $base)->select('etudiants.id')->toBase();
+
+        $decisions = SituationEtudiant::query()
+            ->whereIn('etudiant_id', $baseIds)
+            ->where('type', 'statut')
+            ->whereIn('id', function ($sub) use ($baseIds) {
+                $sub->selectRaw('MAX(id)')
+                    ->from('situations_etudiant')
+                    ->whereIn('etudiant_id', $baseIds)
+                    ->groupBy('etudiant_id');
+            })
+            ->whereDate('date_effet', $debutJour->toDateString())
+            ->whereIn('nouvelle_valeur', ['valide', 'rejete'])
+            ->selectRaw('nouvelle_valeur, COUNT(*) as total')
+            ->groupBy('nouvelle_valeur')
+            ->pluck('total', 'nouvelle_valeur');
+
+        // Repli historique : aucune situation de statut pour ce dossier.
+        $legacy = (clone $base)
+            ->whereIn('etudiants.statut', ['valide', 'rejete'])
+            ->where('etudiants.updated_at', '>=', $debutJour)
+            ->whereNotExists(function ($sub) {
+                $sub->selectRaw('1')
+                    ->from('situations_etudiant')
+                    ->whereColumn('situations_etudiant.etudiant_id', 'etudiants.id')
+                    ->where('type', 'statut');
+            })
+            ->selectRaw('etudiants.statut as statut, COUNT(*) as total')
+            ->groupBy('etudiants.statut')
+            ->pluck('total', 'statut');
+
+        return [
+            'valide' => (int) ($decisions['valide'] ?? 0) + (int) ($legacy['valide'] ?? 0),
+            'rejete' => (int) ($decisions['rejete'] ?? 0) + (int) ($legacy['rejete'] ?? 0),
+        ];
     }
 
     /**
@@ -360,12 +424,14 @@ class FileTraitementService
 
         $ids = array_map(fn (Etudiant $e) => (int) $e->id, $items);
 
-        // 1. Étudiants avec compléments ouverts
-        $idsAvecComplement = DossierCorrection::whereIn('etudiant_id', $ids)
-            ->where('statut', 'proposee')
-            ->pluck('etudiant_id')
-            ->flip()
-            ->all();
+        // 1. Corrections ouvertes (proposées ou approuvées non appliquées).
+        // Une correction approuvée reste visible même si elle n'est pas
+        // encore appliquée (D-07) ; seule une proposition ouvre l'action
+        // « complément attendu » tant que M-03 n'est pas arbitré.
+        $correctionsOuvertes = DossierCorrection::whereIn('etudiant_id', $ids)
+            ->whereIn('statut', ['proposee', 'approuvee'])
+            ->get(['id', 'etudiant_id', 'champ', 'statut'])
+            ->groupBy('etudiant_id');
 
         // 2. Derniers verdicts + codes de règles en échec du dernier run
         // (LOOP C : source de la catégorisation dérivée — 1 requête batch,
@@ -383,7 +449,8 @@ class FileTraitementService
         $maintenant = Carbon::now();
 
         foreach ($items as $etudiant) {
-            $aComplement = isset($idsAvecComplement[$etudiant->id]);
+            $corrections = $correctionsOuvertes->get($etudiant->id, collect());
+            $aComplement = $corrections->contains('statut', 'proposee');
             $run = $derniersRuns->get($etudiant->id);
             $dernierVerdict = $run?->verdict;
             $reglesEchouees = $run?->regles_echouees ?? [];
@@ -399,6 +466,9 @@ class FileTraitementService
             $etudiant->anciennete_jours = $jours;
             $etudiant->est_en_souffrance = ($etudiant->statut === 'en_attente' && $heures >= 48);
             $etudiant->dernier_verdict = $dernierVerdict;
+            $etudiant->corrections_ouvertes = $corrections;
+            $etudiant->corrections_proposees_count = $corrections->where('statut', 'proposee')->count();
+            $etudiant->corrections_approuvees_count = $corrections->where('statut', 'approuvee')->count();
 
             // LOOP C : catégorie dérivée + motif (codes seuls, sans PII)
             // + prochaine action déterministe.
@@ -483,7 +553,7 @@ class FileTraitementService
      */
     public function contrainteCategorie($query, string $categorie)
     {
-        $dernierRun = function ($sub, ?string $likeCode = null, ?string $verdict = null, bool $sansFamilles = false) {
+        $dernierRun = function ($sub, ?string $likeCode = null, $verdict = null, bool $sansFamilles = false) {
             $sub->select('etudiant_id')
                 ->from('dossier_verifications')
                 ->whereColumn('etudiant_id', 'etudiants.id')
@@ -496,7 +566,9 @@ class FileTraitementService
                 $sub->where('regles_echouees', 'like', '%'.$likeCode.'%');
             }
 
-            if ($verdict !== null) {
+            if (is_array($verdict)) {
+                $sub->whereIn('verdict', $verdict);
+            } elseif ($verdict !== null) {
                 $sub->where('verdict', $verdict);
             }
 
@@ -513,6 +585,11 @@ class FileTraitementService
                 });
             }
         };
+
+        // Une famille n'est retenue que pour un dernier run non conforme.
+        $famille = fn (string $prefixe) => fn ($sub) => $dernierRun(
+            $sub, $prefixe, ['BLOQUANT', 'A_VERIFIER']
+        );
 
         $complementExiste = function ($sub) {
             $sub->select('etudiant_id')->from('dossier_corrections')
@@ -532,38 +609,56 @@ class FileTraitementService
 
         switch ($categorie) {
             case self::CATEGORIE_MENS_REVIEW:
-                return $query->where('statut', 'en_attente')->where(function ($q) use ($dernierRun) {
-                    $q->whereExists(fn ($sq) => $dernierRun($sq, 'mens.', 'BLOQUANT'))
-                        ->orWhereExists(fn ($sq) => $dernierRun($sq, 'mens.', 'A_VERIFIER'));
-                });
+                // Le complément est prioritaire sur toute famille (miroir PHP).
+                return $query->where('statut', 'en_attente')
+                    ->whereNotExists($complementExiste)
+                    ->whereExists($famille('mens.'));
 
             case self::CATEGORIE_IDENTITY_REVIEW:
-                return $query->where('statut', 'en_attente')->where(function ($q) use ($dernierRun) {
-                    $q->whereExists(fn ($sq) => $dernierRun($sq, 'identite.', 'BLOQUANT'))
-                        ->orWhereExists(fn ($sq) => $dernierRun($sq, 'identite.', 'A_VERIFIER'));
-                });
+                return $query->where('statut', 'en_attente')
+                    ->whereNotExists($complementExiste)
+                    ->whereExists($famille('identite.'))
+                    ->whereNotExists($famille('mens.'));
 
             case self::CATEGORIE_DUPLICATE_REVIEW:
-                return $query->where('statut', 'en_attente')->where(function ($q) use ($dernierRun) {
-                    $q->whereExists(fn ($sq) => $dernierRun($sq, 'doublons.', 'BLOQUANT'))
-                        ->orWhereExists(fn ($sq) => $dernierRun($sq, 'doublons.', 'A_VERIFIER'));
-                });
+                return $query->where('statut', 'en_attente')
+                    ->whereNotExists($complementExiste)
+                    ->whereExists($famille('doublons.'))
+                    ->whereNotExists($famille('mens.'))
+                    ->whereNotExists($famille('identite.'));
 
             case self::CATEGORIE_MISSING_DOCUMENTS:
-                return $query->where('statut', 'en_attente')->where(function ($q) use ($complementExiste, $dernierRun) {
+                return $query->where('statut', 'en_attente')->where(function ($q) use ($complementExiste, $famille) {
+                    // Complément ouvert : catégorie prioritaire absolue.
                     $q->whereExists($complementExiste)
-                        ->orWhereExists(fn ($sq) => $dernierRun($sq, 'documents.'))
-                        ->orWhereExists(fn ($sq) => $dernierRun($sq, 'pieces.'));
+                        ->orWhere(function ($q2) use ($famille) {
+                            // Sinon documents/pièces, uniquement si aucune
+                            // famille de priorité supérieure n'est présente.
+                            $q2->whereNotExists($famille('mens.'))
+                                ->whereNotExists($famille('identite.'))
+                                ->whereNotExists($famille('doublons.'))
+                                ->where(function ($q3) use ($famille) {
+                                    $q3->whereExists($famille('documents.'))
+                                        ->orWhereExists($famille('pieces.'));
+                                });
+                        });
                 });
 
             case self::CATEGORIE_BLOCKED:
                 return $query->where('statut', 'en_attente')
+                    ->whereNotExists($complementExiste)
                     ->whereExists(fn ($q) => $dernierRun($q, null, 'BLOQUANT', true));
 
             case self::CATEGORIE_READY_FOR_REVIEW:
+                // D-03 : inclut le repli A_VERIFIER sans famille, comme le
+                // classificateur applicatif. BLOQUANT sans famille reste
+                // BLOCKED ; toute famille spécialisée reste dans sa catégorie.
                 return $query->where('statut', 'en_attente')
                     ->whereNotExists($complementExiste)
-                    ->whereNotExists($anomalieRun);
+                    ->where(function ($q) use ($anomalieRun, $dernierRun) {
+                        $q->whereNotExists($anomalieRun)
+                            ->orWhereExists(fn ($sq) => $dernierRun($sq, null, 'A_VERIFIER', true));
+                    });
 
             case self::CATEGORIE_READY_FOR_ASSIGNMENT:
                 return $query->where('statut', 'valide')->whereNull('groupe_id');

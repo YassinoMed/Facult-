@@ -6,6 +6,7 @@ use App\Models\Etudiant;
 use App\Models\Faculte;
 use App\Models\HistoriqueAcademique;
 use App\Models\User;
+use App\Modules\Referentiel\Models\Programme;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Route;
 use Tests\TestCase;
@@ -109,6 +110,14 @@ class FileTraitementSecuriteTest extends TestCase
     public function test_referentiels_programmes_scopes_et_kpis_coherents(): void
     {
         $agentA = $this->compte('agenta@test.tn', 'admin_faculte', ['faculte_id' => $this->faculteA->id]);
+        $programmeA = Programme::create([
+            'faculte_id' => $this->faculteA->id,
+            'code' => 'LGL-A', 'nom' => 'Licence Génie Logiciel A', 'statut' => Programme::STATUT_ACTIF,
+        ]);
+        $programmeB = Programme::create([
+            'faculte_id' => $this->faculteB->id,
+            'code' => 'LGL-B', 'nom' => 'Licence Génie Logiciel B', 'statut' => Programme::STATUT_ACTIF,
+        ]);
         $this->dossier($this->faculteA->id);
         $this->dossier($this->faculteB->id);
 
@@ -118,12 +127,15 @@ class FileTraitementSecuriteTest extends TestCase
         $kpis = $reponse->viewData('kpis');
         $this->assertSame(1, $kpis['total']);
 
-        foreach ($reponse->viewData('programmes') as $programme) {
-            $this->assertSame($this->faculteA->id, (int) $programme->faculte_id);
-        }
-        foreach ($reponse->viewData('facultes') as $faculte) {
-            $this->assertSame($this->faculteA->id, (int) $faculte->id);
-        }
+        $programmes = $reponse->viewData('programmes');
+        $this->assertCount(1, $programmes);
+        $this->assertSame($programmeA->id, (int) $programmes->first()->id);
+        $this->assertSame($this->faculteA->id, (int) $programmes->first()->faculte_id);
+        $this->assertNotContains($programmeB->id, $programmes->pluck('id')->map(fn ($id) => (int) $id)->all());
+
+        $facultes = $reponse->viewData('facultes');
+        $this->assertCount(1, $facultes);
+        $this->assertSame($this->faculteA->id, (int) $facultes->first()->id);
     }
 
     public function test_commentaire_json_sans_fuite(): void

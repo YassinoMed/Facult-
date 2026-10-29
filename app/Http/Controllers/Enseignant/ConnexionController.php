@@ -56,6 +56,8 @@ class ConnexionController extends Controller
             'enseignant_auth_id' => $enseignant->id,
             'enseignant_auth_prenom' => $enseignant->prenom,
             'enseignant_auth_nom' => $enseignant->nom,
+            // LOT 1 : version re-vérifiée par EnsureTeacher à chaque requête.
+            'enseignant_mdp_version' => (int) $enseignant->mot_de_passe_version,
         ]);
 
         return redirect()->intended(route('enseignant.dashboard'))

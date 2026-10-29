@@ -517,4 +517,17 @@ class ScheduleTest extends TestCase
             ->assertSee('DÉPLACÉ')
             ->assertSee('Enseignant remplacé');
     }
+
+    public function test_vue_show_ne_fuite_pas_de_json_creneau(): void
+    {
+        $planning = $this->planning();
+        $service = $this->app->make(ScheduleService::class);
+        $service->creerCreneau($planning, $this->creneau());
+
+        $reponse = $this->actingAs($this->admin)->get(route('admin.emplois-du-temps.show', $planning));
+
+        $reponse->assertOk();
+        $reponse->assertDontSee('"schedule_id":', false);
+        $reponse->assertDontSee('&quot;schedule_id&quot;:', false);
+    }
 }

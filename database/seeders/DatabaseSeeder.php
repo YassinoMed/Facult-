@@ -4,6 +4,7 @@ namespace Database\Seeders;
 
 use App\Models\Etudiant;
 use App\Models\Faculte;
+use App\Support\DemoData;
 use Illuminate\Database\Seeder;
 
 class DatabaseSeeder extends Seeder
@@ -550,15 +551,16 @@ class DatabaseSeeder extends Seeder
         ];
 
         /*
-         | Verrou de sécurité (audit §P0-1) : les 25 étudiants de démonstration
-         | partagent le mot de passe connu « etudiant123 », et ArchiveSeeder
-         | crée des comptes scolarité avec des mots de passe connus. Ces données
-         | de démonstration ne sont autorisées qu'en développement/test —
-         | les facultés ci-dessus (données de référence, sans credential)
-         | restent seedables en production.
+         | Verrou de sécurité (audit §P0-1, LOOP-SECURITY-REMEDIATION-01) :
+         | les 25 étudiants de démonstration partagent le mot de passe connu
+         | « etudiant123 », et les seeders appelés ci-dessous créent des
+         | comptes scolarité avec des mots de passe connus. Ces données de
+         | démonstration ne sont autorisées qu'en local/testing ou sur
+         | opt-in explicite SEED_DEMO_DATA=true — les facultés ci-dessus
+         | (données de référence, sans credential) restent seedables partout.
          */
-        if (! app()->environment('local', 'testing')) {
-            $this->command?->warn('Données de démonstration ignorées (environnement non local) : étudiants de test et ArchiveSeeder non seedés.');
+        if (! DemoData::autorisee()) {
+            $this->command?->warn('Données de démonstration ignorées (SEED_DEMO_DATA non activé) : étudiants de test et seeders de démo non exécutés.');
 
             return;
         }

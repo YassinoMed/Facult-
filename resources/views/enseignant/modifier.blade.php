@@ -16,8 +16,15 @@
         <form method="POST" action="{{ route('enseignant.profil.update') }}" class="mt-6 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-6 space-y-4 shadow-sm">
             @csrf @method('PATCH')
             <x-input id="email" name="email" type="email" label="Email professionnel" required value="{{ old('email', $enseignant->email) }}" />
+            <p class="-mt-2 text-xs text-slate-500 dark:text-slate-400">
+                L'email sert d'identifiant de connexion : le changer exige votre mot de passe actuel (champ ci-dessous).
+            </p>
             <x-input id="telephone" name="telephone" label="Téléphone (mobile ou fixe professionnel)" value="{{ old('telephone', $enseignant->telephone) }}" />
             <x-input id="bureau" name="bureau" label="Bureau (ex. Bâtiment B, Bureau 204)" value="{{ old('bureau', $enseignant->bureau) }}" />
+            <x-input id="current_password" name="current_password" type="password" label="Mot de passe actuel (obligatoire pour changer l'email)" autocomplete="current-password" value="" />
+            <p class="-mt-2 text-xs text-slate-500 dark:text-slate-400">
+                Laissez ce champ vide si vous ne modifiez pas l'adresse email.
+            </p>
             <div class="pt-2 flex flex-col sm:flex-row gap-2">
                 <x-btn type="submit">Enregistrer les modifications</x-btn>
                 <x-btn variant="secondary" href="{{ route('enseignant.profil.show') }}">Annuler</x-btn>

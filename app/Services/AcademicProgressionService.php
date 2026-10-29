@@ -231,6 +231,9 @@ class AcademicProgressionService
                 $admissionVerrouillee->update([
                     'consumed_at' => now(),
                     'consumed_inscription_id' => $inscription->id,
+                    // R1 : libération du verrou d'unicité des actifs dans la
+                    // même transaction que le marquage (atomicité conservée).
+                    'verrou_actif' => null,
                 ]);
 
                 $this->audit->tracer(

@@ -18,10 +18,12 @@ use Illuminate\Http\Request;
 use Illuminate\Notifications\ChannelManager;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Route;
 use Mockery;
 use RuntimeException;
+use Symfony\Component\Mailer\Exception\TransportException;
 use Tests\TestCase;
 
 /**
@@ -252,6 +254,95 @@ class DossierExistantParcoursTest extends TestCase
             'cin' => '12345678',
             'date_naissance' => '1990-01-01',
         ])->assertRedirect(route('inscription.existant.accueil'));
+
+        Notification::assertNothingSent();
+    }
+
+    public function test_popup_bloque_avant_le_code_si_cin_et_date_ne_correspondent_pas(): void
+    {
+        $this->creerEtudiant();
+        Notification::fake();
+
+        $reponse = $this->postJson(route('inscription.existant.recherche'), [
+            'cin' => '12345678',
+            'date_naissance' => '1990-01-01',
+        ]);
+
+        $reponse->assertStatus(422)
+            ->assertJsonPath('ok', false)
+            ->assertJsonPath('etape', 'identification')
+            ->assertJsonPath('identite_correspond', false)
+            ->assertJsonPath('errors.identite.0', 'Le CIN et la date de naissance ne correspondent à aucun dossier. Vérifiez votre saisie.')
+            ->assertJsonMissingPath('email_masque');
+
+        Notification::assertNothingSent();
+        $this->assertNull(session('dossier_existant.recherche'));
+    }
+
+    public function test_popup_bloque_un_cin_inconnu_sans_indice_sur_le_champ_fautif(): void
+    {
+        Notification::fake();
+
+        $reponse = $this->postJson(route('inscription.existant.recherche'), [
+            'cin' => '99999999',
+            'date_naissance' => '2000-01-01',
+        ]);
+
+        $reponse->assertStatus(422)
+            ->assertJsonPath('ok', false)
+            ->assertJsonPath('etape', 'identification')
+            ->assertJsonPath('identite_correspond', false)
+            ->assertJsonPath('errors.identite.0', 'Le CIN et la date de naissance ne correspondent à aucun dossier. Vérifiez votre saisie.');
+
+        // Même message qu'un CIN existant avec une date erronée : aucun
+        // indice ne permet de distinguer les deux cas.
+        Notification::assertNothingSent();
+        $this->assertNull(session('dossier_existant.recherche'));
+    }
+
+    public function test_popup_autorise_le_passage_au_code_si_cin_et_date_correspondent(): void
+    {
+        $etudiant = $this->creerEtudiant();
+        Notification::fake();
+
+        $reponse = $this->postJson(route('inscription.existant.recherche'), [
+            'cin' => $etudiant->cin,
+            'date_naissance' => $etudiant->date_naissance->toDateString(),
+        ]);
+
+        $reponse->assertOk()
+            ->assertJsonPath('ok', true)
+            ->assertJsonPath('etape', 'code')
+            ->assertJsonPath('identite_correspond', true);
+
+        $emailMasque = (string) $reponse->json('email_masque');
+        $this->assertNotSame('', $emailMasque);
+        $this->assertStringContainsString('@', $emailMasque);
+        $this->assertStringNotContainsString('mohamed.benali@example.com', $emailMasque);
+
+        Notification::assertSentTo($etudiant, CodeVerificationDossierExistant::class, 1);
+        $this->assertSame([
+            'cin' => $etudiant->cin,
+            'date_naissance' => $etudiant->date_naissance->toDateString(),
+        ], session('dossier_existant.recherche'));
+    }
+
+    public function test_popup_repond_429_json_apres_trop_de_recherches(): void
+    {
+        $this->creerEtudiant();
+        Notification::fake();
+
+        for ($i = 0; $i < DossierExistantService::MAX_RECHERCHES; $i++) {
+            $this->service()->compterRecherche('12345678', '2003-05-17');
+        }
+
+        $this->postJson(route('inscription.existant.recherche'), [
+            'cin' => '12345678',
+            'date_naissance' => '2003-05-17',
+        ])->assertStatus(429)
+            ->assertJsonPath('ok', false)
+            ->assertJsonPath('etape', 'identification')
+            ->assertJsonPath('identite_correspond', false);
 
         Notification::assertNothingSent();
     }
@@ -636,7 +727,7 @@ class DossierExistantParcoursTest extends TestCase
         $this->get(route('inscription.existant.confirmation'))
             ->assertOk()
             ->assertSee('Votre demande a été enregistrée')
-            ->assertSee('en attente de nouvelle tentative')
+            ->assertSee('échoué')
             ->assertDontSee('Un email de confirmation vous a été adressé');
     }
 
@@ -690,6 +781,36 @@ class DossierExistantParcoursTest extends TestCase
         $this->assertStringNotContainsString('2003-05-17', $contenu);
     }
 
+    public function test_echec_de_transport_du_code_est_trace_sans_donnee_personnelle(): void
+    {
+        $etudiant = $this->creerEtudiant();
+
+        // Panne du transport telle qu'elle survient réellement en SMTP
+        // (exception Symfony, qui est aussi une RuntimeException : le
+        // pilotage doit la classer comme panne de transport, pas comme
+        // refus métier muet).
+        $this->mock(ChannelManager::class, function (Mockery\MockInterface $mock): void {
+            $mock->shouldReceive('send')->andThrow(new TransportException('SMTP indisponible'));
+        });
+
+        Log::spy();
+
+        // Réponse strictement inchangée (aucun oracle)… mais l'échec
+        // n'est plus muet : il est traçable côté exploitation.
+        $this->post(route('inscription.existant.recherche'), [
+            'cin' => $etudiant->cin,
+            'date_naissance' => $etudiant->date_naissance->toDateString(),
+        ])->assertRedirect(route('inscription.existant.accueil'));
+
+        // Contexte journalisé : classe d'exception SEULE — le message brut
+        // d'une erreur SMTP peut citer l'adresse du destinataire.
+        Log::shouldHaveReceived('warning')->withArgs(
+            fn (string $message, array $contexte): bool => $message === 'dossier_existant.code_transport_echec'
+                && $contexte === ['classe' => TransportException::class]
+                && ! in_array($etudiant->email, $contexte, true)
+        )->once();
+    }
+
     /* ---------------------------------------------------------------
      | CONTRAT — CSRF, file de notifications, historique, anti-fuite
      * -------------------------------------------------------------- */
@@ -703,12 +824,15 @@ class DossierExistantParcoursTest extends TestCase
         $this->assertContains(PreventRequestForgery::class, $groupes['web']);
     }
 
-    public function test_l_email_final_est_planifie_en_file_avec_retries(): void
+    public function test_l_email_final_est_envoye_immediatement_sans_dependre_d_un_worker(): void
     {
         $notification = new ConfirmationMiseAJourDossierExistant('INS-2026-00001', 2);
 
-        $this->assertInstanceOf(ShouldQueue::class, $notification);
-        $this->assertSame('notifications', $notification->queue);
+        // Contrat produit : la file `notifications` n'est pas servie en
+        // permanence — un email « en attente » serait un email perdu.
+        // L'email part donc immédiatement (échec tracé, jamais bloquant).
+        $this->assertNotInstanceOf(ShouldQueue::class, $notification);
+        $this->assertSame(['mail'], $notification->via(new Etudiant));
     }
 
     public function test_historique_capture_anciennes_et_nouvelles_valeurs(): void
@@ -754,7 +878,7 @@ class DossierExistantParcoursTest extends TestCase
         $this->assertStringNotContainsString('value="12345678"', $corps);
     }
 
-    public function test_aucune_modification_si_aucun_champ_ne_change_et_demande_quand_meme_confirmee(): void
+    public function test_aucune_modification_si_aucun_champ_ne_change_aucun_email_envoye(): void
     {
         $etudiant = $this->creerEtudiant();
         $jeton = $this->service()->emettreAutorisation($etudiant);
@@ -774,8 +898,17 @@ class DossierExistantParcoursTest extends TestCase
             'action' => 'modification_dossier_public',
         ]);
 
-        // La demande est tout de même confirmée (prise en compte).
-        Notification::assertSentToTimes($etudiant, ConfirmationMiseAJourDossierExistant::class, 1);
+        // La demande est tout de même confirmée (prise en compte) — mais
+        // AUCUN email n'est envoyé : rien n'a changé, il n'y a rien à
+        // confirmer. L'écran final le dit explicitement (jamais de faux
+        // « email adressé »).
+        Notification::assertNotSentTo($etudiant, ConfirmationMiseAJourDossierExistant::class);
+
+        $this->get(route('inscription.existant.confirmation'))
+            ->assertOk()
+            ->assertSee('Aucune donnée n\'a été modifiée', false)
+            ->assertSee("aucun email de confirmation n'était nécessaire", false)
+            ->assertDontSee('Un email de confirmation vous a été adressé');
     }
 
     /* ---------------------------------------------------------------

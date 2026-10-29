@@ -198,6 +198,7 @@ class ListesController extends Controller
     public function imprimer(Request $request): View
     {
         Gate::authorize('viewAny', Etudiant::class);
+        abort_unless($request->user()->can('data.export'), 403);
 
         $filtres = $this->filtresValides($request);
         $regroupement = ListeEtudiantsService::normaliserRegroupement($filtres['regroupement'] ?? null);
@@ -251,6 +252,7 @@ class ListesController extends Controller
     public function exports(Request $request): View
     {
         Gate::authorize('viewAny', Etudiant::class);
+        abort_unless($request->user()->can('data.export'), 403);
 
         $restreint = $request->user()->faculteRestreinteId() !== null;
 
@@ -264,6 +266,7 @@ class ListesController extends Controller
     public function telechargerExport(Request $request, ImportReport $rapport, ExportOrchestrator $orchestrator)
     {
         Gate::authorize('viewAny', Etudiant::class);
+        abort_unless($request->user()->can('data.export'), 403);
         abort_if($rapport->type !== 'listes.etudiants' || $rapport->direction !== 'export', 404);
         abort_unless(
             (int) $rapport->user_id === (int) $request->user()->id || $request->user()->estSuperAdmin(),
@@ -328,6 +331,10 @@ class ListesController extends Controller
             'statut' => ['nullable', 'in:en_attente,valide,rejete'],
             'sans_groupe' => ['nullable', 'boolean'],
             'search' => ['nullable', 'string', 'max:120'],
+            // Même borne et même moteur que le registre (ListeEtudiantsService)
+            // pour que PDF/Excel/CSV/impression et exports différés conservent
+            // exactement le filtre d'ancienneté de dépôt.
+            'depose_depuis' => ['nullable', 'integer', 'min:1', 'max:3650'],
             'tri' => ['nullable', 'in:'.implode(',', ListeEtudiantsService::TRIS)],
             'sens' => ['nullable', 'in:asc,desc'],
             'colonnes' => ['nullable'],

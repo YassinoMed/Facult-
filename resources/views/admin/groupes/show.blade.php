@@ -10,7 +10,9 @@
                 <x-quick-actions contexte="groupe.show" :sujet="$groupe" />
                 <x-btn variant="secondary" href="{{ route('admin.listes.preview', ['groupe_id' => $groupe->id]) }}">Liste / Export</x-btn>
                 <x-btn variant="secondary" href="{{ route('admin.groupes.etudiants', $groupe) }}">Étudiants</x-btn>
-                <x-btn variant="ghost" href="{{ route('admin.listes.imprimer', ['groupe_id' => $groupe->id]) }}">Imprimer</x-btn>
+                @can('data.export')
+                    <x-btn variant="ghost" href="{{ route('admin.listes.imprimer', ['groupe_id' => $groupe->id]) }}">Imprimer</x-btn>
+                @endcan
                 @can('archives.update')
                     <x-btn variant="ghost" href="{{ route('admin.affectations.masse') }}">Affecter en masse</x-btn>
                 @endcan

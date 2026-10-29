@@ -5,6 +5,7 @@ namespace App\Http\Requests;
 use App\Models\DossierAcademique;
 use App\Modules\Referentiel\Models\Niveau;
 use App\Modules\Referentiel\Models\Programme;
+use App\Services\InscriptionService;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -88,7 +89,7 @@ class StoreInscriptionAcademiqueRequest extends FormRequest
         return [
             'annee_universitaire_id.required' => 'Veuillez sélectionner l\'année universitaire.',
             'annee_universitaire_id.exists' => 'L\'année universitaire sélectionnée est introuvable.',
-            'annee_universitaire_id.unique' => 'Cet étudiant possède déjà une inscription pour cette année universitaire.',
+            'annee_universitaire_id.unique' => InscriptionService::MESSAGE_INSCRIPTION_ANNUELLE_EXISTANTE,
             'niveau.required' => 'Le niveau est obligatoire.',
             'niveau.in' => 'Le niveau sélectionné n\'est pas valide.',
             'filiere.max' => 'La filière ne doit pas dépasser 150 caractères.',

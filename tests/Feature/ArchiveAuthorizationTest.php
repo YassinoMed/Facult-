@@ -32,10 +32,13 @@ class ArchiveAuthorizationTest extends TestCase
 
     public function test_connexion_scolarite_reussie_et_regenerere_la_session(): void
     {
+        // Rôle non-privilégié : la connexion aboutit directement au
+        // tableau de bord (les rôles à privilèges sont forcés à
+        // l'enrôlement MFA — couvert par MfaLoopJTest).
         $user = User::creerCompteBackOffice([
             'name' => 'Responsable Test', 'email' => 'resp.test@universite.test',
             'password' => 'Motdepasse@123',
-        ], 'admin_scolarite');
+        ], 'agent_scolarite');
 
         $response = $this->post(route('admin.connexion.login'), [
             'email' => 'resp.test@universite.test',

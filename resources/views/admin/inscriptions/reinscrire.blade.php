@@ -80,9 +80,12 @@
                     </ul>
                 @endif
                 @if($contexte['documents_manquants'] !== [])
-                    <p class="mt-1 text-sm font-bold text-amber-700">⚠ Pièces requises manquantes : {{ implode(', ', $contexte['documents_manquants']) }}</p>
+                    <p class="mt-1 text-sm font-bold text-amber-700">⚠ Pièces manquantes ou à renouveler : {{ implode(', ', $contexte['documents_manquants']) }}</p>
                 @else
                     <p class="mt-1 text-sm text-slate-500">Aucune pièce supplémentaire requise par la configuration.</p>
+                @endif
+                @if(($contexte['documents_en_attente'] ?? []) !== [])
+                    <p class="mt-1 text-sm font-bold text-amber-700">⏳ Déjà transmises, en attente de contrôle : {{ implode(', ', $contexte['documents_en_attente']) }}</p>
                 @endif
             </div>
 

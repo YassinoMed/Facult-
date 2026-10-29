@@ -151,15 +151,25 @@ class SessionPreparationService
     public function suggererSalles(Epreuve $epreuve): array
     {
         $epreuve->loadMissing(['groupe.etudiants', 'matiere']);
-        $candidats = $epreuve->capacite_necessaire > 0
-            ? (int) $epreuve->capacite_necessaire
-            : $epreuve->groupe?->etudiants()->count() ?? 0;
+        // Périmètre d'effectif : candidats réellement générés, sinon
+        // capacité requise, sinon effectif du groupe (indicatif).
+        $effectifGenere = (int) $epreuve->candidats()->count();
+        $candidats = match (true) {
+            $effectifGenere > 0 => $effectifGenere,
+            $epreuve->capacite_necessaire > 0 => (int) $epreuve->capacite_necessaire,
+            default => (int) ($epreuve->groupe?->etudiants()->count() ?? 0),
+        };
 
-        $jour = Carbon::parse($epreuve->date->format('Y-m-d'))->format('l');
+        // day_of_week est stocké en minuscules ('monday') : normaliser pour
+        // ne pas dépendre de la casse renvoyée par format('l').
+        $jour = strtolower(Carbon::parse($epreuve->date->format('Y-m-d'))->format('l'));
         $debut = substr((string) $epreuve->heure_debut, 0, 5);
         $fin = substr((string) $epreuve->heure_fin, 0, 5);
 
+        // Salles admissibles uniquement (DM-01) : actives avec capacité connue.
         $salles = Room::where('actif', true)
+            ->whereNotNull('capacite')
+            ->where('capacite', '>', 0)
             ->when($candidats > 0, fn ($q) => $q->where('capacite', '>=', $candidats))
             ->orderBy('capacite')->get();
 

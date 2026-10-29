@@ -234,6 +234,21 @@ class ContraintesSurveillanceTest extends TestCase
         $this->assertSame(1, SurveillanceConstraintRevision::where('config_id', $config->id)->count());
     }
 
+    public function test_page_contraintes_rend_avec_configurations_existantes(): void
+    {
+        // Non-régression : la liste doit se charger quand des configurations
+        // existent déjà (chargement anticipé de la relation session).
+        SurveillanceConstraintConfig::create([
+            'session_examen_id' => $this->session->id,
+            'ratio_etudiants' => 37,
+        ]);
+
+        $reponse = $this->actingAs($this->admin)->get(route('admin.evaluations.surveillances.contraintes.index'));
+
+        $reponse->assertOk();
+        $reponse->assertSee('ratio 37');
+    }
+
     public function test_validation_rejette_incoherences(): void
     {
         $cas = [

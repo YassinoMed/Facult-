@@ -1,62 +1,345 @@
 <!DOCTYPE html>
-<html lang="fr">
+<html lang="{{ $langue ?? 'fr' }}" dir="{{ ($langue ?? 'fr') === 'ar' ? 'rtl' : 'ltr' }}">
 <head>
     <meta charset="utf-8">
-    <title>{{ $titreDocument }}</title>
+    <title>{{ ($langue ?? 'fr') === 'ar' ? 'شهادة تسجيل مدرسي' : ($titreDocument ?? 'Certificat de scolarité') }}</title>
     <style>
-        @page { size: A4 portrait; margin: 20mm 15mm 22mm 15mm; }
+        @page {
+            size: A4 portrait;
+            margin: 18mm 20mm 15mm 20mm;
+        }
         * { box-sizing: border-box; }
-        body { font-family: 'DejaVu Sans', sans-serif; font-size: 10pt; color: #1e293b; line-height: 1.5; }
-        .entete { text-align: center; border-bottom: 2.5pt solid #1e3a5f; padding-bottom: 8pt; margin-bottom: 12pt; }
-        .entete .etablissement { font-size: 15pt; font-weight: bold; color: #1e3a5f; }
-        .entete .titre-doc { font-size: 13pt; font-weight: bold; margin-top: 8pt; }
-        .meta { font-size: 8.5pt; color: #475569; margin-top: 4pt; }
-        .corps { margin-top: 10pt; text-align: justify; }
-        .kv { margin: 3pt 0; }
-        .kv .cle { display: inline-block; width: 36%; color: #475569; }
-        .kv .valeur { font-weight: bold; }
-        .signature { margin-top: 24pt; }
-        .signature .case { display: inline-block; width: 45%; vertical-align: top; }
-        .verification { font-size: 8pt; color: #1e3a5f; border: 0.5pt solid #cbd5e1; padding: 4pt 6pt; margin-top: 10pt; }
-        .pied { position: fixed; bottom: -16mm; left: 0; right: 0; font-size: 7.5pt; color: #64748b; border-top: 0.5pt solid #cbd5e1; padding-top: 4pt; text-align: center; }
+        body {
+            font-family: 'DejaVu Sans', sans-serif;
+            font-size: 10.5pt;
+            color: #0f172a;
+            line-height: 1.6;
+            margin: 0;
+            padding: 0;
+        }
+        .rtl { direction: rtl; text-align: right; }
+        .ltr { direction: ltr; text-align: left; }
+
+        .entete-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 22pt;
+        }
+        .entete-table td {
+            vertical-align: top;
+            padding: 0;
+            border: none;
+        }
+        .tutelle-bloc {
+            font-size: 9.5pt;
+            line-height: 1.4;
+            color: #1e293b;
+        }
+        .tutelle-bloc .pays {
+            font-size: 11pt;
+            font-weight: bold;
+            margin-bottom: 2pt;
+        }
+        .tutelle-bloc .faculte-nom {
+            font-weight: bold;
+            font-size: 10pt;
+            margin-top: 3pt;
+        }
+        .code-modele {
+            font-size: 8.5pt;
+            color: #475569;
+            font-family: monospace;
+            text-align: center;
+        }
+        .sceau-etat {
+            text-align: center;
+            width: 75pt;
+        }
+
+        .titre-section {
+            text-align: center;
+            margin: 22pt 0 18pt 0;
+        }
+        .titre-principal {
+            font-size: 19pt;
+            font-weight: bold;
+            color: #0f172a;
+            letter-spacing: 0.5pt;
+            margin-bottom: 5pt;
+        }
+        .annee-universitaire {
+            font-size: 11pt;
+            font-weight: bold;
+            color: #334155;
+        }
+
+        .formule-attestation {
+            font-size: 11pt;
+            margin-bottom: 12pt;
+            line-height: 1.6;
+        }
+        .etudiant-bloc {
+            margin: 10pt 0 16pt 0;
+            padding: 2pt 0;
+        }
+        .ligne-kv {
+            margin: 4pt 0;
+            font-size: 10.5pt;
+        }
+        .ligne-kv .label {
+            display: inline-block;
+            min-width: 190pt;
+            color: #334155;
+        }
+        .ligne-kv .valeur {
+            font-weight: bold;
+            color: #0f172a;
+        }
+
+        .paragraphe-regularite {
+            margin-top: 14pt;
+            font-size: 10.5pt;
+            line-height: 1.65;
+            text-align: justify;
+        }
+
+        .cloture-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 25pt;
+        }
+        .cloture-table td {
+            vertical-align: top;
+            border: none;
+            padding: 0;
+        }
+        .date-lieu {
+            font-size: 10pt;
+            margin-bottom: 6pt;
+        }
+        .titre-signataire {
+            font-weight: bold;
+            font-size: 11pt;
+            margin-bottom: 4pt;
+        }
+        .nom-signataire {
+            font-size: 10pt;
+            color: #334155;
+        }
+        .cachet-box {
+            margin-top: 6pt;
+            height: 70pt;
+        }
+        .cachet-svg {
+            opacity: 0.85;
+        }
+
+        .mention-legale {
+            margin-top: 30pt;
+            border-top: 1pt solid #cbd5e1;
+            padding-top: 6pt;
+            font-size: 9pt;
+            font-weight: bold;
+            color: #0f172a;
+        }
+
+        .securite-bloc {
+            margin-top: 10pt;
+            border: 0.5pt solid #cbd5e1;
+            background-color: #f8fafc;
+            border-radius: 4pt;
+            padding: 5pt 8pt;
+            font-size: 7.5pt;
+            color: #334155;
+        }
+        .securite-bloc table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        .securite-bloc td {
+            vertical-align: middle;
+            border: none;
+            padding: 0;
+        }
     </style>
 </head>
-<body>
-    <div class="entete">
-        <div class="etablissement">{{ $institution }}</div>
-        <div class="faculte">{{ $faculte }}</div>
-        <div class="titre-doc">{{ $titreDocument }}</div>
-        <div class="meta">Année universitaire : {{ $annee }} &nbsp;·&nbsp; Délivré le : {{ $dateGeneration }}</div>
-    </div>
+<body class="{{ ($langue ?? 'fr') === 'ar' ? 'rtl' : 'ltr' }}">
 
-    <div class="corps">
-        <p>Il est certifié que l'étudiant(e) désigné(e) ci-dessous possède le statut d'étudiant régulièrement inscrit pour l'année universitaire en cours :</p>
-        <p class="kv"><span class="cle">Nom</span> <span class="valeur">{{ $nom }}</span></p>
-        <p class="kv"><span class="cle">Prénom</span> <span class="valeur">{{ $prenom }}</span></p>
-        <p class="kv"><span class="cle">N° inscription</span> <span class="valeur">{{ $inscription }}</span></p>
-        <p class="kv"><span class="cle">Date de naissance</span> <span class="valeur">{{ $naissance }}</span></p>
-        <p class="kv"><span class="cle">Faculté</span> <span class="valeur">{{ $faculte }}</span></p>
-        <p class="kv"><span class="cle">Programme</span> <span class="valeur">{{ $programme }}</span></p>
-        <p class="kv"><span class="cle">Niveau</span> <span class="valeur">{{ $niveau }}</span></p>
-        <p>En foi de quoi, le présent certificat est délivré pour servir et valoir ce que de droit.</p>
-    </div>
+    @if(($langue ?? 'fr') === 'ar')
+        <table class="entete-table">
+            <tr>
+                <td style="width: 60%;" class="tutelle-bloc rtl">
+                    <div class="pays">الجمهورية التونسية</div>
+                    <div>وزارة التعليم العالي والبحث العلمي</div>
+                    <div>{{ $tutelleArabe ?? 'الإدارة العامة للدراسات التكنولوجية' }}</div>
+                    <div class="faculte-nom">{{ $faculte }}</div>
+                </td>
+                <td style="width: 40%; text-align: left;" class="ltr">
+                    <div class="sceau-etat">
+                        <div class="code-modele">18-2.1.03-05</div>
+                        <svg width="65" height="65" viewBox="0 0 100 100" class="cachet-svg">
+                            <circle cx="50" cy="50" r="46" stroke="#475569" stroke-width="2" fill="none" />
+                            <circle cx="50" cy="50" r="41" stroke="#475569" stroke-width="1" stroke-dasharray="2,2" fill="none" />
+                            <text x="50" y="32" font-size="9" text-anchor="middle" fill="#334155" font-weight="bold">الجمهورية التونسية</text>
+                            <path d="M 50 40 L 50 68 M 36 50 L 64 50 M 36 50 L 32 60 L 40 60 Z M 64 50 L 60 60 L 68 60 Z" stroke="#334155" stroke-width="1.8" fill="none" />
+                            <circle cx="50" cy="74" r="2.5" fill="#334155" />
+                            <text x="50" y="86" font-size="8" text-anchor="middle" fill="#64748b">★ ★ ★</text>
+                        </svg>
+                    </div>
+                </td>
+            </tr>
+        </table>
 
-    <div class="signature">
-        <div class="case">
-            <p><strong>Fait le :</strong> {{ $dateGeneration }}</p>
+        <div class="titre-section">
+            <div class="titre-principal">شهادة تسجيل مدرسي</div>
+            <div class="annee-universitaire">السنة الجامعية {{ $annee }}</div>
         </div>
-        <div class="case">
-            <p><strong>Signature / cachet :</strong></p>
-            <p style="height: 50pt;">&nbsp;</p>
+
+        <div class="formule-attestation">
+            يشهد الكاتب العام لـ <strong>{{ $faculte }}</strong>،<br>
+            أن {{ $civiliteArabe ?? 'الطالب' }} :
         </div>
+
+        <div class="etudiant-bloc">
+            <div class="ligne-kv"><span class="label">الإسم :</span> <span class="valeur">{{ $prenom }}</span></div>
+            <div class="ligne-kv"><span class="label">اللقّب :</span> <span class="valeur">{{ $nom }}</span></div>
+            <div class="ligne-kv"><span class="label">المولود في :</span> <span class="valeur">{{ $naissance }} بـ {{ $lieuNaissance }}</span></div>
+            <div class="ligne-kv"><span class="label">صاحب بطاقة التعريف الوطنية رقم :</span> <span class="valeur">{{ $cin }}</span></div>
+            <div class="ligne-kv"><span class="label">مرسم بالسنة :</span> <span class="valeur">{{ $niveauArabe ?? 'الثانية' }} من {{ $cycleArabe ?? 'الماجستير المهني' }}</span></div>
+            <div class="ligne-kv"><span class="label">الشعبة :</span> <span class="valeur">{{ $filiere }}</span></div>
+            <div class="ligne-kv"><span class="label">في الإختصاص :</span> <span class="valeur">{{ $specialite }}</span></div>
+            <div class="ligne-kv"><span class="label">تحت رقم :</span> <span class="valeur">{{ $inscription }}</span></div>
+        </div>
+
+        <p class="paragraphe-regularite rtl">
+            مسجل بصفة قانونية بالدراسات الجامعية بالمؤسسة المذكورة أعلاه للسنة الجامعية الجارية.<br>
+            سلمت هذه الشهادة للمعني بالأمر للإدلاء بها لدى من له النظر .
+        </p>
+
+        <table class="cloture-table">
+            <tr>
+                <td style="width: 50%;">
+                    <div style="font-size: 8pt; color: #64748b; margin-top: 25pt;">
+                        <strong>{{ $faculte }}</strong>
+                    </div>
+                </td>
+                <td style="width: 50%;" class="rtl">
+                    <div class="date-lieu">{{ $ville }} في : {{ $dateGeneration }}</div>
+                    <div class="titre-signataire">الكاتب العام</div>
+                    <div class="nom-signataire">{{ $secretaireGeneralArabe ?? 'فتحي عبد الله' }}</div>
+                    <div class="cachet-box">
+                        <svg width="110" height="70" viewBox="0 0 160 100" class="cachet-svg">
+                            <circle cx="80" cy="50" r="44" stroke="#1e3a8a" stroke-width="2.5" fill="none" opacity="0.85" />
+                            <circle cx="80" cy="50" r="39" stroke="#1e3a8a" stroke-width="1" stroke-dasharray="2,2" fill="none" opacity="0.85" />
+                            <text x="80" y="32" font-size="8.5" text-anchor="middle" fill="#1e3a8a" font-weight="bold">{{ mb_substr($faculte, 0, 26) }}</text>
+                            <text x="80" y="52" font-size="11" text-anchor="middle" fill="#1e3a8a" font-weight="bold">الكاتب العام</text>
+                            <text x="80" y="70" font-size="8.5" text-anchor="middle" fill="#1e3a8a">{{ $ville }}</text>
+                            <path d="M 50 65 Q 85 40 115 62 Q 95 30 110 50" stroke="#1e3a8a" stroke-width="2" fill="none" opacity="0.9" />
+                        </svg>
+                    </div>
+                </td>
+            </tr>
+        </table>
+
+        <div class="mention-legale rtl">
+            هام : لا تسلم هذه الشهادة إلا مرة واحدة
+        </div>
+    @else
+        <table class="entete-table">
+            <tr>
+                <td style="width: 70%;" class="tutelle-bloc ltr">
+                    <div class="pays">République Tunisienne</div>
+                    <div>Ministère de l'Enseignement Supérieur et de la Recherche Scientifique</div>
+                    <div>{{ $tutelle ?? 'DIR. GEN. DES ETUDES TECHNOLOGIQUES' }}</div>
+                    <div class="faculte-nom">{{ $faculte }}</div>
+                </td>
+                <td style="width: 30%; text-align: right;" class="ltr">
+                    <div class="code-modele">18-2.1.03-05</div>
+                    <svg width="60" height="60" viewBox="0 0 100 100" class="cachet-svg">
+                        <circle cx="50" cy="50" r="46" stroke="#475569" stroke-width="2" fill="none" />
+                        <circle cx="50" cy="50" r="41" stroke="#475569" stroke-width="1" stroke-dasharray="2,2" fill="none" />
+                        <text x="50" y="34" font-size="9" text-anchor="middle" fill="#334155" font-weight="bold">RÉPUBLIQUE</text>
+                        <text x="50" y="44" font-size="8" text-anchor="middle" fill="#334155" font-weight="bold">TUNISIENNE</text>
+                        <path d="M 50 48 L 50 72 M 36 58 L 64 58 M 36 58 L 32 68 L 40 68 Z M 64 58 L 60 68 L 68 68 Z" stroke="#334155" stroke-width="1.8" fill="none" />
+                    </svg>
+                </td>
+            </tr>
+        </table>
+
+        <div class="titre-section">
+            <div class="titre-principal">CERTIFICAT DE SCOLARITÉ</div>
+            <div class="annee-universitaire">Année universitaire {{ $annee }}</div>
+        </div>
+
+        <div class="formule-attestation">
+            Il est certifié que l'étudiant(e) désigné(e) ci-dessous possède le statut d'étudiant régulièrement inscrit :
+        </div>
+
+        <div class="etudiant-bloc">
+            <div class="ligne-kv"><span class="label">Nom :</span> <span class="valeur">{{ $civilite ?? 'Mr' }} {{ $nom }}</span></div>
+            <div class="ligne-kv"><span class="label">Prénom :</span> <span class="valeur">{{ $prenom }}</span></div>
+            <div class="ligne-kv"><span class="label">Né(e) Le :</span> <span class="valeur">{{ $naissance }} à {{ $lieuNaissance }}</span></div>
+            <div class="ligne-kv"><span class="label">Titulaire de la Carte d'Identité Nationale N° :</span> <span class="valeur">{{ $cin }}</span></div>
+            <div class="ligne-kv"><span class="label">Est inscrit(e) en :</span> <span class="valeur">{{ $niveauLibelle ?? 'Deuxième année' }}</span></div>
+            <div class="ligne-kv" style="padding-left: 190pt;"><span class="valeur">{{ $cycleDiplome ?? 'Mastère Professionnel' }}</span></div>
+            <div class="ligne-kv"><span class="label">Filière :</span> <span class="valeur">{{ $filiere }}</span></div>
+            <div class="ligne-kv"><span class="label">Spécialité :</span> <span class="valeur">{{ $specialite }}</span></div>
+            <div class="ligne-kv"><span class="label">Sous le Numéro :</span> <span class="valeur">{{ $inscription }}</span></div>
+        </div>
+
+        <p class="paragraphe-regularite ltr">
+            Pour l'année universitaire en cours, l'intéressé(e) poursuit ses études au sein de l'établissement.<br>
+            En foi de quoi, le présent certificat est délivré pour servir et valoir ce que de droit.
+        </p>
+
+        <table class="cloture-table">
+            <tr>
+                <td style="width: 50%;">
+                    <div style="font-size: 8.5pt; color: #64748b; margin-top: 20pt;">
+                        <strong>{{ $faculte }}</strong>
+                    </div>
+                </td>
+                <td style="width: 50%; text-align: left;">
+                    <div class="date-lieu">Fait à {{ $ville }}, Le : {{ $dateGeneration }}</div>
+                    <div class="titre-signataire">Le secrétaire général</div>
+                    <div class="nom-signataire">{{ $secretaireGeneral ?? 'Ben Abdallah Fethi' }}</div>
+                    <div class="cachet-box">
+                        <svg width="110" height="70" viewBox="0 0 160 100" class="cachet-svg">
+                            <circle cx="80" cy="50" r="44" stroke="#1e3a8a" stroke-width="2.5" fill="none" opacity="0.85" />
+                            <circle cx="80" cy="50" r="39" stroke="#1e3a8a" stroke-width="1" stroke-dasharray="2,2" fill="none" opacity="0.85" />
+                            <text x="80" y="32" font-size="8.5" text-anchor="middle" fill="#1e3a8a" font-weight="bold">{{ mb_substr($faculte, 0, 26) }}</text>
+                            <text x="80" y="52" font-size="9" text-anchor="middle" fill="#1e3a8a" font-weight="bold">LE SECRÉTAIRE GÉNÉRAL</text>
+                            <text x="80" y="70" font-size="8.5" text-anchor="middle" fill="#1e3a8a">{{ $ville }}</text>
+                            <path d="M 50 65 Q 85 40 115 62 Q 95 30 110 50" stroke="#1e3a8a" stroke-width="2" fill="none" opacity="0.9" />
+                        </svg>
+                    </div>
+                </td>
+            </tr>
+        </table>
+
+        <div class="mention-legale ltr">
+            N.B : le présent certificat n'est délivré qu'une seule fois.
+        </div>
+    @endif
+
+    <div class="securite-bloc">
+        <table>
+            <tr>
+                <td style="width: 82%;">
+                    <strong>Vérification d'authenticité / التحقق من صحة الوثيقة :</strong><br>
+                    <span>URL : {{ $urlVerification ?? url('/verify/' . ($codeVerification ?? '')) }}</span><br>
+                    <span>Code : <code style="font-size: 8pt; font-weight: bold;">{{ $codeVerification ?? '—' }}</code></span>
+                </td>
+                <td style="width: 18%; text-align: center;">
+                    @if(! empty($qrCodeSvg))
+                        <div style="display: inline-block; width: 44pt; height: 44pt;">
+                            {!! $qrCodeSvg !!}
+                        </div>
+                    @endif
+                </td>
+            </tr>
+        </table>
     </div>
 
-    <div class="verification">
-        <p><strong>Vérification d'authenticité :</strong> {{ $urlVerification ?? '' }} — Code : {{ $codeVerification ?? '' }}</p>
-    </div>
-
-    <div class="pied">
-        {{ $institution }} — {{ $titreDocument }} — {{ $dateGeneration }}
-    </div>
 </body>
 </html>

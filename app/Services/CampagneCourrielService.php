@@ -5,7 +5,9 @@ namespace App\Services;
 use App\Jobs\TraiterLotCampagneJob;
 use App\Models\CampagneCourriel;
 use App\Models\CampagneCourrielDestinataire;
+use App\Models\GroupeDestinataires;
 use App\Models\ModeleCourriel;
+use App\Support\CampagnePerimetre;
 use DateTimeInterface;
 use DomainException;
 use Illuminate\Support\Facades\DB;
@@ -27,10 +29,18 @@ class CampagneCourrielService
     /**
      * Crée ou met à jour un brouillon de campagne.
      *
+     * `$facultePerimetre` (LOOP-SECURITY-REMEDIATION-01) : faculté
+     * imposée par le rôle — posée sur les filtres, elle rend la campagne
+     * visible et modifiable par les seuls administrateurs de cette
+     * faculté, et refuse tout groupe enregistré hors périmètre.
+     *
      * @param  array<string, mixed>  $donnees
      */
-    public function enregistrerBrouillon(array $donnees, ?CampagneCourriel $campagne = null, ?int $auteurId = null): CampagneCourriel
+    public function enregistrerBrouillon(array $donnees, ?CampagneCourriel $campagne = null, ?int $auteurId = null, ?int $facultePerimetre = null): CampagneCourriel
     {
+        if ($campagne !== null && ! CampagnePerimetre::campagneAutorisee($campagne, $facultePerimetre)) {
+            throw new DomainException('Cette campagne est hors de votre périmètre.');
+        }
         $titre = trim((string) ($donnees['titre'] ?? ''));
         if ($titre === '' || mb_strlen($titre) > 150) {
             throw new InvalidArgumentException('Le titre de la campagne est obligatoire (max 150 caractères).');
@@ -50,6 +60,19 @@ class CampagneCourrielService
         $modeleVersion = null;
         $contenuHtml = null;
         $contenuTexte = null;
+
+        // Périmètre faculté : marqueur serveur + groupe contrôlé.
+        $groupeEnregistreId = isset($donnees['groupe_enregistre_id']) && $donnees['groupe_enregistre_id'] !== ''
+            ? (int) $donnees['groupe_enregistre_id']
+            : null;
+
+        if ($facultePerimetre !== null && $groupeEnregistreId !== null) {
+            $groupe = GroupeDestinataires::find($groupeEnregistreId);
+
+            if ($groupe === null || ! CampagnePerimetre::groupeAutorise($groupe, $facultePerimetre)) {
+                throw new DomainException('Groupe de destinataires hors de votre périmètre.');
+            }
+        }
 
         if ($modeleId !== null) {
             $modele = ModeleCourriel::with('versions')->find($modeleId);
@@ -79,8 +102,8 @@ class CampagneCourrielService
             'modele_version' => $modeleVersion,
             'contenu_texte' => $contenuTexte,
             'contenu_html' => $contenuHtml,
-            'filtres' => $donnees['filtres'] ?? null,
-            'groupe_enregistre_id' => $donnees['groupe_enregistre_id'] ?? null,
+            'filtres' => CampagnePerimetre::marquerFaculte((array) ($donnees['filtres'] ?? []), $facultePerimetre) ?: null,
+            'groupe_enregistre_id' => $groupeEnregistreId,
             'taille_lot' => (int) ($donnees['taille_lot'] ?? 50),
             'meta' => $donnees['meta'] ?? null,
         ];
@@ -106,10 +129,17 @@ class CampagneCourrielService
      * Résout et enregistre l'instantané des destinataires pour la campagne
      * dans une transaction atomique.
      *
+     * `$facultePerimetre` : campagne hors périmètre → refus ; la
+     * résolution est bornée à la faculté.
+     *
      * @param  array<string, mixed>  $donneesCiblage
      */
-    public function figerDestinataires(CampagneCourriel $campagne, array $donneesCiblage = []): CampagneCourriel
+    public function figerDestinataires(CampagneCourriel $campagne, array $donneesCiblage = [], ?int $facultePerimetre = null): CampagneCourriel
     {
+        if (! CampagnePerimetre::campagneAutorisee($campagne, $facultePerimetre)) {
+            throw new DomainException('Cette campagne est hors de votre périmètre.');
+        }
+
         if (! $campagne->peutEtreModifiee()) {
             throw new DomainException('Les destinataires ne peuvent pas être modifiés pour cette campagne.');
         }
@@ -122,7 +152,7 @@ class CampagneCourrielService
             $donneesCiblage['groupe_enregistre_id'] = $campagne->groupe_enregistre_id;
         }
 
-        $resolution = $this->resolution->resoudre($campagne->type_ciblage, $donneesCiblage);
+        $resolution = $this->resolution->resoudre($campagne->type_ciblage, $donneesCiblage, $facultePerimetre);
 
         return DB::transaction(function () use ($campagne, $resolution) {
             // Suppression des anciens destinataires préparés en brouillon
@@ -179,8 +209,12 @@ class CampagneCourrielService
     /**
      * Planifie la campagne pour une exécution ultérieure.
      */
-    public function planifier(CampagneCourriel $campagne, DateTimeInterface $date): CampagneCourriel
+    public function planifier(CampagneCourriel $campagne, DateTimeInterface $date, ?int $facultePerimetre = null): CampagneCourriel
     {
+        if (! CampagnePerimetre::campagneAutorisee($campagne, $facultePerimetre)) {
+            throw new DomainException('Cette campagne est hors de votre périmètre.');
+        }
+
         if (! $campagne->peutEtreEnvoyee()) {
             throw new DomainException("La campagne ne peut pas être planifiée depuis « {$campagne->statut} ».");
         }
@@ -198,8 +232,12 @@ class CampagneCourrielService
     /**
      * Déclenche l'envoi immédiat de la campagne par lots asynchrones.
      */
-    public function envoyer(CampagneCourriel $campagne): CampagneCourriel
+    public function envoyer(CampagneCourriel $campagne, ?int $facultePerimetre = null): CampagneCourriel
     {
+        if (! CampagnePerimetre::campagneAutorisee($campagne, $facultePerimetre)) {
+            throw new DomainException('Cette campagne est hors de votre périmètre.');
+        }
+
         if (! $campagne->peutEtreEnvoyee()) {
             throw new DomainException("La campagne ne peut pas être envoyée depuis « {$campagne->statut} ».");
         }
@@ -217,8 +255,12 @@ class CampagneCourrielService
     /**
      * Annule une campagne planifiée ou en attente/en cours.
      */
-    public function annuler(CampagneCourriel $campagne): CampagneCourriel
+    public function annuler(CampagneCourriel $campagne, ?int $facultePerimetre = null): CampagneCourriel
     {
+        if (! CampagnePerimetre::campagneAutorisee($campagne, $facultePerimetre)) {
+            throw new DomainException('Cette campagne est hors de votre périmètre.');
+        }
+
         if (! $campagne->peutEtreAnnulee()) {
             throw new DomainException("Cette campagne ne peut pas être annulée (statut : {$campagne->statut}).");
         }
@@ -240,8 +282,12 @@ class CampagneCourrielService
     /**
      * Relance sélectivement les destinataires en échec uniquement.
      */
-    public function relancerEchecs(CampagneCourriel $campagne): CampagneCourriel
+    public function relancerEchecs(CampagneCourriel $campagne, ?int $facultePerimetre = null): CampagneCourriel
     {
+        if (! CampagnePerimetre::campagneAutorisee($campagne, $facultePerimetre)) {
+            throw new DomainException('Cette campagne est hors de votre périmètre.');
+        }
+
         if (! $campagne->peutEtreRelancee()) {
             throw new DomainException('Aucun destinataire en échec à relancer pour cette campagne.');
         }

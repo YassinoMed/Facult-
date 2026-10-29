@@ -146,6 +146,29 @@ class QualiteApiSupervisionTest extends TestCase
         $this->assertSame($avant, Task::where('source', 'qualite')->count());
     }
 
+    public function test_centre_qualite_scope_faculte(): void
+    {
+        $faculteB = Faculte::create(['nom' => 'FLSH', 'code' => 'FLSH', 'description' => 'T', 'active' => true]);
+        $adminA = User::creerCompteBackOffice([
+            'name' => 'Admin A', 'email' => 'admin.a.qualite@universite.test',
+            'password' => 'Motdepasse@123', 'faculte_id' => $this->faculte->id,
+        ], 'admin_faculte');
+
+        AnomalieQualite::create([
+            'cle_unique' => 'scope-faculte-a', 'source' => 'population', 'gravite' => 'avertissement',
+            'message' => 'ANOMALIE-FACULTE-A', 'statut' => 'ouverte', 'faculte_id' => $this->faculte->id,
+        ]);
+        AnomalieQualite::create([
+            'cle_unique' => 'scope-faculte-b', 'source' => 'population', 'gravite' => 'avertissement',
+            'message' => 'ANOMALIE-FACULTE-B', 'statut' => 'ouverte', 'faculte_id' => $faculteB->id,
+        ]);
+
+        $this->actingAs($adminA)->get(route('admin.qualite.index'))
+            ->assertOk()
+            ->assertSee('ANOMALIE-FACULTE-A')
+            ->assertDontSee('ANOMALIE-FACULTE-B');
+    }
+
     public function test_centre_qualite_permissions_et_transitions(): void
     {
         $this->actingAs($this->admin)->get(route('admin.qualite.index'))->assertOk();
@@ -205,17 +228,22 @@ class QualiteApiSupervisionTest extends TestCase
 
     public function test_readiness_sans_pii(): void
     {
+        // LOOP-SECURITY-REMEDIATION-01 : la réponse PUBLIQUE est réduite à
+        // `status` + `timestamp` — plus aucun détail d'infrastructure (nom
+        // de base, pilote de cache, chemin de stockage, occupation disque,
+        // environnement). Le détail reste servi aux IP de supervision
+        // déclarées (couvert par
+        // tests/Feature/Security/SondesEtEntetesSecuriteTest.php).
         $reponse = $this->getJson('/api/v1/ready');
-        $reponse->assertJsonStructure(['status', 'sondes']);
-        $noms = array_column($reponse->json('sondes'), 'nom');
-        $this->assertContains('Base de données', $noms);
-        $this->assertContains('Cache', $noms);
-        $this->assertContains('File d’attente', $noms);
+
+        $donnees = $reponse->json();
+        $this->assertArrayHasKey('status', $donnees);
+        $this->assertArrayHasKey('timestamp', $donnees);
+        $this->assertArrayNotHasKey('sondes', $donnees);
+
         $this->assertStringNotContainsString('password', strtolower($reponse->getContent()));
-        // Environnement de test sain : base + cache OK.
-        $parNom = array_column($reponse->json('sondes'), null, 'nom');
-        $this->assertTrue($parNom['Base de données']['ok']);
-        $this->assertTrue($parNom['Cache']['ok']);
+        $this->assertStringNotContainsString('inscription_etudiants', $reponse->getContent());
+        $this->assertStringNotContainsString('storage', strtolower($reponse->getContent()));
     }
 
     public function test_openapi_couvre_routes(): void

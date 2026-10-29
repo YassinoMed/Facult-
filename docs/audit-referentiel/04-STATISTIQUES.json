@@ -1,0 +1,162 @@
+{
+    "genere_le": "2026-10-19T18:28:01+00:00",
+    "perimetre": {
+        "tables": [
+            "inscriptions_academiques",
+            "groups",
+            "matieres"
+        ],
+        "lecture_seule": true
+    },
+    "referentiel": {
+        "programmes": 4,
+        "facultes": 10,
+        "facultes_avec_programmes": [
+            "FST"
+        ],
+        "programmes_detail": [
+            {
+                "code": "DEMO-LGL",
+                "faculte": "FST",
+                "statut": "actif",
+                "nom": "Licence Génie Logiciel (démo)"
+            },
+            {
+                "code": "PAR-GEST",
+                "faculte": "FST",
+                "statut": "actif",
+                "nom": "Gestion"
+            },
+            {
+                "code": "PAR-ECO",
+                "faculte": "FST",
+                "statut": "actif",
+                "nom": "Economie"
+            },
+            {
+                "code": "PAR-INFO",
+                "faculte": "FST",
+                "statut": "actif",
+                "nom": "Informatique de gestion"
+            }
+        ]
+    },
+    "tables": {
+        "inscriptions_academiques": {
+            "total_lignes": 2085,
+            "valeurs_distinctes_non_nulles": 4,
+            "categories": {
+                "NON_RESOLUE": 12,
+                "HORS_PERIMETRE": 49,
+                "VIDE": 2014,
+                "INCOHERENCE_NIVEAU": 10
+            },
+            "par_faculte": {
+                "FST": {
+                    "NON_RESOLUE": 12,
+                    "VIDE": 300,
+                    "INCOHERENCE_NIVEAU": 10
+                },
+                "FDEG": {
+                    "HORS_PERIMETRE": 10,
+                    "VIDE": 286
+                },
+                "FMP": {
+                    "HORS_PERIMETRE": 9,
+                    "VIDE": 286
+                },
+                "FSIT": {
+                    "HORS_PERIMETRE": 12,
+                    "VIDE": 286
+                },
+                "FLSH": {
+                    "HORS_PERIMETRE": 4,
+                    "VIDE": 286
+                },
+                "FSE": {
+                    "HORS_PERIMETRE": 8,
+                    "VIDE": 285
+                },
+                "FMD": {
+                    "HORS_PERIMETRE": 6,
+                    "VIDE": 285
+                }
+            },
+            "par_annee": {
+                "2025-2026": {
+                    "NON_RESOLUE": 5,
+                    "HORS_PERIMETRE": 20
+                },
+                "2024-2025": {
+                    "HORS_PERIMETRE": 13,
+                    "NON_RESOLUE": 3
+                },
+                "2023-2024": {
+                    "HORS_PERIMETRE": 9,
+                    "NON_RESOLUE": 2
+                },
+                "2022-2023": {
+                    "HORS_PERIMETRE": 4,
+                    "NON_RESOLUE": 2
+                },
+                "2021-2022": {
+                    "HORS_PERIMETRE": 3
+                },
+                "2026-2027": {
+                    "VIDE": 2012,
+                    "INCOHERENCE_NIVEAU": 10
+                },
+                "2027-2028": {
+                    "VIDE": 2
+                }
+            },
+            "programme_id_renseigne": 12,
+            "niveau_id_renseigne": 12
+        },
+        "groups": {
+            "total_lignes": 160,
+            "valeurs_distinctes_non_nulles": 3,
+            "categories": {
+                "CANDIDAT_PARTIEL": 3,
+                "NON_RESOLUE": 1,
+                "VIDE": 156
+            },
+            "par_faculte": {
+                "FST": {
+                    "CANDIDAT_PARTIEL": 3,
+                    "NON_RESOLUE": 1,
+                    "VIDE": 28
+                },
+                "FDEG": {
+                    "VIDE": 22
+                },
+                "FMP": {
+                    "VIDE": 22
+                },
+                "FLSH": {
+                    "VIDE": 21
+                },
+                "FSIT": {
+                    "VIDE": 21
+                },
+                "FSE": {
+                    "VIDE": 21
+                },
+                "FMD": {
+                    "VIDE": 21
+                }
+            },
+            "programme_id_renseigne": 7,
+            "niveau_id_renseigne": 1
+        },
+        "matieres": {
+            "total_lignes": 66,
+            "valeurs_distinctes_non_nulles": 0,
+            "categories": {
+                "VIDE": 66
+            },
+            "ue_id_renseigne": 14,
+            "programme_via_ue": 14
+        }
+    }
+}

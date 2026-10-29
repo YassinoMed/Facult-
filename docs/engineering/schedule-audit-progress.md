@@ -92,3 +92,18 @@ Réserves inchangées : benchmarks relatifs SQLite (pas un SLA), navigateur
 NOT_EXECUTED, multi-processus non mesuré. Décisions métier en attente
 (roadmap.md §Suivi) : PDF EDT étudiant, attribution dossiers→agents, canal
 demande changement de groupe, gel, seuil « après début des cours ».
+
+---
+
+## SMART-TIMETABLES-PHASE-C (24/10/2026) — Audit Qualité, Priorités & Sécurité Consolidée
+
+- **État :** **VALIDÉE (PASS_WITH_RESERVATIONS)**
+- **Réserves traitées :**
+  - **R1 résolue :** `ScheduleConstraintChecker` évalue désormais l'intégralité des souhaits de ressources (`type = 'souhaitee'`) : enseignants, salles et groupes, avec préchargement unifié en 1 requête SQL (zéro N+1).
+  - **R2 résolue :** `ScheduleGeneratorService` ordonnance les demandes en combinant taille de domaine initial (MRV) et priorité métier décroissante (`$b->priorite <=> $a->priorite`).
+  - **C3 vérifié :** Scoping strict multi-facultés (404) sur `/admin/emplois-du-temps/{planning}/generation` et `/admin/emplois-du-temps/indisponibilites/{plage}`.
+- **Résultats tests :**
+  - `ScheduleSmartTimetablesPhaseCTest` : 7/7 verts (19 assertions).
+  - Suite complète Schedule : **274 tests (272 OK, 2 skipped, 0 échec)**, 1 203 assertions.
+  - Pint : 100% vert.
+

@@ -38,17 +38,42 @@ class PopulationStatsService
         $groupesVides = $groupes->filter(fn (Group $g) => (int) $g->affectations_actives === 0)->count();
         $tauxMoyen = $capaciteTotale > 0 ? round($effectifGroupes / $capaciteTotale * 100, 1) : 0.0;
 
+        // Volumes étudiants : un seul agrégat conditionnel (portable
+        // SQLite/MySQL) au lieu de quatre COUNT successifs.
+        $volumesEtudiants = $etudiants
+            ->selectRaw('COUNT(*) as total')
+            ->selectRaw("SUM(CASE WHEN statut = 'valide' THEN 1 ELSE 0 END) as valides")
+            ->selectRaw("SUM(CASE WHEN statut = 'en_attente' THEN 1 ELSE 0 END) as attente")
+            ->selectRaw('SUM(CASE WHEN groupe_id IS NULL THEN 1 ELSE 0 END) as sans_groupe')
+            ->first();
+
+        // Volumes d'inscriptions : un agrégat au lieu de six COUNT.
+        $debutJour = now()->startOfDay();
+        $finJour = (clone $debutJour)->addDay();
+
+        $volumesInscriptions = $inscriptions
+            ->selectRaw('COUNT(*) as total')
+            ->selectRaw("SUM(CASE WHEN statut = 'valide' THEN 1 ELSE 0 END) as validees")
+            ->selectRaw("SUM(CASE WHEN statut = 'en_cours' THEN 1 ELSE 0 END) as encours")
+            ->selectRaw("SUM(CASE WHEN statut = 'ajourne' THEN 1 ELSE 0 END) as ajournees")
+            ->selectRaw("SUM(CASE WHEN type = 'reinscription' THEN 1 ELSE 0 END) as reinscriptions")
+            ->selectRaw(
+                'SUM(CASE WHEN created_at >= ? AND created_at < ? THEN 1 ELSE 0 END) as aujourdhui',
+                [$debutJour, $finJour]
+            )
+            ->first();
+
         return [
-            'etudiants_total' => (clone $etudiants)->count(),
-            'etudiants_valides' => (clone $etudiants)->where('statut', 'valide')->count(),
-            'etudiants_attente' => (clone $etudiants)->where('statut', 'en_attente')->count(),
-            'etudiants_sans_groupe' => (clone $etudiants)->whereNull('groupe_id')->count(),
-            'inscriptions' => (clone $inscriptions)->count(),
-            'inscriptions_validees' => (clone $inscriptions)->where('statut', 'valide')->count(),
-            'inscriptions_aujourdhui' => (clone $inscriptions)->whereDate('inscriptions_academiques.created_at', now()->toDateString())->count(),
-            'inscriptions_encours' => (clone $inscriptions)->where('statut', 'en_cours')->count(),
-            'inscriptions_ajournees' => (clone $inscriptions)->where('statut', 'ajourne')->count(),
-            'reinscriptions' => (clone $inscriptions)->where('type', 'reinscription')->count(),
+            'etudiants_total' => (int) ($volumesEtudiants->total ?? 0),
+            'etudiants_valides' => (int) ($volumesEtudiants->valides ?? 0),
+            'etudiants_attente' => (int) ($volumesEtudiants->attente ?? 0),
+            'etudiants_sans_groupe' => (int) ($volumesEtudiants->sans_groupe ?? 0),
+            'inscriptions' => (int) ($volumesInscriptions->total ?? 0),
+            'inscriptions_validees' => (int) ($volumesInscriptions->validees ?? 0),
+            'inscriptions_aujourdhui' => (int) ($volumesInscriptions->aujourdhui ?? 0),
+            'inscriptions_encours' => (int) ($volumesInscriptions->encours ?? 0),
+            'inscriptions_ajournees' => (int) ($volumesInscriptions->ajournees ?? 0),
+            'reinscriptions' => (int) ($volumesInscriptions->reinscriptions ?? 0),
             'enseignants' => Teacher::where('actif', true)->count(),
             'groupes' => $groupes->count(),
             'groupes_actifs' => $groupesActifs,

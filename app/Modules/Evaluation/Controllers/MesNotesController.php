@@ -6,9 +6,11 @@ use App\Http\Controllers\Controller;
 use App\Modules\Enseignement\Models\Enseignement;
 use App\Modules\Evaluation\Events\EvaluationChanged;
 use App\Modules\Evaluation\Models\Epreuve;
+use App\Modules\Evaluation\Rules\NoteDansBareme;
 use App\Modules\Evaluation\Services\CompostageService;
 use App\Modules\Evaluation\Services\SaisieNoteService;
 use App\Modules\Schedule\Models\Teacher;
+use App\Services\Io\CsvSerializer;
 use DomainException;
 use Illuminate\Contracts\View\View;
 use Illuminate\Database\Eloquent\Builder;
@@ -81,11 +83,13 @@ class MesNotesController extends Controller
         $valides = $request->validate([
             'lignes' => ['required', 'array', 'min:1', 'max:2000'],
             'lignes.*.numero' => ['required', 'string', 'regex:/^CMP-\d{6}$/i', 'max:11'],
-            'lignes.*.valeur' => ['nullable', 'numeric', 'min:0', 'max:1000'],
+            'lignes.*.valeur' => ['nullable', 'numeric', 'decimal:0,2', new NoteDansBareme($epreuve)],
         ]);
 
         try {
-            $resultat = $service->saisirLotParCompostages($epreuve, array_values($valides['lignes']), null, 'Enseignant');
+            $auteurId = $enseignant->user_id ? (int) $enseignant->user_id : null;
+            $origine = 'Enseignant: '.($enseignant->matricule ?? ('#'.$enseignant->id));
+            $resultat = $service->saisirLotParCompostages($epreuve, array_values($valides['lignes']), $auteurId, $origine);
         } catch (DomainException $e) {
             return back()->withErrors(['epreuve' => $e->getMessage()])->withInput();
         }
@@ -94,7 +98,12 @@ class MesNotesController extends Controller
             return back()->withErrors($resultat['erreurs'])->withInput();
         }
 
-        return back()->with('success', "{$resultat['saisies']} note(s) enregistrée(s).");
+        $message = "{$resultat['saisies']} note(s) enregistrée(s).";
+        if ($resultat['ignorees'] > 0) {
+            $message .= " ({$resultat['ignorees']} ignorée(s) : verrouillées ou sans modification)";
+        }
+
+        return back()->with('success', $message);
     }
 
     /**
@@ -113,13 +122,16 @@ class MesNotesController extends Controller
         }
 
         $chemin = $request->file('fichier')->getRealPath();
+        $extrait = file_get_contents($chemin, false, null, 0, 1024) ?: '';
+        $delimiteur = (strpos($extrait, ';') !== false && strpos($extrait, ',') === false) ? ';' : ',';
+
         $handle = fopen($chemin, 'r');
 
         if ($handle === false) {
             return back()->withErrors(['fichier' => 'Impossible de lire le fichier.']);
         }
 
-        $entetes = fgetcsv($handle, 1000, ',');
+        $entetes = fgetcsv($handle, 1000, $delimiteur);
 
         if ($entetes === false || $entetes === null) {
             fclose($handle);
@@ -154,7 +166,7 @@ class MesNotesController extends Controller
 
         $lignes = [];
 
-        while (($ligne = fgetcsv($handle, 1000, ',')) !== false) {
+        while (($ligne = fgetcsv($handle, 1000, $delimiteur)) !== false) {
             $numero = trim((string) ($ligne[$colNumero] ?? ''));
             $brut = trim((string) ($ligne[$colNote] ?? ''));
 
@@ -184,7 +196,9 @@ class MesNotesController extends Controller
         }
 
         try {
-            $resultat = $service->saisirLotParCompostages($epreuve, $lignes, null, 'Enseignant');
+            $auteurId = $enseignant->user_id ? (int) $enseignant->user_id : null;
+            $origine = 'Enseignant (import CSV): '.($enseignant->matricule ?? ('#'.$enseignant->id));
+            $resultat = $service->saisirLotParCompostages($epreuve, $lignes, $auteurId, $origine);
         } catch (DomainException $e) {
             return back()->withErrors(['fichier' => $e->getMessage()]);
         }
@@ -195,7 +209,12 @@ class MesNotesController extends Controller
 
         EvaluationChanged::dispatch('notes.saisies', $epreuve->id);
 
-        return back()->with('success', "{$resultat['saisies']} note(s) importée(s).");
+        $message = "{$resultat['saisies']} note(s) importée(s).";
+        if ($resultat['ignorees'] > 0) {
+            $message .= " ({$resultat['ignorees']} ignorée(s) : verrouillées ou sans modification)";
+        }
+
+        return back()->with('success', $message);
     }
 
     /**
@@ -212,17 +231,18 @@ class MesNotesController extends Controller
         $statuts = $epreuve->candidats->keyBy('etudiant_id');
 
         return response()->streamDownload(function () use ($epreuve, $notes, $statuts) {
+            $csv = app(CsvSerializer::class);
             $sortie = fopen('php://output', 'w');
             fwrite($sortie, "\xEF\xBB\xBF");
-            fputcsv($sortie, ['compostage', 'note', 'statut'], ';');
+            fputcsv($sortie, $csv->neutraliserLigne(['compostage', 'note', 'statut']), ';');
 
             foreach ($epreuve->compostages->sortBy('numero') as $compostage) {
                 $note = $notes->get($compostage->etudiant_id);
-                fputcsv($sortie, [
+                fputcsv($sortie, $csv->neutraliserLigne([
                     $compostage->numero,
                     $note?->valeur,
                     $note?->statut ?? $statuts->get($compostage->etudiant_id)?->statut,
-                ], ';');
+                ]), ';');
             }
 
             fclose($sortie);

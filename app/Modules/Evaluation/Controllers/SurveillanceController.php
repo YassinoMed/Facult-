@@ -10,6 +10,7 @@ use App\Modules\Evaluation\Services\SurveillanceEquilibrageService;
 use App\Modules\Evaluation\Services\SurveillanceService;
 use App\Modules\Schedule\Models\Room;
 use App\Modules\Schedule\Models\Teacher;
+use App\Services\Io\CsvSerializer;
 use DomainException;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\JsonResponse;
@@ -325,11 +326,12 @@ class SurveillanceController
             ->get();
 
         $callback = function () use ($surveillances) {
+            $csv = app(CsvSerializer::class);
             $handle = fopen('php://output', 'w');
-            fputcsv($handle, ['ID', 'Date', 'Heure début', 'Heure fin', 'Type', 'Épreuve', 'Matière', 'Salle', 'Surveillant', 'Rôle', 'Statut', 'Présence', 'Heure arrivée']);
+            fputcsv($handle, $csv->neutraliserLigne(['ID', 'Date', 'Heure début', 'Heure fin', 'Type', 'Épreuve', 'Matière', 'Salle', 'Surveillant', 'Rôle', 'Statut', 'Présence', 'Heure arrivée']));
 
             foreach ($surveillances as $s) {
-                fputcsv($handle, [
+                fputcsv($handle, $csv->neutraliserLigne([
                     $s->id,
                     $s->epreuve?->date?->format('d/m/Y') ?? '—',
                     substr((string) ($s->epreuve?->heure_debut ?? ''), 0, 5),
@@ -343,7 +345,7 @@ class SurveillanceController
                     $s->statut,
                     $s->presence ?? 'non_emarge',
                     $s->heure_arrivee ?? '—',
-                ]);
+                ]));
             }
 
             fclose($handle);

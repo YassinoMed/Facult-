@@ -7,7 +7,9 @@ use App\Models\AppNotification;
 use App\Models\TeacherDocument;
 use App\Models\TeacherReclamation;
 use App\Models\TeacherRequest;
+use App\Modules\Announcements\Models\Annonce;
 use App\Modules\Attendance\Models\TeacherPointage;
+use App\Modules\Calendar\Services\AgendaService;
 use App\Modules\Evaluation\Models\Surveillance;
 use App\Modules\Schedule\Models\Teacher;
 use App\Services\NotificationService;
@@ -33,6 +35,26 @@ class TableauDeBordController extends Controller
         $seancesDuJour = $modules->estActif('schedule') ? $this->seancesDuJour($enseignant) : [];
         $prochainesGardes = $modules->estActif('evaluation') ? $this->prochainesGardes($enseignant) : collect();
 
+        // Widgets transverses : strictement conditionnés à l'activation du
+        // module, et filtrés côté serveur (jamais de brouillon ni d'annonce
+        // d'une autre faculté dans la vue).
+        $prochainesEcheances = $modules->estActif('calendar')
+            ? app(AgendaService::class)->agendaPourEnseignant(
+                $enseignant,
+                Carbon::today()->toDateString(),
+                Carbon::today()->addWeeks(8)->toDateString(),
+                3,
+            )
+            : [];
+
+        $annoncesEnseignant = $modules->estActif('announcements')
+            ? Annonce::visiblesPourEnseignant($enseignant)
+                ->orderByDesc('epinglee')
+                ->latest('publiee_a')
+                ->limit(3)
+                ->get()
+            : collect();
+
         $notificationsNonLues = AppNotification::where('teacher_id', $enseignant->id)->whereNull('read_at')->count();
 
         $demandesEnCours = TeacherRequest::where('teacher_id', $enseignant->id)
@@ -57,6 +79,8 @@ class TableauDeBordController extends Controller
             'enseignant' => $enseignant,
             'seancesDuJour' => $seancesDuJour,
             'prochainesGardes' => $prochainesGardes,
+            'prochainesEcheances' => $prochainesEcheances,
+            'annoncesEnseignant' => $annoncesEnseignant,
             'notificationsNonLues' => $notificationsNonLues,
             'demandesEnCours' => $demandesEnCours,
             'reclamationsEnAttente' => $reclamationsEnAttente,

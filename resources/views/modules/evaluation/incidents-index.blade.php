@@ -37,9 +37,24 @@
                             @endforeach
                         </select>
                     </label>
+                    <label class="text-xs font-bold text-slate-600">Gravité
+                        <select name="gravite" class="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm">
+                            <option value="mineure" @selected(old('gravite') === 'mineure')>Mineure</option>
+                            <option value="majeure" @selected(old('gravite') === 'majeure')>Majeure</option>
+                            <option value="critique" @selected(old('gravite') === 'critique')>Critique</option>
+                        </select>
+                    </label>
+                    <label class="text-xs font-bold text-slate-600">Délai cible (minutes)
+                        <input type="number" name="delai_cible_minutes" min="1" max="10080" value="{{ old('delai_cible_minutes') }}"
+                            class="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
+                            placeholder="30 (critique) / 120 par défaut">
+                    </label>
                 </div>
                 <label class="block text-xs font-bold text-slate-600">Description
                     <textarea name="description" required maxlength="2000" rows="3" class="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm" placeholder="Constat factuel, sans données sensibles inutiles."></textarea>
+                </label>
+                <label class="block text-xs font-bold text-slate-600">Preuves (une référence par ligne, optionnel)
+                    <textarea name="preuves" rows="2" maxlength="2000" class="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm" placeholder="PV de surveillance, photo horodatée, rapport technique…"></textarea>
                 </label>
                 <div class="flex justify-end">
                     <x-btn type="submit">Signaler l’incident</x-btn>
@@ -54,6 +69,7 @@
                         <tr class="border-b border-slate-100 text-[11px] uppercase tracking-wider text-slate-400">
                             <th scope="col" class="px-4 py-3 font-bold">Date</th>
                             <th scope="col" class="px-4 py-3 font-bold">Type</th>
+                            <th scope="col" class="px-4 py-3 font-bold">Gravité</th>
                             <th scope="col" class="px-4 py-3 font-bold">Description</th>
                             <th scope="col" class="px-4 py-3 font-bold">Statut</th>
                             <th scope="col" class="px-4 py-3 font-bold"><span class="sr-only">Actions</span></th>
@@ -64,7 +80,13 @@
                             <tr class="hover:bg-slate-50/60">
                                 <td class="px-4 py-3 tabular-nums">{{ $incident->created_at?->format('d/m/Y H:i') ?? '—' }}</td>
                                 <td class="px-4 py-3 font-mono text-xs">{{ $incident->type }}</td>
-                                <td class="px-4 py-3 text-xs">{{ $incident->description }}</td>
+                                <td class="px-4 py-3 text-xs">{{ $incident->gravite ?? 'mineure' }}</td>
+                                <td class="px-4 py-3 text-xs">
+                                    {{ $incident->description_lisible }}
+                                    @if($incident->estValide())
+                                        <span class="mt-1 block font-bold text-emerald-700">Validation indépendante enregistrée</span>
+                                    @endif
+                                </td>
                                 <td class="px-4 py-3"><x-status-badge :statut="$incident->statut" /></td>
                                 <td class="px-4 py-3 text-right">
                                     @can('update', $epreuve)
@@ -78,6 +100,14 @@
                                             <form method="POST" action="{{ route('admin.evaluations.incidents.transiter', [$incident, 'resolu']) }}" class="inline ml-2">
                                                 @csrf
                                                 <button type="submit" class="font-bold text-emerald-700 underline underline-offset-2 hover:text-emerald-500">Résoudre</button>
+                                            </form>
+                                        @endif
+                                        @if($incident->statut === 'resolu' && ! $incident->estValide())
+                                            <form method="POST" action="{{ route('admin.evaluations.incidents.valider', $incident) }}" class="inline ml-2">
+                                                @csrf
+                                                <input type="text" name="commentaire" maxlength="1000" placeholder="Commentaire (optionnel)"
+                                                    class="w-40 rounded-lg border border-slate-200 px-2 py-1 text-xs">
+                                                <button type="submit" class="font-bold text-primary-800 underline underline-offset-2 hover:text-primary-600">Valider</button>
                                             </form>
                                         @endif
                                     @endcan

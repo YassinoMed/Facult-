@@ -5,6 +5,7 @@ namespace App\Livewire\Admin\Campagnes;
 use App\Models\CampagneCourriel;
 use App\Models\CampagneCourrielDestinataire;
 use App\Services\CampagneCourrielService;
+use App\Support\CampagnePerimetre;
 use DomainException;
 use Illuminate\View\View;
 use Livewire\Attributes\Layout;
@@ -16,6 +17,9 @@ use Livewire\WithPagination;
  * Suivi en temps réel et historique détaillé d'une campagne de courriels (LOOP-MAIL-CAMPAIGNS-01).
  * Jauge de progression, ventilation des statuts, audit des erreurs expurgées
  * et relance sélective des échecs.
+ *
+ * LOOP-SECURITY-REMEDIATION-01 : accès (montage + actions) borné au
+ * périmètre faculté de l'utilisateur — campagne hors faculté = 404.
  */
 #[Layout('layouts.app')]
 class SuiviCampagneCourriel extends Component
@@ -37,6 +41,9 @@ class SuiviCampagneCourriel extends Component
     public function mount(CampagneCourriel $campagne): void
     {
         $this->authorize('campagnes.view');
+
+        abort_unless(CampagnePerimetre::campagneAutorisee($campagne, CampagnePerimetre::faculteAutorisee()), 404);
+
         $this->campagne = $campagne;
     }
 
@@ -52,6 +59,8 @@ class SuiviCampagneCourriel extends Component
 
     public function rafraichir(): void
     {
+        $this->autoriserPerimetre();
+
         $this->campagne->refresh();
         $this->campagne->recalculerCompteurs();
     }
@@ -59,9 +68,10 @@ class SuiviCampagneCourriel extends Component
     public function annuler(CampagneCourrielService $service): void
     {
         $this->authorize('campagnes.manage');
+        $this->autoriserPerimetre();
 
         try {
-            $service->annuler($this->campagne);
+            $service->annuler($this->campagne, CampagnePerimetre::faculteAutorisee());
             $this->campagne->refresh();
             $this->messageSucces = 'La campagne a été annulée avec succès.';
             $this->messageErreur = null;
@@ -75,9 +85,10 @@ class SuiviCampagneCourriel extends Component
     {
         $this->authorize('campagnes.manage');
         $this->authorize('mail.send');
+        $this->autoriserPerimetre();
 
         try {
-            $service->relancerEchecs($this->campagne);
+            $service->relancerEchecs($this->campagne, CampagnePerimetre::faculteAutorisee());
             $this->campagne->refresh();
             $this->messageSucces = 'La relance des destinataires en échec a été lancée.';
             $this->messageErreur = null;
@@ -87,9 +98,19 @@ class SuiviCampagneCourriel extends Component
         }
     }
 
+    /**
+     * Les propriétés publiques Livewire sont falsifiables : chaque action
+     * revérifie le périmètre avant d'agir sur la campagne.
+     */
+    private function autoriserPerimetre(): void
+    {
+        abort_unless(CampagnePerimetre::campagneAutorisee($this->campagne, CampagnePerimetre::faculteAutorisee()), 404);
+    }
+
     public function render(): View
     {
         $this->authorize('campagnes.view');
+        $this->autoriserPerimetre();
 
         $query = $this->campagne->destinataires()->latest('id');
 

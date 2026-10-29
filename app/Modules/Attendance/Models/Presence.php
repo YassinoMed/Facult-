@@ -8,6 +8,7 @@ use App\Modules\Schedule\Models\ScheduleSlot;
 use App\Modules\Schedule\Models\Teacher;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
 /**
  * Module Attendance — relevé de présence (§16/§32 : table dédiée
@@ -75,6 +76,18 @@ class Presence extends Model
     public function enseignantAuteur(): BelongsTo
     {
         return $this->belongsTo(Teacher::class, 'teacher_id');
+    }
+
+    /**
+     * Dernière justification déposée pour ce relevé (D-02) : relation
+     * dédiée à l'affichage du lien de téléchargement sans requête par
+     * ligne. Le contrôle d'accès reste intégralement serveur.
+     *
+     * @return HasOne<Justification, $this>
+     */
+    public function derniereJustification(): HasOne
+    {
+        return $this->hasOne(Justification::class, 'presence_id')->latestOfMany();
     }
 
     /**

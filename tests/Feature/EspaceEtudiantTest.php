@@ -2,8 +2,12 @@
 
 namespace Tests\Feature;
 
+use App\Models\AnneeUniversitaire;
 use App\Models\Etudiant;
 use App\Models\Faculte;
+use App\Models\InscriptionAcademique;
+use App\Modules\Evaluation\Models\DecisionDeliberation;
+use App\Modules\Evaluation\Models\Deliberation;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
 use Tests\TestCase;
@@ -147,9 +151,12 @@ class EspaceEtudiantTest extends TestCase
         ]);
 
         $response = $this->patch(route('etudiant.profil.update'), [
-            'email' => 'nouvel.email@example.com',
+            // L'email est un identifiant VERROUILLÉ depuis l'espace étudiant
+            // (LOOP-SECURITY-REMEDIATION-01) : seul le parcours vérifié
+            // « dossier existant » (double code) permet de le changer —
+            // couvert par ProfilEtIdentiteSecurisesTest.
+            'email' => $this->etudiant->email,
             'telephone' => '+212611111111',
-            'date_naissance' => '2004-05-20',
             'adresse' => '45 Avenue Hassan II',
             'ville' => 'Rabat',
             'code_postal' => '10000',
@@ -160,7 +167,7 @@ class EspaceEtudiantTest extends TestCase
 
         $this->assertDatabaseHas('etudiants', [
             'id' => $this->etudiant->id,
-            'email' => 'nouvel.email@example.com',
+            'email' => $this->etudiant->email,
             'telephone' => '+212611111111',
             'ville' => 'Rabat',
         ]);
@@ -315,5 +322,66 @@ class EspaceEtudiantTest extends TestCase
         // Après déconnexion, le profil est de nouveau protégé
         $this->get(route('etudiant.profil.show'))
             ->assertRedirect(route('etudiant.connexion.show'));
+    }
+
+    public function test_page_inscriptions_affiche_les_inscriptions_sans_erreur(): void
+    {
+        // Régression : la vue appelait des helpers JavaScript côté
+        // serveur (statusDotClass/moyenneColorClass/decisionColorClass)
+        // → 500 dès qu'une inscription existait (le test « sans
+        // inscription » ne déclenchait jamais la boucle).
+        $this->post(route('etudiant.connexion.login'), [
+            'identifiant' => 'mehdi.alami@example.com',
+            'password' => 'motdepasse1',
+        ]);
+
+        $annee = AnneeUniversitaire::create([
+            'libelle' => '2025-2026',
+            'date_debut' => '2025-09-01',
+            'date_fin' => '2026-07-15',
+            'active' => true,
+        ]);
+
+        $inscription = InscriptionAcademique::create([
+            'etudiant_id' => $this->etudiant->id,
+            'annee_universitaire_id' => $annee->id,
+            'niveau' => 'L1',
+            'filiere' => 'Sciences',
+            'groupe' => 'G1',
+            'statut' => 'valide',
+            'moyenne_annuelle' => 12.34,
+            'credits_obtenus' => 60,
+            'credits_total' => 60,
+            'decision' => 'admis',
+        ]);
+
+        // D-01 : seule la décision de jury PUBLIÉE autorise l'affichage des
+        // résultats. Les colonnes de l'inscription sont recalculées à chaque
+        // note et ne valent pas publication.
+        $deliberation = Deliberation::create([
+            'annee_universitaire_id' => $annee->id,
+            'statut' => 'published',
+            'published_at' => now(),
+        ]);
+        DecisionDeliberation::create([
+            'deliberation_id' => $deliberation->id,
+            'etudiant_id' => $this->etudiant->id,
+            'inscription_academique_id' => $inscription->id,
+            'moyenne' => 12.34,
+            'credits_obtenus' => 60,
+            'credits_total' => 60,
+            'decision' => 'admis',
+            'publie' => true,
+        ]);
+
+        $reponse = $this->get(route('etudiant.inscriptions.index'));
+
+        $reponse->assertOk()
+            ->assertSee('Mes Inscriptions Académiques')
+            ->assertSee('2025-2026')
+            ->assertSee('Validé')   // libellé du composant x-status-badge
+            ->assertSee('Admis')
+            ->assertSee('12.34')
+            ->assertSee('60/60');
     }
 }

@@ -7,6 +7,7 @@ use App\Jobs\Io\ImportStudentsJob;
 use App\Models\ImportReport;
 use App\Models\IntegrationLog;
 use App\Models\User;
+use App\Services\DisponibiliteWorkerService;
 use App\Services\Io\Templates\ImportTemplateDefinition;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Log;
@@ -186,7 +187,8 @@ class ImportOrchestrator
 
         $rapport->refresh();
 
-        if ($rapport->valid_rows > (int) config('integrations.queue_threshold')) {
+        $arbitre = app(DisponibiliteWorkerService::class);
+        if ($arbitre->doitBasculerEnFile((int) $rapport->valid_rows, (int) config('integrations.queue_threshold', 500))) {
             match ($rapport->type) {
                 'students' => ImportStudentsJob::dispatch($rapport, $mode),
                 'grades' => ImportGradesJob::dispatch($rapport, $mode),

@@ -91,6 +91,67 @@ class FinanceService
     }
 
     /**
+     * Émet une facture manuelle (frais saisis par un administrateur),
+     * sans dépendre d'un tarif préconfiguré. Utile pour les frais
+     * ponctuels ou les créations administratives de dossiers.
+     *
+     * La référence métier reste l'inscription : une seule facture
+     * non annulée par inscription (idempotence stricte).
+     *
+     * `$payee = true` enregistre une facture déjà réglée sur le site
+     * de paiement externe : aucun enregistrement `paiements` n'est créé,
+     * le statut `paid` sert d'indicateur « payée ».
+     */
+    public function emettreFactureManuelle(
+        InscriptionAcademique $inscription,
+        int $montantCentimes,
+        string $libelle,
+        int $auteurId,
+        bool $payee = false,
+    ): Facture {
+        $libelle = trim($libelle);
+
+        if ($montantCentimes <= 0) {
+            throw new DomainException('Montant de facture invalide.');
+        }
+
+        if ($libelle === '') {
+            throw new DomainException('Libellé de facture obligatoire.');
+        }
+
+        return DB::transaction(function () use ($inscription, $montantCentimes, $libelle, $auteurId, $payee) {
+            $existante = Facture::where('inscription_academique_id', $inscription->id)
+                ->whereNotIn('statut', ['cancelled'])
+                ->first();
+
+            if ($existante !== null) {
+                throw new DomainException('Une facture existe déjà pour cette inscription.');
+            }
+
+            $facture = Facture::create([
+                'reference' => $this->reference('FAC'),
+                'etudiant_id' => $inscription->etudiant_id,
+                'annee_universitaire_id' => $inscription->annee_universitaire_id,
+                'inscription_academique_id' => $inscription->id,
+                'statut' => $payee ? 'paid' : 'issued',
+                'total_centimes' => $montantCentimes,
+                'date_echeance' => now()->addDays(30)->format('Y-m-d'),
+                'created_by' => $auteurId,
+            ]);
+
+            $facture->lignes()->create([
+                'tarif_id' => null,
+                'libelle' => mb_substr($libelle, 0, 150),
+                'montant_centimes' => $montantCentimes,
+            ]);
+
+            FactureEmise::dispatch($facture->id);
+
+            return $facture->fresh();
+        });
+    }
+
+    /**
      * Enregistre un paiement guichet (pending), puis confirmation
      * séparée — jamais de reçu avant confirmation réelle.
      */
@@ -232,6 +293,49 @@ class FinanceService
         }
 
         return ['total' => $total, 'paye' => $paye, 'reste' => max(0, $total - $paye), 'en_retard' => $retard];
+    }
+
+    /**
+     * Agrégats du tableau de bord calculés en SQL, sans charger les factures.
+     *
+     * Reproduit exactement la sémantique de `Facture::netCentimes()`,
+     * `payeCentimes()` et `resteCentimes()` :
+     * - une facture `paid` est réputée réglée en totalité (règlement externe) ;
+     * - sinon, seuls les paiements `confirmed` comptent ;
+     * - une facture est en retard dès que son échéance est atteinte ou passée
+     *   et que son reste est strictement positif (équivalent de `isPast()`
+     *   sur une colonne `date`, donc minuit).
+     *
+     * @return array{total:int, encaisse:int, reste:int, en_retard:int}
+     */
+    public function agregatsFactures(?int $faculteId = null): array
+    {
+        $net = '(CASE WHEN factures.total_centimes > factures.remise_centimes THEN factures.total_centimes - factures.remise_centimes ELSE 0 END)';
+        $paye = "(CASE WHEN factures.statut = 'paid' THEN {$net} ELSE COALESCE((SELECT SUM(p.montant_centimes) FROM paiements p WHERE p.facture_id = factures.id AND p.statut = 'confirmed'), 0) END)";
+        $reste = "(CASE WHEN ({$net} - {$paye}) > 0 THEN ({$net} - {$paye}) ELSE 0 END)";
+
+        $ligne = Facture::query()
+            ->when($faculteId !== null, fn ($q) => $q->whereHas(
+                'etudiant',
+                fn ($e) => $e->where('faculte_id', $faculteId)
+            ))
+            ->selectRaw("COALESCE(SUM({$net}), 0) AS total")
+            ->selectRaw("COALESCE(SUM({$paye}), 0) AS encaisse")
+            ->selectRaw(
+                "COALESCE(SUM(CASE WHEN factures.date_echeance IS NOT NULL AND factures.date_echeance <= ? THEN {$reste} ELSE 0 END), 0) AS en_retard",
+                [now()->toDateString()]
+            )
+            ->first();
+
+        $total = (int) ($ligne->total ?? 0);
+        $encaisse = (int) ($ligne->encaisse ?? 0);
+
+        return [
+            'total' => $total,
+            'encaisse' => $encaisse,
+            'reste' => max(0, $total - $encaisse),
+            'en_retard' => (int) ($ligne->en_retard ?? 0),
+        ];
     }
 
     private function reference(string $prefixe): string

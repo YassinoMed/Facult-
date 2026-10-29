@@ -76,7 +76,7 @@ final class SaisieIdentification
         $formatInterne = ! $saisiePublique && preg_match('/^([0-9]{4})-(0[1-9]|[12][0-9]|3[01])-(0[1-9]|[12][0-9]|3[01])$/', $valeur) === 1;
 
         if (! $saisiePublique && ! $formatInterne) {
-            return ['valid' => false, 'code' => 'format', 'message' => 'La date doit être au format JJ/MM/AAAA et correspondre à une date réelle.'];
+            return ['valid' => false, 'code' => 'format', 'message' => 'Date de naissance invalide ou impossible. Format obligatoire : JJ/MM/AAAA (ex : 15/03/2004).'];
         }
 
         // 3. Conversion (le format d'affichage du contrat reste JJ/MM/AAAA).
@@ -87,23 +87,30 @@ final class SaisieIdentification
         //    impossibles (31/02 → 03/03) — la comparaison aller-retour
         //    les rejette ; 29/02/2024 (bissextile) passe.
         if ($dt === false || $dt->format($format) !== $valeur) {
-            return ['valid' => false, 'code' => 'impossible', 'message' => 'La date doit être au format JJ/MM/AAAA et correspondre à une date réelle.'];
+            return ['valid' => false, 'code' => 'impossible', 'message' => 'Date de naissance invalide ou impossible. Format obligatoire : JJ/MM/AAAA (ex : 15/03/2004).'];
         }
 
         // 5. Jamais dans le futur.
         if ($dt > new DateTime('today')) {
-            return ['valid' => false, 'code' => 'future', 'message' => 'La date de naissance ne peut pas être postérieure à aujourd\'hui.'];
+            return ['valid' => false, 'code' => 'future', 'message' => 'La date de naissance doit être antérieure à aujourd\'hui.'];
         }
 
-        // 6. Âge en années révolues.
+        // 6. Borne basse explicite : une date antérieure à 1900 n'est pas
+        //    une date de naissance plausible et doit être refusée avec un
+        //    message dédié (pas un message d'âge générique).
+        if ((int) $dt->format('Y') < 1900) {
+            return ['valid' => false, 'code' => 'trop_ancienne', 'message' => 'La date de naissance doit être postérieure au 01/01/1900.'];
+        }
+
+        // 7. Âge en années révolues.
         $age = (int) (new DateTime('today'))->diff($dt)->y;
 
-        // 7. Bornes d'âge.
+        // 8. Bornes d'âge.
         if ($age < self::AGE_MINIMUM || $age > self::AGE_MAXIMUM) {
             return ['valid' => false, 'code' => 'age', 'age' => $age, 'message' => 'L\'âge doit être compris entre '.self::AGE_MINIMUM.' et '.self::AGE_MAXIMUM.' ans.'];
         }
 
-        // 8. Succès : date au format de saisie publique + âge calculé.
+        // 9. Succès : date au format de saisie publique + âge calculé.
         return ['valid' => true, 'date' => $dt->format('d/m/Y'), 'age' => $age, 'message' => 'Date valide', 'code' => 'valide'];
     }
 

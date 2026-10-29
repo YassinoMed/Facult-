@@ -8,7 +8,7 @@
         <div class="flex flex-wrap items-center justify-between gap-3">
             <div>
                 <p class="text-[11px] font-bold uppercase tracking-wider text-slate-400">Back-office scolarité</p>
-                <h1 class="mt-1 text-2xl sm:text-3xl font-black tracking-tight text-slate-900">Tableau de bord</h1>
+                <h1 class="mt-1 text-2xl sm:text-3xl font-black tracking-tight text-slate-900" data-motion-block>Tableau de bord</h1>
             </div>
             <span class="inline-flex items-center rounded-full border border-slate-200 bg-white px-3 py-1.5 text-[11px] font-bold text-slate-600">
                 Périmètre : {{ $faculte?->nom ?? 'toutes les facultés' }}
@@ -123,7 +123,7 @@
                     <div class="overflow-x-auto">
                         <table class="w-full min-w-[560px] text-left text-xs sm:text-sm">
                             <thead>
-                                <tr class="border-b border-slate-100 text-[11px] uppercase tracking-wider text-slate-400">
+                                <tr class="border-b border-slate-100 text-[11px] uppercase tracking-wider text-slate-700 font-bold">
                                     <th scope="col" class="px-5 py-3 font-bold">CIN</th>
                                     <th scope="col" class="px-5 py-3 font-bold">Nom</th>
                                     <th scope="col" class="px-5 py-3 font-bold">Faculté</th>

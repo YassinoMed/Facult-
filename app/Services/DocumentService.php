@@ -110,13 +110,16 @@ class DocumentService
                 'storage_path' => $chemin,
                 'sha256' => $hash,
                 'size' => strlen($contenu),
+                'disk' => 'local',
+                'categorie' => $typeDocument,
             ]);
 
             if (! $resultat->sain) {
                 Storage::disk('local')->delete($chemin);
 
+                $detail = $resultat->signature ?? $resultat->erreur;
                 throw ValidationException::withMessages([
-                    'document' => 'Document refusé par l’analyse antivirus'.($resultat->signature !== null ? " ({$resultat->signature})." : '.'),
+                    'document' => 'Document refusé par l’analyse antivirus'.($detail !== null ? " ({$detail})." : '.'),
                 ]);
             }
 

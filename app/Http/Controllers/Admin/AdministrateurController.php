@@ -3,17 +3,23 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\AttribuerRoleRequest;
 use App\Http\Requests\StoreAdministrateurRequest;
 use App\Http\Requests\UpdateAdministrateurRequest;
 use App\Models\Faculte;
 use App\Models\User;
+use App\Services\AttributionRoleService;
 use App\Services\VerrouillageService;
+use App\Support\Permissions;
+use Illuminate\Auth\Access\AuthorizationException;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\Rules\Password;
 use Illuminate\View\View;
+use Symfony\Component\HttpKernel\Exception\HttpException;
 
 /**
  * Gestion des administrateurs du back-office — SUPER ADMIN uniquement
@@ -30,7 +36,7 @@ use Illuminate\View\View;
  */
 class AdministrateurController extends Controller
 {
-    public function index(Request $request): View
+    public function index(Request $request, AttributionRoleService $attribution): View
     {
         $administrateurs = User::with('faculte')
             ->when($recherche = trim((string) $request->string('search')), function ($query) use ($recherche) {
@@ -47,7 +53,20 @@ class AdministrateurController extends Controller
         return view('admin.administrateurs.index', [
             'administrateurs' => $administrateurs,
             'facultes' => Faculte::orderBy('nom')->get(),
+            'rolesAttribuables' => $attribution->rolesAttribuables($request->user()),
+            'registrePermissions' => $this->registrePermissions(),
         ]);
+    }
+
+    /** @return array<string, array<int, string>> */
+    private function registrePermissions(): array
+    {
+        $registre = [];
+        foreach (Permissions::ROLES as $role) {
+            $registre[$role] = $role === 'super_admin' ? Permissions::TOUTES : Permissions::pourRole($role);
+        }
+
+        return $registre;
     }
 
     public function create(): View
@@ -189,6 +208,80 @@ class AdministrateurController extends Controller
         return redirect()->route('admin.administrateurs.index')->with('success', "Le compte « {$administrateur->name} » a été mis à jour.");
     }
 
+    /**
+     * Attribution rapide du rôle (menu de la liste) : même mécanisme que
+     * la modification complète (`AttributionRoleService`), réponse JSON
+     * pour la modale ou redirection sinon.
+     */
+    public function attribuerRole(AttribuerRoleRequest $request, User $administrateur, AttributionRoleService $attribution): RedirectResponse|JsonResponse
+    {
+        try {
+            $resultat = $attribution->attribuer(
+                $request->user(),
+                $administrateur,
+                $request->validated('role'),
+                $request->validated('faculte_id') !== null ? (int) $request->validated('faculte_id') : null,
+                $request->validated('role_actuel'),
+                'menu_comptes',
+                $request->ip(),
+            );
+        } catch (AuthorizationException $e) {
+            return $this->reponseAttributionEchec($request, 403, $e->getMessage());
+        } catch (HttpException $e) {
+            return $this->reponseAttributionEchec($request, $e->getStatusCode(), $e->getMessage());
+        }
+
+        $message = $resultat['inchange']
+            ? "Le compte « {$administrateur->name} » possède déjà ce rôle."
+            : "Rôle de « {$administrateur->name} » : {$resultat['ancien_role']} → {$resultat['nouveau_role']}.";
+
+        if ($request->wantsJson()) {
+            return response()->json(['ok' => true, 'message' => $message] + $resultat);
+        }
+
+        return redirect()->route('admin.administrateurs.index')->with('success', $message);
+    }
+
+    /**
+     * Recherche de comptes pour la modale d'attribution (page rôles) :
+     * 10 résultats, sans données sensibles (ni hash ni token).
+     */
+    public function rechercher(Request $request): JsonResponse
+    {
+        $recherche = trim((string) $request->string('q'));
+
+        abort_if(mb_strlen($recherche) < 2, 422, 'Recherche trop courte (2 caractères minimum).');
+
+        $motif = '%'.str_replace(['%', '_', '\\'], '', $recherche).'%';
+
+        $comptes = User::with('faculte:id,nom')
+            ->where(fn ($q) => $q->where('name', 'like', $motif)->orWhere('email', 'like', $motif))
+            ->orderBy('name')
+            ->limit(10)
+            ->get(['id', 'name', 'email', 'role', 'faculte_id']);
+
+        return response()->json([
+            'comptes' => $comptes->map(fn (User $u) => [
+                'id' => $u->id,
+                'name' => $u->name,
+                'email' => $u->email,
+                'role' => $u->role,
+                'role_libelle' => $u->role_libelle,
+                'faculte' => $u->faculte?->nom,
+                'est_propre_compte' => $u->id === $request->user()->id,
+            ]),
+        ]);
+    }
+
+    private function reponseAttributionEchec(Request $request, int $statut, string $message): RedirectResponse|JsonResponse
+    {
+        if ($request->wantsJson()) {
+            return response()->json(['ok' => false, 'message' => $message], $statut);
+        }
+
+        return back()->withErrors(['role' => $message])->withInput();
+    }
+
     public function destroy(Request $request, User $administrateur): RedirectResponse
     {
         abort_if($administrateur->id === $request->user()->id, 403, 'Vous ne pouvez pas supprimer votre propre compte.');
@@ -233,7 +326,11 @@ class AdministrateurController extends Controller
         $mfaCoupe = (bool) $administrateur->mfa_active;
 
         if ($mfaCoupe) {
-            $administrateur->forceFill(['mfa_secret' => null, 'mfa_active' => false])->save();
+            $administrateur->forceFill([
+                'mfa_secret' => null,
+                'mfa_active' => false,
+                'mfa_recovery_codes' => null,
+            ])->save();
         }
 
         app(VerrouillageService::class)->purger($administrateur, 'reinitialisation_mot_de_passe');

@@ -86,6 +86,13 @@ class EpreuveService
 
             $epreuve->refresh();
 
+            $verifGroupe = app(CorrespondanceExamenService::class)
+                ->verifierCoherenceStructurelleGroupe($epreuve, $epreuve->groupe);
+
+            if (! $verifGroupe['conforme']) {
+                throw new DomainException($verifGroupe['anomalies'][0]);
+            }
+
             EvaluationChanged::dispatch('epreuve.creee', $epreuve->id);
 
             return $epreuve;
@@ -99,13 +106,18 @@ class EpreuveService
      */
     public function modifier(Epreuve $epreuve, array $donnees, int $auteurId): Epreuve
     {
-        return DB::transaction(function () use ($epreuve, $donnees) {
+        return DB::transaction(function () use ($epreuve, $donnees, $auteurId) {
             /** @var Epreuve $verrouillee */
             $verrouillee = Epreuve::whereKey($epreuve->id)->lockForUpdate()->firstOrFail();
 
             if ($verrouillee->estVerrouillee()) {
                 throw new DomainException('Épreuve verrouillée : modification interdite.');
             }
+
+            $anciensAttributs = [
+                'matiere_id' => $verrouillee->matiere_id,
+                'groupe_id' => $verrouillee->groupe_id,
+            ];
 
             $date = $donnees['date'] ?? $verrouillee->date->format('Y-m-d');
             $heureDebut = $donnees['heure_debut'] ?? substr((string) $verrouillee->heure_debut, 0, 5);
@@ -127,6 +139,15 @@ class EpreuveService
             }
 
             $verrouillee->update($donnees);
+            $verrouillee->refresh();
+
+            $correspondance = app(CorrespondanceExamenService::class);
+            $verifGroupe = $correspondance->verifierCoherenceStructurelleGroupe($verrouillee, $verrouillee->groupe);
+            if (! $verifGroupe['conforme']) {
+                throw new DomainException($verifGroupe['anomalies'][0]);
+            }
+
+            $correspondance->recalculerApresModification($verrouillee, $anciensAttributs, $auteurId);
 
             IntegrationLog::tracer('evaluation', 'internal', 'exam.epreuve.updated', 'completed', null, 200, null, null, (string) Str::uuid(), 'EPR-'.$verrouillee->id);
 
@@ -153,6 +174,8 @@ class EpreuveService
                 if ($verrouillee->salle_id === null && ! $verrouillee->candidats()->whereNotNull('salle_id')->exists()) {
                     throw new DomainException("Impossible de publier l'épreuve : aucune salle assignée.");
                 }
+
+                app(CorrespondanceExamenService::class)->exigerConformitePublicationEpreuve($verrouillee);
             }
 
             $ancien = $verrouillee->statut;
@@ -213,6 +236,7 @@ class EpreuveService
             $presents = 0;
             $absents = 0;
             $retards = 0;
+            $nonPointes = 0;
 
             foreach ($presences as $presence) {
                 $candidatId = (int) $presence['candidat_id'];
@@ -240,6 +264,8 @@ class EpreuveService
                         $presents++;
                     } elseif ($statut === 'retard') {
                         $retards++;
+                    } elseif ($statut === Candidat::STATUT_NON_POINTE) {
+                        $nonPointes++;
                     } else {
                         $absents++;
                     }
@@ -255,6 +281,7 @@ class EpreuveService
                 'presents' => $presents,
                 'absents' => $absents,
                 'retards' => $retards,
+                'non_pointes' => $nonPointes,
             ];
         });
     }
@@ -270,6 +297,13 @@ class EpreuveService
         return DB::transaction(function () use ($epreuve) {
             if ($epreuve->estVerrouillee()) {
                 throw new DomainException('Épreuve verrouillée.');
+            }
+
+            $correspondance = app(CorrespondanceExamenService::class);
+            if ($correspondance->estModePedagogiqueStrict($epreuve, true) || $correspondance->groupeVirtuelActif($epreuve) !== null) {
+                $bilan = $correspondance->synchroniserCandidatsEligibles($epreuve, auth()->id());
+
+                return $bilan['crees'];
             }
 
             $populations = app(PopulationService::class);
@@ -307,7 +341,10 @@ class EpreuveService
                     [
                         'inscription_pedagogique_id' => $pedagogique?->id,
                         'salle_id' => $epreuve->salle_id,
-                        'statut' => 'present',
+
+                        // DM-02 : statut initial « non pointé » — jamais
+                        // déclaré présent avant le contrôle effectif.
+                        'statut' => Candidat::STATUT_NON_POINTE,
                     ]
                 );
 

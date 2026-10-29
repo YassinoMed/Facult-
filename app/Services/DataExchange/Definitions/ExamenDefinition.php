@@ -259,10 +259,19 @@ class ExamenDefinition implements ExportDefinitionInterface, ImportDefinitionInt
 
         $niveauId = null;
         if (! empty($ligne['niveau'])) {
-            $n = Niveau::where('code', mb_strtoupper(trim((string) $ligne['niveau'])))
-                ->when($programmeId !== null, fn ($q) => $q->where('programme_id', $programmeId))
-                ->first();
-            $niveauId = $n?->id;
+            $n = $programmeId !== null
+                ? Niveau::resoudreDansProgramme($ligne['niveau'], $programmeId)
+                : Niveau::resoudreCodeUnique($ligne['niveau']);
+
+            if ($n === null) {
+                throw IoException::malforme(
+                    $programmeId !== null
+                        ? "Niveau « {$ligne['niveau']} » inexistant pour ce programme (ligne {$ligne['ligne']})."
+                        : "Niveau « {$ligne['niveau']} » ambigu : programme requis (ligne {$ligne['ligne']})."
+                );
+            }
+
+            $niveauId = $n->id;
         }
 
         $anneeId = $session->annee_universitaire_id;

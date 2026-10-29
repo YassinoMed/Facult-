@@ -26,10 +26,16 @@ class InscriptionAcademiqueController extends Controller
         // parent, scopé faculté (anti-IDOR).
         Gate::authorize('update', $dossier);
 
-        $inscription = $this->archives->creerInscription(
-            $dossier->etudiant,
-            $request->validated(),
-        );
+        try {
+            $inscription = $this->archives->creerInscription(
+                $dossier->etudiant,
+                $request->validated(),
+            );
+        } catch (\DomainException $e) {
+            // Erreur métier contrôlée (règle d'unicité annuelle,
+            // périodes…) : jamais de 500, message sans donnée personnelle.
+            return back()->withErrors(['annee_universitaire_id' => $e->getMessage()])->withInput();
+        }
 
         return redirect()->route('admin.archives.show', $dossier)
             ->with('success', "Inscription {$inscription->niveau} enregistrée avec ses semestres S1 et S2.");

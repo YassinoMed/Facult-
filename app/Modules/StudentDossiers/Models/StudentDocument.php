@@ -69,6 +69,17 @@ class StudentDocument extends Model
     }
 
     /**
+     * LOOP-UNIREGISTRE-DOCUMENTS-REUTILISABLES-01 : inscriptions annuelles
+     * auxquelles ce document a été associé (réutilisation ou validation).
+     *
+     * @return HasMany<InscriptionDocument, $this>
+     */
+    public function associationsInscription(): HasMany
+    {
+        return $this->hasMany(InscriptionDocument::class, 'student_document_id');
+    }
+
+    /**
      * @return BelongsTo<User, $this>
      */
     public function televersePar(): BelongsTo

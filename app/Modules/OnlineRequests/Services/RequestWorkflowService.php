@@ -2,31 +2,23 @@
 
 namespace App\Modules\OnlineRequests\Services;
 
+use App\Services\Workflow\Definitions\WorkflowDemandeEtudianteDefinition;
+
 /**
  * Machine à états des demandes (§8) : transitions autorisées
  * explicites, contrôlées serveur. `rejected → completed` et autres
  * sauts sont impossibles par construction.
+ *
+ * Source unique de la topologie depuis le LOT 01 :
+ * `WorkflowDemandeEtudianteDefinition` (moteur de workflows
+ * universitaires, versionnée). Ce helper ne conserve que la façade
+ * statique historique du module et les libellés d'affichage.
  */
 final class RequestWorkflowService
 {
-    /**
-     * @var array<string, array<int, string>>
-     */
-    public const TRANSITIONS = [
-        'draft' => ['submitted', 'cancelled'],
-        'submitted' => ['received', 'cancelled'],
-        'received' => ['in_review', 'cancelled'],
-        'in_review' => ['waiting_student', 'approved', 'rejected'],
-        'waiting_student' => ['in_review', 'cancelled'],
-        'approved' => ['completed'],
-        'rejected' => [],
-        'cancelled' => [],
-        'completed' => [],
-    ];
-
     public static function autorisee(string $depuis, string $vers): bool
     {
-        return in_array($vers, self::TRANSITIONS[$depuis] ?? [], true);
+        return (new WorkflowDemandeEtudianteDefinition)->transitionAutorisee($depuis, $vers);
     }
 
     /**

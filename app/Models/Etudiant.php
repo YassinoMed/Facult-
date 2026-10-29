@@ -72,6 +72,7 @@ class Etudiant extends Model
      */
     protected $hidden = [
         'password',
+        'remember_token',
     ];
 
     protected $casts = [
@@ -84,6 +85,16 @@ class Etudiant extends Model
         static::creating(function (Etudiant $etudiant) {
             if (empty($etudiant->num_inscription)) {
                 $etudiant->num_inscription = static::genererNumInscription();
+            }
+        });
+
+        // LOOP-01 : tout changement de mot de passe (profil étudiant, reset
+        // administratif, service de récupération) neutralise les liens de
+        // réinitialisation encore actifs. Un jeton émis AVANT la rotation ne
+        // doit jamais permettre de reprendre le compte après coup.
+        static::updated(function (Etudiant $etudiant): void {
+            if ($etudiant->wasChanged('password')) {
+                PortalPasswordResetToken::invaliderActifs('etudiant', (string) $etudiant->email);
             }
         });
     }
@@ -255,7 +266,7 @@ class Etudiant extends Model
     public function getStatutBadgeAttribute(): string
     {
         return match ($this->statut) {
-            'en_attente' => '<span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-100 text-amber-800 border border-amber-200"><span class="h-1.5 w-1.5 rounded-full bg-amber-500 animate-pulse"></span>En attente</span>',
+            'en_attente' => '<span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-100 text-amber-800 border border-amber-200"><span class="h-1.5 w-1.5 rounded-full bg-amber-500"></span>En attente</span>',
             'valide' => '<span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-800 border border-emerald-200"><span class="h-1.5 w-1.5 rounded-full bg-emerald-500"></span>Validé</span>',
             'rejete' => '<span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-rose-100 text-rose-800 border border-rose-200"><span class="h-1.5 w-1.5 rounded-full bg-rose-500"></span>Rejeté</span>',
             default => '<span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-gray-100 text-gray-800">Inconnu</span>',

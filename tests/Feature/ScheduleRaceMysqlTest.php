@@ -64,6 +64,11 @@ class ScheduleRaceMysqlTest extends TestCase
         // viseraient la mémoire sqlite du phpunit).
         DB::setDefaultConnection('schedule_race');
 
+        // Résidus d'un run interrompu (les fils commitent, donc un arrêt
+        // brutal laisse les fixtures derrière lui — déjà observé sur
+        // `facultes.code=FR`) : purge idempotente AVANT la transaction.
+        $this->purger();
+
         // Fixture transactionnelle : annulée en tearDown (aucun résidu).
         $this->conn->beginTransaction();
 
@@ -82,6 +87,28 @@ class ScheduleRaceMysqlTest extends TestCase
             'day_of_week' => 'monday', 'start_time' => '08:00:00', 'end_time' => '10:00:00',
             'type' => 'course', 'status' => 'scheduled',
         ]);
+    }
+
+    /**
+     * Purge idempotente STRICTEMENT limitée aux codes de ce test
+     * (base scratch dédiée uniquement).
+     */
+    private function purger(): void
+    {
+        $conn = DB::connection('schedule_race');
+
+        $planningIds = $conn->table('schedules')->where('nom', 'Race')->pluck('id');
+        if ($planningIds->isNotEmpty()) {
+            $conn->table('schedule_slots')->whereIn('schedule_id', $planningIds)->delete();
+            $conn->table('schedules')->whereIn('id', $planningIds)->delete();
+        }
+
+        $conn->table('groups')->where('code', 'G-RACE')->delete();
+        $conn->table('rooms')->where('code', 'R1')->delete();
+        $conn->table('matieres')->where('code', 'RC1')->delete();
+        $conn->table('teachers')->where('nom', 'N')->where('prenom', 'R')->delete();
+        $conn->table('annees_universitaires')->where('libelle', '2026-2027')->delete();
+        $conn->table('facultes')->where('code', 'FR')->delete();
     }
 
     protected function tearDown(): void

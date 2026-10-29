@@ -82,6 +82,13 @@
                 <x-btn variant="secondary" href="{{ route('admin.affectations.auto') }}">Annuler</x-btn>
                 <x-btn type="submit">Appliquer la répartition</x-btn>
             </div>
+            @php
+                $totalRepartition = (int) array_sum(array_map('count', $proposition['repartition']));
+                $seuilSync = max(1, (int) config('affectations.lots.seuil_sync', 1000));
+            @endphp
+            @if($totalRepartition > $seuilSync)
+                <p class="mt-2 text-xs text-slate-500">Volume important ({{ $totalRepartition }} affectation(s) &gt; {{ $seuilSync }}) : l'exécution passera en arrière-plan, avec progression et reprise sur la page de suivi du lot.</p>
+            @endif
         </form>
     </div>
 @endsection

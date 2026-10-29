@@ -14,6 +14,18 @@ final class Permissions
         'agent_scolarite',
         'consultation',
         'admin_faculte',
+        // §2.7 — séparation des pouvoirs PAR RÔLE : un rôle dédié par étape
+        // de décision du circuit de gouvernance des examens. Ils permettent
+        // une attribution distincte sans retirer au rôle d'administration
+        // scolaire ses autres prérogatives (compatibilité des parcours
+        // existants). `php artisan examens:separation-roles` vérifie la
+        // faisabilité et propose l'attribution.
+        'certificateur_qualite',
+        'direction_etudes',
+        'autorite_publication',
+        // Lot 19 — Rôle d'audit DISTINCT (exigé par le cahier gouvernance) :
+        // lecture seule sur les journaux et la conformité, aucun pouvoir d'action.
+        'auditeur',
     ];
 
     /** Toutes les permissions connues du système. */
@@ -146,6 +158,11 @@ final class Permissions
         'evaluations.update',
         'evaluations.delete',
         'evaluations.publish',
+        // Séparation des responsabilités du planning (§2.7) : la
+        // certification technique et l'approbation métier sont des
+        // permissions distinctes de la publication.
+        'evaluations.certify',
+        'evaluations.approve',
 
         'sessions_examen.view',
         'sessions_examen.create',
@@ -252,6 +269,22 @@ final class Permissions
         'tasks.complete',
         'tasks.cancel',
 
+        // Lot 11 — Centre de services IT : vue métier au-dessus de Tasks.
+        // `it.categories` est distinct de `it.manage` : un agent de support
+        // traite les tickets sans modifier le catalogue global.
+        'it.view',
+        'it.create',
+        'it.manage',
+        'it.categories',
+
+        // Lot 17 — Portail alumni : registre officiel de diplomation,
+        // annuaire sous consentement et agrégats k-anonymes.
+        // `alumni.import` écrit le registre ; `alumni.manage` génère les
+        // liens de consentement et voit les contacts explicitement partagés.
+        'alumni.view',
+        'alumni.import',
+        'alumni.manage',
+
         // Phase 15 — Campagnes : même mécanisme.
         'campagnes.view',
         'campagnes.manage',
@@ -264,6 +297,10 @@ final class Permissions
         'finances.view',
         'finances.manage',
         'finances.confirm',
+        // LOOP-UNIREGISTRE-INSCRIPTIONS-PAIEMENTS-01 : décision sur les
+        // reçus d'inscription, distincte de la confirmation d'un paiement
+        // de facture (moindre privilège).
+        'finances.receipts.verify',
 
         // Phase 16 — Centre documentaire : même mécanisme.
         'document.view', 'document.generate', 'document.issue',
@@ -298,6 +335,29 @@ final class Permissions
         // Module Sentinel : surveillance transverse (même mécanisme).
         'sentinel.view',
         'sentinel.manage',
+
+        // Module Assistant IA (UniRegistre AI) : permissions granulaires.
+        'assistant_ia.view',
+        'assistant_ia.mode_developpeur',
+        'assistant_ia.mode_metier',
+        'assistant_ia.recherche_doc',
+        'assistant_ia.sources_restreintes',
+        'assistant_ia.action_proposer',
+        'assistant_ia.action_approuver',
+        'assistant_ia.audit.view',
+        'assistant_ia.admin',
+        'assistant_ia.fournisseur_distant',
+
+        // Module Prévention du décrochage (Lot 15) : clés ADDITIVES du registre
+        // (aucune clé de rôle supprimée ni réordonnée ; précédent assistant_ia.*).
+        'decrochage.view',
+        'decrochage.regles',
+        'decrochage.traiter',
+
+        // Module Gouvernance et conformité (Lot 19) : lecture des vues
+        // gouvernance (accès sensibles unifiés, journal des permissions,
+        // conformité de rétention, journal des accès aux journaux).
+        'gouvernance.audit',
     ];
 
     /**
@@ -340,6 +400,7 @@ final class Permissions
             'enseignements.view', 'enseignements.manage', 'enseignements.valider',
             'enseignements.import', 'enseignements.export',
             'evaluations.view', 'evaluations.create', 'evaluations.update', 'evaluations.delete', 'evaluations.publish',
+            'evaluations.certify', 'evaluations.approve',
             'sessions_examen.view', 'sessions_examen.create', 'sessions_examen.update', 'sessions_examen.lock',
             'epreuves.view', 'epreuves.create', 'epreuves.update', 'epreuves.cancel',
             'surveillances.view', 'surveillances.assign', 'surveillances.manage',
@@ -356,9 +417,11 @@ final class Permissions
             'statistiques.view', 'statistiques.export',
             'cockpit.view',
             'tasks.view', 'tasks.create', 'tasks.update', 'tasks.assign', 'tasks.complete', 'tasks.cancel',
+            'it.view', 'it.create', 'it.manage', 'it.categories',
+            'alumni.view', 'alumni.import', 'alumni.manage',
             'campagnes.view', 'campagnes.manage',
             'qualite.view', 'qualite.manage',
-            'finances.view', 'finances.manage', 'finances.confirm',
+            'finances.view', 'finances.manage', 'finances.confirm', 'finances.receipts.verify',
             'document.view', 'document.generate', 'document.issue',
             'document.approve', 'document.revoke', 'document.download',
             'document.print', 'document.send',
@@ -375,6 +438,13 @@ final class Permissions
             'parcours.comparer', 'parcours.regles',
             'versioning.view', 'versioning.create',
             'sentinel.view', 'sentinel.manage',
+            'assistant_ia.view', 'assistant_ia.mode_metier', 'assistant_ia.recherche_doc',
+            'assistant_ia.action_proposer', 'assistant_ia.action_approuver', 'assistant_ia.audit.view',
+            'assistant_ia.fournisseur_distant',
+
+            // Prévention du décrochage (Lot 15) : gestion complète du suivi.
+            'decrochage.view', 'decrochage.regles', 'decrochage.traiter',
+            'gouvernance.audit',
         ],
 
         'agent_scolarite' => [
@@ -408,6 +478,8 @@ final class Permissions
             'statistiques.view',
             'cockpit.view',
             'tasks.view', 'tasks.create', 'tasks.update', 'tasks.complete',
+            'it.view', 'it.create', 'it.manage',
+            'alumni.view',
             'campagnes.view',
             'qualite.view',
             'sentinel.view',
@@ -416,6 +488,8 @@ final class Permissions
             'export.view', 'export.create',
             'search.use',
             'parcours.view', 'parcours.simuler',
+            'assistant_ia.view', 'assistant_ia.mode_metier', 'assistant_ia.recherche_doc',
+            'decrochage.view',
         ],
         'consultation' => ['archives.view',
             'documents.view', 'documents.download',
@@ -443,12 +517,16 @@ final class Permissions
             'statistiques.view',
             'cockpit.view',
             'tasks.view',
+            'it.view',
+            'alumni.view',
             'campagnes.view',
             'qualite.view',
             'sentinel.view',
             'document.view',
             'search.use',
             'parcours.view',
+            'assistant_ia.view', 'assistant_ia.recherche_doc',
+            'decrochage.view',
         ],
 
         /*
@@ -501,10 +579,13 @@ final class Permissions
             'statistiques.view',
             'cockpit.view',
             'tasks.view', 'tasks.create', 'tasks.update', 'tasks.assign', 'tasks.complete',
+            'it.view', 'it.create', 'it.manage',
+            'alumni.view',
             'campagnes.view', 'campagnes.manage',
             'qualite.view',
             'sentinel.view',
             'finances.view',
+            'finances.receipts.verify',
             'document.view', 'document.generate', 'document.issue', 'document.download', 'document.print',
             'document_batch.run',
             'document_template.view',
@@ -512,6 +593,57 @@ final class Permissions
             'export.view', 'export.create',
             'search.use', 'search.advanced',
             'parcours.view', 'parcours.simuler', 'parcours.gerer', 'parcours.comparer',
+            'assistant_ia.view', 'assistant_ia.mode_metier', 'assistant_ia.recherche_doc',
+            'assistant_ia.action_proposer', 'assistant_ia.audit.view',
+
+            // Prévention du décrochage (Lot 15) : consultation + flux humain
+            // (LE périmètre de données reste re-scopé par faculté côté code).
+            'decrochage.view', 'decrochage.traiter',
+        ],
+
+        /*
+         | §2.7 — Rôles DÉDIÉS au circuit de gouvernance du planning.
+         | Chaque étape dispose d'un rôle qui ne porte que sa décision :
+         | certifier, approuver, publier. Ils reçoivent les permissions de
+         | LECTURE nécessaires pour instruire le dossier, jamais les
+         | permissions d'écriture des autres étapes.
+         */
+        'certificateur_qualite' => [
+            'evaluations.view', 'evaluations.certify',
+            'sessions_examen.view', 'epreuves.view', 'surveillances.view',
+            'notes_eval.view', 'resultats.view', 'deliberations.view',
+            'statistiques.view', 'cockpit.view', 'tasks.view', 'history.view',
+        ],
+
+        'direction_etudes' => [
+            'evaluations.view', 'evaluations.approve',
+            'sessions_examen.view', 'epreuves.view', 'surveillances.view',
+            'notes_eval.view', 'resultats.view', 'deliberations.view',
+            'statistiques.view', 'cockpit.view', 'tasks.view', 'history.view',
+        ],
+
+        'autorite_publication' => [
+            'evaluations.view', 'evaluations.publish',
+            'sessions_examen.view', 'epreuves.view', 'surveillances.view',
+            'notes_eval.view', 'resultats.view', 'deliberations.view',
+            'statistiques.view', 'cockpit.view', 'tasks.view', 'history.view',
+        ],
+
+        /*
+         | Lot 19 — Rôle d'AUDIT distinct (cahier gouvernance) : lecture seule
+         | des journaux, de la conformité et des vues de surveillance.
+         | AUCUNE permission d'action (ni manage, ni execute, ni approbation) :
+         | l'auditeur observe, il ne modifie jamais.
+         */
+        'auditeur' => [
+            'gouvernance.audit',
+            'sentinel.view',
+            'it.view',
+            'qualite.view',
+            'import.view',
+            'settings.view',
+            'settings.history.view',
+            'history.view',
         ],
     ];
 

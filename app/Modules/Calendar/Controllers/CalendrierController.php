@@ -10,6 +10,7 @@ use App\Modules\Calendar\Requests\StoreEvenementRequest;
 use App\Modules\Calendar\Services\AgendaService;
 use App\Modules\Referentiel\Models\Programme;
 use App\Modules\Schedule\Models\Group;
+use App\Modules\Schedule\Models\Teacher;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
@@ -66,12 +67,49 @@ class CalendrierController extends Controller
 
     public function agenda(Request $request, AgendaService $agenda): View
     {
+        // LOT 2 : les bornes viennent du client ; elles sont validées avant
+        // d'atteindre `whereDate` (une date malformée provoquait une 500).
+        $regles = [
+            'debut' => ['nullable', 'date_format:Y-m-d'],
+            'fin' => ['nullable', 'date_format:Y-m-d'],
+        ];
+        if ($request->filled('debut')) {
+            $regles['fin'][] = 'after_or_equal:debut';
+        }
+        $valide = $request->validate($regles);
+
         $etudiant = Etudiant::findOrFail($request->session()->get('etudiant_auth_id'));
-        $debut = $request->input('debut', now()->startOfMonth()->format('Y-m-d'));
-        $fin = $request->input('fin', now()->addMonths(2)->endOfMonth()->format('Y-m-d'));
+        $debut = $valide['debut'] ?? now()->startOfMonth()->format('Y-m-d');
+        $fin = $valide['fin'] ?? now()->addMonths(2)->endOfMonth()->format('Y-m-d');
 
         return view('modules.calendar.agenda', [
             'elements' => $agenda->agendaPourEtudiant($etudiant, $debut, $fin),
+            'debut' => $debut,
+            'fin' => $fin,
+        ]);
+    }
+
+    /**
+     * Agenda de l'enseignant (lecture seule, même contrat de dates que
+     * l'agenda étudiant). L'identité vient exclusivement de la session.
+     */
+    public function agendaEnseignant(Request $request, AgendaService $agenda): View
+    {
+        $regles = [
+            'debut' => ['nullable', 'date_format:Y-m-d'],
+            'fin' => ['nullable', 'date_format:Y-m-d'],
+        ];
+        if ($request->filled('debut')) {
+            $regles['fin'][] = 'after_or_equal:debut';
+        }
+        $valide = $request->validate($regles);
+
+        $enseignant = Teacher::with('departement')->findOrFail($request->session()->get('enseignant_auth_id'));
+        $debut = $valide['debut'] ?? now()->startOfWeek()->format('Y-m-d');
+        $fin = $valide['fin'] ?? now()->addWeeks(4)->endOfWeek()->format('Y-m-d');
+
+        return view('modules.calendar.agenda', [
+            'elements' => $agenda->agendaPourEnseignant($enseignant, $debut, $fin),
             'debut' => $debut,
             'fin' => $fin,
         ]);

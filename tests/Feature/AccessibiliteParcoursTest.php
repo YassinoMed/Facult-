@@ -30,7 +30,11 @@ class AccessibiliteParcoursTest extends TestCase
 
     private function bladeInscription(): string
     {
-        return (string) file_get_contents(resource_path('views/inscription/create.blade.php'));
+        // Le formulaire a été extrait dans `_wizard.blade.php` (inclusion
+        // depuis create.blade.php) : le test de source doit couvrir les
+        // deux fichiers, sinon il ne vérifie plus le formulaire réel.
+        return (string) file_get_contents(resource_path('views/inscription/create.blade.php'))
+            .(string) file_get_contents(resource_path('views/inscription/_wizard.blade.php'));
     }
 
     public function test_chaque_champ_a_un_label_associe(): void
@@ -108,20 +112,29 @@ class AccessibiliteParcoursTest extends TestCase
     {
         $sw = (string) file_get_contents(public_path('sw.js'));
 
-        // Filtre `cachable()` : seuls les assets versionnés passent.
+        // Filtre `cachable()` : seuls les assets versionnés passent ; API,
+        // navigation et origine externe sont exclus avant tout cache.
         $this->assertStringContainsString("url.pathname.startsWith('/build/')", $sw);
         $this->assertStringContainsString("url.pathname.startsWith('/icons/')", $sw);
+        $this->assertStringContainsString("url.pathname.startsWith('/api/')", $sw);
 
-        // Un SEUL `cache.put` dans tout le fichier, placé APRÈS le filtre
-        // `if (!cachable(request)) return;` : toute mise en cache passe
-        // par `cachable()` — les navigations (réseau + fallback
-        // `/hors-ligne`) ne mettent jamais de page avec données en cache.
-        $this->assertSame(1, substr_count($sw, 'cache.put('));
+        // Deux `cache.put` exactement, aux finalités distinctes :
+        // 1. le shell hors-ligne statique à l'installation (sans cookie
+        //    ni cache HTTP) ;
+        // 2. le cache d'un asset, unique et placé APRÈS le filtre
+        //    `if (!cachable(request)) return;`.
+        $this->assertSame(1, substr_count($sw, 'cache.put(HORS_LIGNE, response)'));
+        $this->assertSame(1, substr_count($sw, 'cache.put(request, copie)'));
+        $this->assertSame(2, substr_count($sw, 'cache.put('));
 
         $positionFiltre = strpos($sw, 'if (!cachable(request)) return;');
-        $positionPut = strpos($sw, 'cache.put(');
+        $positionPutRequete = strpos($sw, 'cache.put(request, copie)');
         $this->assertNotFalse($positionFiltre);
-        $this->assertGreaterThan($positionFiltre, $positionPut);
+        $this->assertNotFalse($positionPutRequete);
+        $this->assertGreaterThan($positionFiltre, $positionPutRequete);
+
+        // Le shell hors-ligne est récupéré sans identité ni cache HTTP.
+        $this->assertStringContainsString("fetch(HORS_LIGNE, { credentials: 'omit', cache: 'no-store' })", $sw);
         $this->assertStringContainsString('caches.match(HORS_LIGNE)', $sw);
     }
 

@@ -34,11 +34,26 @@ class ProfilController extends Controller
      * Enregistre les coordonnées modifiées (validation stricte
      * ProfilEnseignantRequest : matricule, grade, département, faculté et
      * statut ignorés — jamais modifiables ici).
+     *
+     * LOOP-SECURITY-REMEDIATION-01 : le changement d'email exige le mot de
+     * passe actuel (règle `current_password` de la requête) et l'écriture
+     * est limitée à une whitelist de colonnes ; la session est renouvelée
+     * lorsque l'identifiant de connexion change.
      */
     public function update(ProfilEnseignantRequest $request)
     {
         $enseignant = $this->enseignantConnecte($request);
-        $enseignant->update($request->validated());
+
+        $emailSoumis = strtolower(trim((string) $request->validated('email')));
+        $emailChange = $emailSoumis !== strtolower((string) $enseignant->email);
+
+        $enseignant->update($request->safe()->only(['email', 'telephone', 'bureau']));
+
+        if ($emailChange) {
+            // Hygiène de session après changement d'identifiant (email) :
+            // un nouvel ID invalide toute fixation préalable.
+            $request->session()->regenerate();
+        }
 
         return redirect()->route('enseignant.profil.show')
             ->with('success', 'Vos coordonnées ont été mises à jour avec succès.');
@@ -51,6 +66,11 @@ class ProfilController extends Controller
     {
         $enseignant = $this->enseignantConnecte($request);
         $enseignant->update(['password' => $request->validated('password')]);
+
+        // LOT 1 : le model event a incrémenté la version ; la session
+        // courante reçoit la nouvelle valeur, les autres sessions sont
+        // invalidées par EnsureTeacher.
+        $request->session()->put('enseignant_mdp_version', (int) $enseignant->mot_de_passe_version);
 
         // Hygiène de session après changement d'identifiant :
         // un nouvel ID invalide toute fixation préalable.

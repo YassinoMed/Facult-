@@ -21,7 +21,12 @@ class StoreEpreuveRequest extends FormRequest
             'ue_id' => ['nullable', 'exists:unites_enseignement,id'],
             'groupe_id' => ['nullable', 'exists:groups,id'],
             'sous_groupe_id' => ['nullable', 'exists:sous_groupes,id'],
-            'salle_id' => ['nullable', 'exists:rooms,id'],
+            // DM-01 : une salle non active ou à capacité inconnue est
+            // inadmissible dès la planification.
+            'salle_id' => ['nullable', Rule::exists('rooms', 'id')->where(fn ($q) => $q
+                ->where('actif', true)
+                ->whereNotNull('capacite')
+                ->where('capacite', '>', 0))],
             'date' => ['required', 'date'],
             'heure_debut' => ['required', 'date_format:H:i'],
             'heure_fin' => ['required', 'date_format:H:i', 'after:heure_debut'],

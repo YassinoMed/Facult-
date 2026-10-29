@@ -15,11 +15,36 @@ class Candidat extends Model
     protected $table = 'evaluation_candidats';
 
     /** Absence explicite : jamais un simple 0 (§10). */
-    public const STATUTS = ['present', 'absent', 'absent_justifie', 'absent_injustifie', 'excuse', 'retard'];
+    public const STATUT_NON_POINTE = 'non_pointe';
+
+    /** Pointage initial « non pointé » (DM-02) + statuts d'émargement. */
+    public const STATUTS = [
+        'non_pointe',
+        'present',
+        'absent',
+        'absent_provisoire',
+        'absent_confirme',
+        'absent_justifie',
+        'absent_injustifie',
+        'excuse',
+        'retard',
+        'regularisation_en_cours',
+    ];
 
     protected $fillable = [
-        'epreuve_id', 'etudiant_id', 'inscription_pedagogique_id', 'salle_id', 'place', 'statut', 'justification', 'decide_par',
+        'epreuve_id', 'etudiant_id', 'inscription_pedagogique_id', 'numero_anonyme',
+        'salle_id', 'place', 'statut', 'justification', 'decide_par',
+        'heure_arrivee', 'presence_provisoire',
     ];
+
+    protected function casts(): array
+    {
+        return [
+            // Une présence constatée reste PROVISOIRE tant qu'une décision
+            // habilitée ne l'a pas tranchée (§2.9).
+            'presence_provisoire' => 'boolean',
+        ];
+    }
 
     public function epreuve(): BelongsTo
     {
@@ -51,6 +76,21 @@ class Candidat extends Model
         return $this->salle ?? $this->epreuve?->salle;
     }
 
+    public function getPlaceAttribute(mixed $value): int|string|null
+    {
+        if ($value === null) {
+            return null;
+        }
+
+        if (is_int($value)) {
+            return $value;
+        }
+
+        $str = (string) $value;
+
+        return ctype_digit($str) ? (int) $str : $str;
+    }
+
     public function note(): HasOne
     {
         return $this->hasOne(NoteEpreuve::class, 'candidat_id');
@@ -58,6 +98,18 @@ class Candidat extends Model
 
     public function estAbsent(): bool
     {
-        return $this->statut !== 'present';
+        return in_array($this->statut, [
+            'absent',
+            'absent_provisoire',
+            'absent_confirme',
+            'absent_justifie',
+            'absent_injustifie',
+            'excuse',
+        ], true);
+    }
+
+    public function estPointe(): bool
+    {
+        return $this->statut !== self::STATUT_NON_POINTE;
     }
 }

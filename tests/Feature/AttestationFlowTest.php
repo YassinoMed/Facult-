@@ -8,6 +8,7 @@ use App\Models\Etudiant;
 use App\Models\Faculte;
 use App\Models\InscriptionAcademique;
 use App\Models\User;
+use App\Modules\StudentDossiers\Models\GeneratedDocument;
 use App\Modules\StudentDossiers\Services\Pdf\OfficialDocumentService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Storage;
@@ -211,5 +212,21 @@ class AttestationFlowTest extends TestCase
             ->assertOk()
             ->assertSee('Attestations', false)
             ->assertSee(route('admin.attestations.index'), false);
+    }
+
+    public function test_generation_attestation_avec_choix_langue_ar_et_fr(): void
+    {
+        $reponse = $this->actingAs($this->admin)->post(route('admin.attestations.generer'), [
+            'etudiant_id' => $this->etudiant->id,
+            'inscription_id' => $this->inscription->id,
+            'type' => 'attestation_inscription',
+            'langue' => 'ar',
+        ]);
+
+        $reponse->assertRedirect();
+        $doc = GeneratedDocument::where('type', 'attestation_inscription')->latest('id')->first();
+        $this->assertNotNull($doc);
+        $this->assertSame('ar', $doc->snapshot_donnees['langue']);
+        $this->assertStringContainsString('ATI-', $doc->reference);
     }
 }

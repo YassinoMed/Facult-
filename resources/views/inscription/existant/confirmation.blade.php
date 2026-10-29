@@ -35,10 +35,16 @@
         <p>Votre dossier reste <strong>en attente de traitement administratif</strong> : le service de la scolarité
             vérifiera vos informations avant toute décision. Vous serez informé(e) de la suite donnée.</p>
 
-        {{-- Distinction explicite « demande enregistrée » ≠ « email envoyé » --}}
-        @if ($emailEnAttente)
+        {{-- Distinction explicite « demande enregistrée » ≠ « email envoyé ».
+             Une demande sans changement réel n'engendre AUCUN email. --}}
+        @if ($nbChampsModifies === 0)
+            <div class="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-slate-700" role="status">
+                Aucune donnée n'a été modifiée : aucun email de confirmation n'était nécessaire.
+                Votre dossier reste inchangé.
+            </div>
+        @elseif ($emailEnAttente)
             <div class="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-amber-900" role="status">
-                L'envoi de l'email de confirmation est <strong>en attente de nouvelle tentative</strong>.
+                L'envoi de l'email de confirmation a <strong>échoué</strong>.
                 Votre demande est bien enregistrée : seule la notification diffère. En cas de doute,
                 contactez la scolarité avec votre référence de dossier.
             </div>

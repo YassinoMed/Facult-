@@ -100,6 +100,103 @@ class FileTraitementCoherenceTest extends TestCase
         $this->assertSame(1, $kpis['actions'][FileTraitementService::ACTION_A_INSTRUIRE]);
     }
 
+    public function test_kpis_actions_egaux_aux_listes_sous_tous_les_filtres(): void
+    {
+        $this->dossier('FiltreA'); // en attente, prêt
+        $complement = $this->dossier('FiltreB');
+        $this->marquerComplement($complement);
+        DB::table('etudiants')->where('id', $complement->id)
+            ->update(['created_at' => now()->subDays(10)]);
+
+        $anomalie = $this->dossier('FiltreC');
+        $this->marquerAnomalie($anomalie);
+
+        $this->dossier('FiltreD', 'valide');
+        $this->dossier('FiltreE', 'rejete');
+
+        $cas = [
+            ['search' => 'Filtre'],
+            ['search' => 'FiltreA'],
+            ['statut' => 'en_attente'],
+            ['statut' => 'valide'],
+            ['statut' => 'rejete'],
+            ['categorie' => FileTraitementService::CATEGORIE_READY_FOR_REVIEW],
+            ['categorie' => FileTraitementService::CATEGORIE_MISSING_DOCUMENTS],
+            ['categorie' => FileTraitementService::CATEGORIE_BLOCKED],
+            ['categorie' => FileTraitementService::CATEGORIE_READY_FOR_ASSIGNMENT],
+            ['categorie' => FileTraitementService::CATEGORIE_COMPLETED],
+            ['depose_depuis' => 7],
+        ];
+
+        foreach ($cas as $filtres) {
+            $base = $this->actingAs($this->scolarite)
+                ->get(route('admin.inscriptions.file-traitement', $filtres))->assertOk();
+            $kpis = $base->viewData('kpis');
+            $contexte = json_encode($filtres);
+
+            $this->assertSame(
+                $base->viewData('etudiants')->total(),
+                $kpis['total'],
+                'KPI total/liste sous filtres '.$contexte
+            );
+
+            foreach (FileTraitementService::ACTIONS_ATTENDUES as $action => $libelle) {
+                $liste = $this->actingAs($this->scolarite)
+                    ->get(route('admin.inscriptions.file-traitement', array_merge($filtres, [
+                        'action_attendue' => $action,
+                    ])))->assertOk()->viewData('etudiants')->total();
+
+                $this->assertSame(
+                    $liste,
+                    $kpis['actions'][$action],
+                    "KPI {$action}/liste sous filtres ".$contexte
+                );
+            }
+
+            // Le compteur « en attente » est le total de la liste avec le
+            // même périmètre ; on ne l'ajoute pas à un statut contradictoire.
+            if (! isset($filtres['statut'])) {
+                $enAttente = $this->actingAs($this->scolarite)
+                    ->get(route('admin.inscriptions.file-traitement', array_merge($filtres, [
+                        'statut' => 'en_attente',
+                    ])))->assertOk()->viewData('etudiants')->total();
+
+                $this->assertSame(
+                    $enAttente,
+                    $kpis['en_attente'],
+                    'KPI en_attente/liste sous filtres '.$contexte
+                );
+            }
+        }
+    }
+
+    public function test_correction_approuvee_visible_dans_la_file_sans_bloquer_prematurement(): void
+    {
+        $etudiant = $this->dossier('Approuvee');
+
+        DossierCorrection::create([
+            'etudiant_id' => $etudiant->id,
+            'champ' => 'email',
+            'ancienne_valeur' => 'ancien@test.tn',
+            'nouvelle_valeur' => 'nouveau@test.tn',
+            'statut' => 'approuvee',
+            'motif' => 'Correction validée en attente d’application',
+            'propose_par' => $this->scolarite->id,
+            'decide_par' => $this->scolarite->id,
+            'decide_le' => now(),
+        ]);
+
+        $reponse = $this->actingAs($this->scolarite)
+            ->get(route('admin.inscriptions.file-traitement'))->assertOk();
+
+        // D-07 : la correction approuvée est visible avec le champ concerné.
+        $reponse->assertSee('À appliquer : email');
+
+        // M-03 n'étant pas arbitré, elle n'est pas encore comptée comme
+        // complément bloquant : le dossier reste instruisible.
+        $this->assertSame(0, $reponse->viewData('kpis')['actions']['COMPLEMENT_ATTENDU']);
+    }
+
     public function test_commentaire_repete_trace_chaque_envoi(): void
     {
         $etudiant = $this->dossier('Repete');

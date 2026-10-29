@@ -23,9 +23,14 @@ class EvaluationPolicy
 
     public function view(User $user, SessionExamen|Examen|Epreuve|NoteEpreuve|Deliberation $objet): bool
     {
-        $hasPerm = $objet instanceof Epreuve
-            ? ($user->hasPermission('epreuves.view') || $user->hasPermission('evaluations.view'))
-            : $user->hasPermission('evaluations.view');
+        // Aligné sur les middlewares de route : les épreuves acceptent
+        // `epreuves.view`, les délibérations `deliberations.view`
+        // (jury/scolarité sans `evaluations.view` sinon 403 sur show/PV).
+        $hasPerm = match (true) {
+            $objet instanceof Epreuve => $user->hasPermission('epreuves.view') || $user->hasPermission('evaluations.view'),
+            $objet instanceof Deliberation => $user->hasPermission('deliberations.view') || $user->hasPermission('evaluations.view'),
+            default => $user->hasPermission('evaluations.view'),
+        };
 
         return $hasPerm && $this->dansPerimetre($user, $objet);
     }
@@ -69,6 +74,11 @@ class EvaluationPolicy
         return $user->hasPermission('notes_eval.validate') && $this->dansPerimetre($user, $note);
     }
 
+    public function validerNotesEpreuve(User $user, Epreuve $epreuve): bool
+    {
+        return $user->hasPermission('notes_eval.validate') && $this->dansPerimetre($user, $epreuve);
+    }
+
     public function corriger(User $user, NoteEpreuve $note): bool
     {
         return $user->hasPermission('notes_eval.correct') && $this->dansPerimetre($user, $note);
@@ -95,12 +105,26 @@ class EvaluationPolicy
             default => [],
         });
 
+        if ($objet instanceof NoteEpreuve) {
+            $epreuveFaculteId = $objet->epreuve?->groupe?->faculte_id
+                ?? $objet->epreuve?->matiere?->ue?->programme?->faculte_id;
+            $etudiantFaculteId = $objet->etudiant?->faculte_id;
+
+            if ($epreuveFaculteId !== null && ! $user->peutAccederFaculte((int) $epreuveFaculteId)) {
+                return false;
+            }
+
+            if ($etudiantFaculteId !== null && ! $user->peutAccederFaculte((int) $etudiantFaculteId)) {
+                return false;
+            }
+
+            return true;
+        }
+
         $faculteId = match (true) {
             $objet instanceof SessionExamen => null,
             $objet instanceof Examen => $objet->programme?->faculte_id ?? $objet->groupe?->faculte_id,
             $objet instanceof Epreuve => $objet->groupe?->faculte_id ?? $objet->matiere?->ue?->programme?->faculte_id,
-            $objet instanceof NoteEpreuve => $objet->etudiant?->faculte_id
-                ?? $objet->epreuve?->groupe?->faculte_id,
             $objet instanceof Deliberation => $objet->programme?->faculte_id ?? $objet->groupe?->faculte_id,
             default => null,
         };

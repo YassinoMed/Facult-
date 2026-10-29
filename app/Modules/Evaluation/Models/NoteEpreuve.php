@@ -8,10 +8,14 @@ use App\Models\User;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Facades\Schema;
 
 class NoteEpreuve extends Model
 {
     protected $table = 'evaluation_notes';
+
+    /** LOT 05 — mémoire par worker du contrôle de schéma (fail-soft). */
+    private static ?bool $colonneValideAtMemoisee = null;
 
     public const STATUTS = ['draft', 'entered', 'submitted', 'validated', 'locked', 'correction_demandee'];
 
@@ -28,7 +32,7 @@ class NoteEpreuve extends Model
     protected $fillable = [
         'epreuve_id', 'etudiant_id', 'candidat_id', 'note_id',
         'valeur', 'note_max', 'coefficient', 'statut', 'commentaire',
-        'saisi_par', 'valide_par', 'verrouillee_at',
+        'saisi_par', 'valide_par', 'valide_at', 'verrouillee_at',
     ];
 
     protected function casts(): array
@@ -37,6 +41,7 @@ class NoteEpreuve extends Model
             'valeur' => 'decimal:2',
             'note_max' => 'decimal:2',
             'coefficient' => 'decimal:2',
+            'valide_at' => 'datetime',
             'verrouillee_at' => 'datetime',
         ];
     }
@@ -67,6 +72,11 @@ class NoteEpreuve extends Model
         return $this->belongsTo(User::class, 'saisi_par');
     }
 
+    public function validePar(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'valide_par');
+    }
+
     public function historique(): HasMany
     {
         return $this->hasMany(NoteEpreuveHistorique::class, 'evaluation_note_id');
@@ -80,5 +90,21 @@ class NoteEpreuve extends Model
     public function peutTransiterVers(string $cible): bool
     {
         return in_array($cible, self::TRANSITIONS[$this->statut] ?? [], true);
+    }
+
+    /**
+     * LOT 05 — auditabilité : la colonne `valide_at` provient d'une migration
+     * additive (2026_10_24_100000). Tant qu'elle n'est pas appliquée dans un
+     * environnement, écriture et lecture se replient proprement (comportement
+     * antérieur : aucun horodatage, drapeau d'audit inactif) — jamais d'erreur
+     * SQL à la validation.
+     */
+    public static function existeColonneValideAt(): bool
+    {
+        if (self::$colonneValideAtMemoisee === null) {
+            self::$colonneValideAtMemoisee = Schema::hasColumn((new self)->getTable(), 'valide_at');
+        }
+
+        return self::$colonneValideAtMemoisee;
     }
 }

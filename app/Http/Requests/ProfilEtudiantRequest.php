@@ -8,7 +8,11 @@ use Illuminate\Validation\Rule;
 /**
  * Validation de la mise à jour des coordonnées depuis l'Espace Étudiant.
  * Seuls les champs autorisés sont validés : les identifiants (CIN, n° inscription),
- * l'affectation universitaire et le statut restent gérés par l'administration.
+ * l'affectation universitaire, la date de naissance (facteur d'identité du
+ * parcours « dossier existant ») et le statut restent gérés par
+ * l'administration. L'email n'est validé ici que pour être CONFRONTÉ à
+ * l'adresse enregistrée : son changement exige le parcours vérifié à double
+ * code (LOOP-SECURITY-REMEDIATION-01).
  */
 class ProfilEtudiantRequest extends FormRequest
 {
@@ -35,7 +39,6 @@ class ProfilEtudiantRequest extends FormRequest
         return [
             'email' => ['required', 'string', 'email', 'max:254', Rule::unique('etudiants', 'email')->ignore($etudiantId)],
             'telephone' => ['nullable', 'string', 'max:30', 'regex:/^\+?[0-9\s\-()]{7,30}$/'],
-            'date_naissance' => ['nullable', 'date_format:Y-m-d', 'before:today', 'after:1920-01-01'],
             'adresse' => 'required|string|min:5|max:500',
             'ville' => 'required|string|min:2|max:100',
             'code_postal' => 'required|string|max:20',
@@ -51,9 +54,6 @@ class ProfilEtudiantRequest extends FormRequest
             'email.unique' => 'Cette adresse email est déjà utilisée par un autre étudiant.',
             'telephone.max' => 'Le numéro de téléphone ne doit pas dépasser 30 caractères.',
             'telephone.regex' => 'Le format du numéro de téléphone n\'est pas valide.',
-            'date_naissance.date_format' => 'La date de naissance doit être au format AAAA-MM-JJ (ex : 2004-03-15).',
-            'date_naissance.before' => 'La date de naissance doit être antérieure à aujourd\'hui.',
-            'date_naissance.after' => 'La date de naissance doit être postérieure au 01/01/1920.',
             'adresse.required' => 'L\'adresse est obligatoire.',
             'adresse.min' => 'L\'adresse doit contenir au moins 5 caractères.',
             'adresse.max' => 'L\'adresse ne doit pas dépasser 500 caractères.',

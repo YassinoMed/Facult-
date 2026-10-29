@@ -116,3 +116,19 @@ optimiste seulement après confirmation serveur.
   `prefers-color-scheme`, script anti-flash) + remappage global des
   neutres et pastels sémantiques (contraste conservé) + couche Pro
   (`.admin-kbd`, sections).
+
+## §10. Mouvement (GSAP / Lenis)
+
+Le socle global est décrit dans
+[`docs/engineering/MOTION-SYSTEM.md`](engineering/MOTION-SYSTEM.md).
+Quatre portées : `cinematic` sur les parcours publics (GSAP + ScrollTrigger +
+Lenis, attributs `data-motion-hero`, `data-reveal`, `data-magnetic`),
+`etudiant` sur le portail étudiant authentifié (GSAP + ScrollTrigger + Lenis
+via `etudiant.js`, Lenis sur pointeur fin uniquement), `admin` sur le
+back-office (GSAP borné, sans Lenis ni parallaxe) et `app` sur les autres
+espaces connectés (animation CSS d'en-tête uniquement, aucun smooth scroll).
+`prefers-reduced-motion` et l'absence de JavaScript laissent toujours le
+contenu visible. Ne pas animer un formulaire, un tableau comme unité ou une
+modale applicative ; les lignes de tableaux peuvent être révélées par le
+module. Tout panneau défilant d'une page étudiante doit porter
+`data-lenis-prevent`.

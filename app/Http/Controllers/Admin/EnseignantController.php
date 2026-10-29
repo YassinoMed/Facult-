@@ -121,7 +121,7 @@ class EnseignantController extends Controller
 
         // Eager complet (Phase D) : aucune requête dans la vue.
         $enseignant->loadMissing([
-            'grade', 'departement.faculte', 'specialite', 'affectationsEnseignement',
+            'grade', 'departement.faculte', 'specialite',
             'slots.schedule.groupe', 'slots.matiere',
         ]);
 

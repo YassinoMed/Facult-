@@ -9,8 +9,62 @@
             <x-slot:actions>
                 <x-btn href="{{ route('admin.taches.index') }}">Centre de tâches ({{ $aTraiter }})</x-btn>
                 <x-btn variant="secondary" href="{{ route('admin.statistiques.index') }}">Statistiques</x-btn>
+                <x-btn variant="secondary" href="{{ route('admin.cockpit.kpi.export') }}">Export KPI (CSV)</x-btn>
             </x-slot:actions>
         </x-page-header>
+
+        {{-- Section KPI Scolarité Unifiés (LOT 03) --}}
+        @if(isset($snapshotKpi))
+            <section aria-label="Indicateurs clés scolarité" class="mt-4 ds-card p-5">
+                <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-3">
+                    <div>
+                        <h2 class="text-sm font-black uppercase tracking-wider text-slate-800">Indicateurs clés de scolarité</h2>
+                        <p class="text-xs text-slate-500">Rapprochés des sources officielles · Fraîcheur :
+                            <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold {{ $snapshotKpi->statutFraicheurGlobal === 'a_jour' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800' }}">
+                                {{ $snapshotKpi->statutFraicheurGlobal === 'a_jour' ? 'À jour' : 'Périmé / Rechargement requis' }}
+                            </span>
+                        </p>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        @if($snapshotKpi->syntheseAlertes['critique'] > 0)
+                            <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-black bg-rose-100 text-rose-800">
+                                {{ $snapshotKpi->syntheseAlertes['critique'] }} alerte(s) critique(s)
+                            </span>
+                        @endif
+                        <a href="{{ route('admin.cockpit.kpi') }}" target="_blank" class="text-xs font-bold text-primary-800 underline">API JSON</a>
+                        <span class="text-slate-300">|</span>
+                        <a href="{{ route('admin.cockpit.kpi.export') }}" class="text-xs font-bold text-primary-800 underline">Export CSV</a>
+                    </div>
+                </div>
+
+                <div class="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+                    @php
+                        $clesAffichees = [
+                            'effectif_total',
+                            'taux_validation_inscriptions',
+                            'taux_reussite_deliberations',
+                            'taches_critiques_ouvertes',
+                            'anomalies_qualite_ouvertes',
+                            'epreuves_sans_salle',
+                        ];
+                    @endphp
+                    @foreach($clesAffichees as $cle)
+                        @if($ind = $snapshotKpi->get($cle))
+                            <div class="rounded-lg border border-slate-100 p-3 bg-slate-50/50 hover:bg-white transition-colors" title="{{ $ind->definition->definition }} (Formule : {{ $ind->definition->formule }})">
+                                <span class="text-[11px] font-bold text-slate-500 block truncate">{{ $ind->definition->nom }}</span>
+                                <div class="mt-1 flex items-baseline justify-between">
+                                    <span class="text-lg font-black text-slate-900">{{ $ind->valeurFormatee }}</span>
+                                    <span class="text-[10px] font-bold px-1 rounded {{ $ind->statutAlerte === 'critique' ? 'bg-rose-100 text-rose-700' : ($ind->statutAlerte === 'attention' ? 'bg-amber-100 text-amber-700' : 'bg-slate-100 text-slate-600') }}">
+                                        {{ $ind->statutAlerte }}
+                                    </span>
+                                </div>
+                                <span class="mt-1 text-[10px] text-slate-400 block truncate">Source : {{ $ind->definition->sourceVerite }}</span>
+                            </div>
+                        @endif
+                    @endforeach
+                </div>
+            </section>
+        @endif
 
         @if($urgentes->isNotEmpty())
             <section aria-label="Urgent" class="mt-4 ds-card border-rose-200 p-5">

@@ -6,7 +6,19 @@ const VERSION = 'uniregistre-v1';
 const HORS_LIGNE = '/hors-ligne';
 
 self.addEventListener('install', (event) => {
-  event.waitUntil(caches.open(VERSION).then((cache) => cache.add(HORS_LIGNE)).then(() => self.skipWaiting()));
+  event.waitUntil(
+    caches.open(VERSION)
+      .then((cache) => fetch(HORS_LIGNE, { credentials: 'omit', cache: 'no-store' })
+        .then((response) => {
+          if (!response.ok) {
+            throw new Error('Page hors ligne indisponible');
+          }
+
+          // Jamais le shell authentifié : ni cookie, ni cache HTTP.
+          return cache.put(HORS_LIGNE, response);
+        }))
+      .then(() => self.skipWaiting())
+  );
 });
 
 self.addEventListener('activate', (event) => {

@@ -137,9 +137,9 @@ class LoopPopupHomeOnly04Test extends TestCase
         // En revanche les formulaires embarqués ciblent les endpoints
         // canoniques (POST + fetch JSON, `@submit.prevent`, pas de navigation).
         foreach ([
-            '/inscription/existant/recherche',
-            '/inscription/existant/verification',
-            '/inscription/identifier',
+            route('inscription.existant.recherche'),
+            route('inscription.existant.verification'),
+            route('inscription.identifier'),
         ] as $endpoint) {
             $this->assertStringContainsString('action="'.$endpoint.'"', $dialogue);
         }
@@ -184,6 +184,30 @@ class LoopPopupHomeOnly04Test extends TestCase
         $this->assertStringContainsString('action="'.route('inscription.store').'"', $html);
         $this->assertSame(1, substr_count($html, 'action="'.route('inscription.store').'"'));
         $this->assertStringContainsString('name="idempotency_token"', $html);
+    }
+
+    /** 4bis. Panneau de la popup hors Lenis : scroll natif + page mère gelée. */
+    public function test_popup_gele_le_scroll_de_la_page_et_conserve_son_panneau_defilant(): void
+    {
+        $html = $this->htmlAccueil();
+
+        // Le panneau reste le conteneur défilant, exclu du moteur inertiel,
+        // et la molette ne se propage pas à la page en fin de panneau.
+        $this->assertMatchesRegularExpression('/data-panneau-defilant[^>]*data-lenis-prevent/', $html);
+        $this->assertMatchesRegularExpression('/max-h-\[92vh\][^"]*overscroll-contain/', $html);
+
+        // Le composant suspend/reprend le socle cinématique à l'ouverture/fermeture.
+        $js = (string) file_get_contents(base_path('resources/js/app.js'));
+        $segment = substr($js, (int) strpos($js, "Alpine.data('parcoursAccueil'"));
+        $this->assertStringContainsString("new CustomEvent('mouvement:suspendre')", $segment);
+        $this->assertStringContainsString("new CustomEvent('mouvement:reprendre')", $segment);
+
+        // Lenis écoute ces événements et s'arrête/reprend réellement.
+        $motion = (string) file_get_contents(base_path('resources/js/motion-cinematic.js'));
+        $this->assertStringContainsString("addEventListener('mouvement:suspendre'", $motion);
+        $this->assertStringContainsString("addEventListener('mouvement:reprendre'", $motion);
+        $this->assertStringContainsString('lenis?.stop()', $motion);
+        $this->assertStringContainsString('lenis?.start()', $motion);
     }
 
     private function sourceAccueil(): string
@@ -260,8 +284,8 @@ class LoopPopupHomeOnly04Test extends TestCase
         ])->assertForbidden();
     }
 
-    /** 8. Protections conservées : neutralité anti-énumération + CSRF + throttle. */
-    public function test_protections_conservees_neutralite_et_throttle(): void
+    /** 8. Protections conservées : email masqué, CSRF + throttle. */
+    public function test_protections_conservees_email_masque_et_throttle(): void
     {
         Notification::fake();
         $this->creerEtudiant();
@@ -271,24 +295,59 @@ class LoopPopupHomeOnly04Test extends TestCase
             'date_naissance' => '2003-05-17',
         ])->assertOk()->getContent();
 
+        // Contrôle bloquant demandé : un couple CIN + date qui ne
+        // correspond à aucun dossier reste sur l'identification (422) et
+        // ne reçoit aucun code. L'email MASQUÉ n'est renvoyé que si le
+        // dossier existe : oracle d'existence partiel assumé pour le popup
+        // d'accueil ; l'adresse complète et le nom restent absents.
         $absent = $this->postJson(route('inscription.existant.recherche'), [
             'cin' => '87654321',
             'date_naissance' => '2000-01-01',
-        ])->assertOk()->getContent();
+        ])->assertStatus(422)->getContent();
 
-        // Même enveloppe, même message neutre : aucun oracle d'existence.
         $this->assertJson($existant);
         $this->assertJson($absent);
+        $this->assertSame('code', json_decode($existant, true)['etape'] ?? null);
+        $this->assertTrue(json_decode($existant, true)['identite_correspond'] ?? false);
+        $this->assertSame('identification', json_decode($absent, true)['etape'] ?? null);
+        $this->assertFalse(json_decode($absent, true)['identite_correspond'] ?? true);
         $this->assertSame(
-            json_decode($existant, true)['etape'] ?? null,
-            json_decode($absent, true)['etape'] ?? null
+            'moh******@example.com',
+            json_decode($existant, true)['email_masque'] ?? null
         );
+        $this->assertArrayNotHasKey('email_masque', json_decode($absent, true));
+        $this->assertArrayHasKey('identite', json_decode($absent, true)['errors'] ?? []);
         $this->assertStringNotContainsString('mohamed.benali@example.com', $existant.$absent);
         $this->assertStringNotContainsString('BEN ALI', $existant.$absent);
+
+        // L'étape « code » du popup affiche l'adresse d'envoi masquée.
+        $vue = $this->sourceAccueil();
+        $this->assertStringContainsString('x-show="emailDestinataire"', $vue);
+        $this->assertStringContainsString('x-text="emailDestinataire"', $vue);
+        $this->assertStringContainsString('Code envoyé à', $vue);
+        $this->assertStringContainsString(
+            "this.emailDestinataire = corps.email_masque || '';",
+            (string) file_get_contents(base_path('resources/js/app.js'))
+        );
 
         // CSRF conservé sur les mutations web (jeton exigé hors tests).
         $this->assertStringContainsString('X-CSRF-TOKEN', (string) file_get_contents(base_path('resources/js/app.js')));
         $this->assertStringContainsString('@csrf', $this->sourceAccueil());
+    }
+
+    /** 8 bis. Dossier sans email : aucun masque trompeur, aucun code. */
+    public function test_dossier_sans_email_ne_revele_pas_de_masque(): void
+    {
+        Notification::fake();
+        $this->creerEtudiant(['email' => '']);
+
+        $reponse = $this->postJson(route('inscription.existant.recherche'), [
+            'cin' => '12345678',
+            'date_naissance' => '2003-05-17',
+        ])->assertOk();
+
+        $this->assertNull($reponse->json('email_masque'));
+        Notification::assertNothingSent();
     }
 
     /** 9. Doubles clics / doubles soumissions neutralisés. */

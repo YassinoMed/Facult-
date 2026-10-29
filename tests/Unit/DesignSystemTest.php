@@ -24,14 +24,17 @@ class DesignSystemTest extends TestCase
 
     public function test_alert_roles_et_icones(): void
     {
+        // L'icône est décorative (SVG `aria-hidden`) : le sens est porté par
+        // le rôle ARIA + le texte, jamais par la couleur ni par le glyphe.
         $erreur = Blade::render('<x-alert type="error" titre="Échec">Détail.</x-alert>');
         $this->assertStringContainsString('role="alert"', $erreur);
-        $this->assertStringContainsString('✕', $erreur);
-        $this->assertStringContainsString('<strong>Échec</strong>', $erreur);
+        $this->assertStringContainsString('aria-hidden="true"', $erreur);
+        $this->assertStringContainsString('>Échec</p>', $erreur);
+        $this->assertStringContainsString('Détail.', $erreur);
 
         $succes = Blade::render('<x-alert type="success">OK.</x-alert>');
         $this->assertStringContainsString('role="status"', $succes);
-        $this->assertStringContainsString('✓', $succes);
+        $this->assertStringContainsString('aria-hidden="true"', $succes);
     }
 
     public function test_btn_variantes_et_hauteur_tactile(): void
@@ -54,7 +57,7 @@ class DesignSystemTest extends TestCase
 
         $this->assertStringContainsString('role="dialog"', $html);
         $this->assertStringContainsString('aria-modal="true"', $html);
-        $this->assertStringContainsString('aria-label="Fermer"', $html);
+        $this->assertStringContainsString('aria-label="Fermer la modale"', $html);
         $this->assertStringContainsString('x-show="ouvert"', $html);
     }
 

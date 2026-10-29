@@ -9,6 +9,7 @@ use App\Models\Matiere;
 use App\Modules\Schedule\Models\Group;
 use App\Modules\Schedule\Models\Schedule;
 use App\Modules\Schedule\Models\ScheduleSlot;
+use App\Modules\Schedule\Models\Teacher;
 use App\Modules\Schedule\Services\ScheduleService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
@@ -37,6 +38,8 @@ class PortailEtudiantPublicationTest extends TestCase
 
     private Etudiant $etudiant;
 
+    private Teacher $enseignant;
+
     protected function setUp(): void
     {
         parent::setUp();
@@ -50,6 +53,15 @@ class PortailEtudiantPublicationTest extends TestCase
         $this->matiere = Matiere::create(['code' => 'PUB-1', 'nom' => 'Publication', 'niveau' => 'L1', 'semestre' => 1]);
         $this->groupe = Group::create([
             'code' => 'G-PUB', 'nom' => 'Groupe pub', 'faculte_id' => $this->faculte->id, 'niveau' => 'L1', 'actif' => true,
+        ]);
+
+        // LOT 2 : un créneau sans enseignant est un conflit dur de
+        // publication (§12.19). Le fixture doit représenter un planning
+        // publiable pour tester la visibilité portail, pas le conflit.
+        $this->enseignant = Teacher::create([
+            'nom' => 'Ben Salah', 'prenom' => 'Karim',
+            'email' => 'portail.pub.ens@test', 'password' => 'Enseignant@123',
+            'actif' => true, 'statut' => 'actif',
         ]);
 
         $this->etudiant = Etudiant::create([
@@ -74,6 +86,7 @@ class PortailEtudiantPublicationTest extends TestCase
     {
         return ScheduleSlot::create([
             'schedule_id' => $planning->id, 'matiere_id' => $this->matiere->id,
+            'teacher_id' => $this->enseignant->id,
             'day_of_week' => $jour ?? 'monday', 'start_time' => '08:00:00', 'end_time' => '10:00:00',
             'type' => 'course', 'status' => 'scheduled',
         ]);

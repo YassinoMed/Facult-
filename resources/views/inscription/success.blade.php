@@ -12,8 +12,8 @@
          x-init="try { localStorage.removeItem('inscription-brouillon-v1'); } catch(e) {}">
 
         {{-- Top Success Status Banner --}}
-        <div class="bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-700 px-6 py-8 sm:px-10 text-white text-center sm:text-left flex flex-col sm:flex-row sm:items-center justify-between gap-6">
-            <div class="flex flex-col sm:flex-row items-center gap-4">
+        <div class="bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-700 px-6 py-8 sm:px-10 text-white text-center sm:text-left flex flex-col sm:flex-row sm:items-center justify-between gap-6" data-motion-hero>
+            <div class="flex flex-col sm:flex-row items-center gap-4" data-motion-hero-item>
                 <div class="flex h-16 w-16 items-center justify-center rounded-2xl bg-white/20 backdrop-blur-md shadow-md">
                     <svg class="h-9 w-9 text-white" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
@@ -28,7 +28,7 @@
                 </div>
             </div>
 
-            <div class="no-print">
+            <div class="no-print" data-motion-hero-item>
                 <button type="button"
                         onclick="window.print()"
                         class="w-full sm:w-auto inline-flex items-center justify-center gap-2 rounded-xl bg-white px-4 py-2.5 text-xs font-bold text-emerald-800 shadow-md hover:bg-emerald-50 transition-smooth">
@@ -41,7 +41,7 @@
         </div>
 
         {{-- Official Certificate Ticket Body --}}
-        <div class="p-6 sm:p-10 space-y-8">
+        <div class="p-6 sm:p-10 space-y-8" data-reveal="fade-up">
 
             {{-- Numéro d'inscription Display Card --}}
             <div class="rounded-2xl border-2 border-dashed border-primary-200 bg-primary-50/50 p-6 sm:p-8 text-center relative">

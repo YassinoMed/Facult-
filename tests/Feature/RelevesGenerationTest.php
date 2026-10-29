@@ -9,6 +9,7 @@ use App\Models\InscriptionAcademique;
 use App\Models\Matiere;
 use App\Models\Note;
 use App\Models\User;
+use App\Modules\Evaluation\Models\DecisionDeliberation;
 use App\Modules\Evaluation\Models\Deliberation;
 use App\Modules\Evaluation\Services\DeliberationService;
 use App\Modules\StudentDossiers\Jobs\GenerateOfficialDocumentsJob;
@@ -156,6 +157,21 @@ class RelevesGenerationTest extends TestCase
 
     public function test_portail_liste_telecharge_et_idor(): void
     {
+        $deliberation = Deliberation::create([
+            'annee_universitaire_id' => $this->annee->id,
+            'statut' => 'published',
+            'published_at' => now(),
+            'created_by' => $this->admin->id,
+        ]);
+        DecisionDeliberation::create([
+            'deliberation_id' => $deliberation->id,
+            'etudiant_id' => $this->etudiant->id,
+            'inscription_academique_id' => $this->inscription->id,
+            'moyenne' => 13.0,
+            'decision' => 'admis',
+            'publie' => true,
+        ]);
+
         $document = app(OfficialDocumentService::class)->generer(
             $this->etudiant, 'releve_notes', $this->inscription->id, $this->admin->id
         );

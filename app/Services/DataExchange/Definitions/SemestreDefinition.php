@@ -107,9 +107,10 @@ class SemestreDefinition implements ExportDefinitionInterface, ImportDefinitionI
         $query = Niveau::where('code', $niveauCode);
         if (! empty($programmeCode)) {
             $prog = Programme::where('code', mb_strtoupper(trim($programmeCode)))->first();
-            if ($prog !== null) {
-                $query->where('programme_id', $prog->id);
+            if ($prog === null) {
+                throw IoException::malforme("Programme « {$programmeCode} » introuvable (ligne {$ligne['ligne']}).");
             }
+            $query->where('programme_id', $prog->id);
         }
 
         $niveaux = $query->get();

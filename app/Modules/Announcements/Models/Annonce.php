@@ -7,6 +7,7 @@ use App\Models\Faculte;
 use App\Modules\Referentiel\Models\Programme;
 use App\Modules\Schedule\Models\Group;
 use App\Modules\Schedule\Models\Teacher;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -72,6 +73,39 @@ class Annonce extends Model
     }
 
     /**
+     * Annonces publiées et actives à l'instant présent (statut + fenêtre
+     * de publication). Portée unique partagée par les index et les
+     * widgets, pour ne jamais diverger sur les brouillons/expirées.
+     */
+    public function scopePublieesActives(Builder $query): Builder
+    {
+        return $query->where('statut', 'published')
+            ->where(fn (Builder $q) => $q->whereNull('publiee_a')->orWhere('publiee_a', '<=', now()))
+            ->where(fn (Builder $q) => $q->whereNull('expire_a')->orWhere('expire_a', '>', now()));
+    }
+
+    /**
+     * Portée enseignant : audiences `tous`/`enseignants`, avec un
+     * cloisonnement faculté strict. Un enseignant sans faculté ne voit
+     * que les annonces globales (faculté NULL) — jamais celles d'une
+     * faculté arbitraire.
+     */
+    public function scopeVisiblesPourEnseignant(Builder $query, Teacher $enseignant): Builder
+    {
+        $faculteId = $enseignant->faculteId();
+
+        return $query->publieesActives()
+            ->whereIn('audience', ['tous', 'enseignants'])
+            ->where(function (Builder $q) use ($faculteId): void {
+                $q->whereNull('faculte_id');
+
+                if ($faculteId !== null) {
+                    $q->orWhere('faculte_id', $faculteId);
+                }
+            });
+    }
+
+    /**
      * Portée étudiant (audit sécurité 04/10/2026) : miroir du filtre
      * d'index — audience étendue + faculté. Sans ce garde-fou, le show
      * par ID lisait les annonces réservées au personnel/enseignants ou
@@ -112,8 +146,10 @@ class Annonce extends Model
 
         $faculteId = $enseignant->faculteId();
 
-        if ($this->faculte_id !== null && $faculteId !== null
-            && (int) $this->faculte_id !== (int) $faculteId) {
+        // Une annonce facultaire n'est jamais visible par un enseignant
+        // sans faculté, ni par une autre faculté.
+        if ($this->faculte_id !== null
+            && ($faculteId === null || (int) $this->faculte_id !== (int) $faculteId)) {
             return false;
         }
 

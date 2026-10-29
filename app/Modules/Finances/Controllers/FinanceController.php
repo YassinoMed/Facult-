@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\AnneeUniversitaire;
 use App\Models\Etudiant;
 use App\Models\InscriptionAcademique;
+use App\Modules\Finances\Models\DossierPaiement;
 use App\Modules\Finances\Models\Facture;
 use App\Modules\Finances\Models\Paiement;
 use App\Modules\Finances\Models\Remboursement;
@@ -21,36 +22,41 @@ use Symfony\Component\HttpFoundation\Response;
 
 class FinanceController extends Controller
 {
-    public function dashboard(Request $request): View
+    public function dashboard(Request $request, FinanceService $finances): View
     {
         Gate::authorize('viewAny', Facture::class);
 
+        $faculteRestreinte = $request->user()->faculteRestreinteId();
+        $agregats = $finances->agregatsFactures($faculteRestreinte);
+
         $base = Facture::query()
-            ->when($request->user()->faculteRestreinteId() !== null, fn ($q) => $q->whereHas(
+            ->when($faculteRestreinte !== null, fn ($q) => $q->whereHas(
                 'etudiant',
-                fn ($e) => $e->where('faculte_id', $request->user()->faculteRestreinteId())
+                fn ($e) => $e->where('faculte_id', $faculteRestreinte)
             ));
 
-        $factures = (clone $base)->with('paiements')->get();
-
-        $total = 0;
-        $encaisse = 0;
-        $enRetard = 0;
-        foreach ($factures as $facture) {
-            $total += $facture->netCentimes();
-            $encaisse += $facture->payeCentimes();
-            if ($facture->resteCentimes() > 0 && $facture->date_echeance !== null && $facture->date_echeance->isPast()) {
-                $enRetard += $facture->resteCentimes();
-            }
-        }
-
         return view('modules.finances.tableau-bord', [
-            'total' => $total,
-            'encaisse' => $encaisse,
-            'reste' => max(0, $total - $encaisse),
-            'en_retard' => $enRetard,
+            'total' => $agregats['total'],
+            'encaisse' => $agregats['encaisse'],
+            'reste' => $agregats['reste'],
+            'en_retard' => $agregats['en_retard'],
             'impayees' => (clone $base)->whereIn('statut', ['issued', 'partially_paid', 'overdue'])->count(),
-            'remboursements' => Remboursement::where('statut', 'requested')->count(),
+            'remboursements' => Remboursement::query()
+                ->where('statut', 'requested')
+                ->when($faculteRestreinte !== null, fn ($q) => $q->whereHas(
+                    'paiement.facture.etudiant',
+                    fn ($e) => $e->where('faculte_id', $faculteRestreinte)
+                ))
+                ->count(),
+            'recus_a_verifier' => config('inscriptions-paiements.actif', true)
+                ? DossierPaiement::query()
+                    ->whereIn('statut', DossierPaiement::STATUTS_A_TRAITER)
+                    ->when($faculteRestreinte !== null, fn ($q) => $q->whereHas(
+                        'inscription.etudiant',
+                        fn ($e) => $e->where('faculte_id', $faculteRestreinte)
+                    ))
+                    ->count()
+                : 0,
         ]);
     }
 
@@ -95,6 +101,15 @@ class FinanceController extends Controller
     public function payer(Request $request, Facture $facture, FinanceService $finances): RedirectResponse
     {
         Gate::authorize('manage', Facture::class);
+
+        // Défense en profondeur : le périmètre facultaire ne dépend pas
+        // uniquement de la matrice de permissions. Un compte restreint à une
+        // faculté ne peut jamais encaisser la facture d'une autre.
+        $faculteFacture = $facture->etudiant?->faculte_id;
+        abort_unless(
+            $faculteFacture === null || $request->user()->peutAccederFaculte((int) $faculteFacture),
+            404
+        );
 
         $donnees = $request->validate([
             'montant' => ['required', 'numeric', 'min:0.01'],
@@ -149,6 +164,86 @@ class FinanceController extends Controller
             'Content-Type' => 'application/pdf',
             'Content-Disposition' => 'attachment; filename="recu-'.$paiement->reference.'.pdf"',
         ]);
+    }
+
+    public function remboursements(Request $request): View
+    {
+        Gate::authorize('viewAny', Facture::class);
+
+        $faculteRestreinte = $request->user()->faculteRestreinteId();
+
+        $remboursements = Remboursement::query()
+            ->with(['paiement.facture.etudiant'])
+            ->when($faculteRestreinte !== null, fn ($q) => $q->whereHas(
+                'paiement.facture.etudiant',
+                fn ($e) => $e->where('faculte_id', $faculteRestreinte)
+            ))
+            ->latest()
+            ->paginate(15)
+            ->withQueryString();
+
+        return view('modules.finances.remboursements', [
+            'remboursements' => $remboursements,
+            'transitions' => Remboursement::TRANSITIONS,
+        ]);
+    }
+
+    public function demanderRemboursement(Request $request, Paiement $paiement, FinanceService $finances): RedirectResponse
+    {
+        Gate::authorize('manage', Facture::class);
+
+        $paiement->loadMissing('facture.etudiant');
+        $facultePaiement = $paiement->facture?->etudiant?->faculte_id;
+        abort_unless(
+            $facultePaiement === null || $request->user()->peutAccederFaculte((int) $facultePaiement),
+            404
+        );
+
+        $donnees = $request->validate([
+            'montant' => ['required', 'numeric', 'min:0.01'],
+            'motif' => ['required', 'string', 'max:255'],
+        ]);
+
+        try {
+            $finances->demanderRemboursement(
+                $paiement,
+                (int) round((float) $donnees['montant'] * 100),
+                $donnees['motif'],
+                (int) $request->user()->id,
+            );
+        } catch (DomainException $e) {
+            return back()->withErrors(['remboursement' => $e->getMessage()]);
+        }
+
+        return back()->with('success', 'Demande de remboursement enregistrée.');
+    }
+
+    public function traiterRemboursement(Request $request, Remboursement $remboursement, FinanceService $finances): RedirectResponse
+    {
+        Gate::authorize('manage', Facture::class);
+
+        $remboursement->loadMissing('paiement.facture.etudiant');
+        $faculteRemboursement = $remboursement->paiement?->facture?->etudiant?->faculte_id;
+        abort_unless(
+            $faculteRemboursement === null || $request->user()->peutAccederFaculte((int) $faculteRemboursement),
+            404
+        );
+
+        $donnees = $request->validate([
+            'statut' => ['required', 'in:approved,rejected,processed,completed'],
+        ]);
+
+        try {
+            $finances->traiterRemboursement(
+                $remboursement,
+                $donnees['statut'],
+                (int) $request->user()->id,
+            );
+        } catch (DomainException $e) {
+            return back()->withErrors(['remboursement' => $e->getMessage()]);
+        }
+
+        return back()->with('success', 'Remboursement mis à jour.');
     }
 
     public function tarifs(Request $request): View

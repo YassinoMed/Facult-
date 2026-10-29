@@ -126,7 +126,7 @@
         x-data="periodeInscription(@js($etatInscription), '{{ route('inscription.periode-etat', [], false) }}', '{{ route('inscription.identifier') }}')">
 
         {{-- ════════════ 1. HERO ════════════ --}}
-        <section aria-labelledby="titre-portail"
+        <section aria-labelledby="titre-portail" data-motion-hero
             class="relative overflow-hidden rounded-3xl bg-gradient-to-br from-primary-900 via-primary-800 to-primary-700 p-6 sm:p-12 text-white shadow-xl">
             <div class="pointer-events-none absolute -right-24 -top-24 h-72 w-72 rounded-full bg-white/10 blur-3xl"
                 aria-hidden="true"></div>
@@ -134,7 +134,7 @@
                 aria-hidden="true"></div>
 
             <div class="relative">
-                <div class="flex flex-wrap items-center gap-2">
+                <div class="flex flex-wrap items-center gap-2" data-motion-hero-item>
                     <span
                         class="inline-flex items-center gap-2 rounded-full bg-white/15 px-3.5 py-1.5 text-xs font-semibold backdrop-blur ring-1 ring-white/20">
                         <span class="h-2 w-2 rounded-full point-live"
@@ -148,15 +148,15 @@
                     </span>
                 </div>
 
-                <h1 id="titre-portail" class="mt-5 max-w-2xl text-3xl sm:text-5xl font-black tracking-tight leading-[1.1]">
+                <h1 id="titre-portail" data-motion-hero-item class="mt-5 max-w-2xl text-3xl sm:text-5xl font-black tracking-tight leading-[1.1]">
                     Portail des inscriptions universitaires
                 </h1>
-                <p class="mt-4 max-w-xl text-sm sm:text-base text-white/80 leading-relaxed">
+                <p class="mt-4 max-w-xl text-sm sm:text-base text-white/80 leading-relaxed" data-motion-hero-item>
                     Inscrivez-vous en quelques étapes. Votre dossier sera ensuite traité par l'administration.
                 </p>
 
-                <div class="mt-7 flex flex-col sm:flex-row gap-3">
-                    <a href="#inscription"
+                <div class="mt-7 flex flex-col sm:flex-row gap-3" data-motion-hero-item>
+                    <a href="#inscription" data-magnetic="0.1"
                         class="inline-flex items-center justify-center gap-2 rounded-xl bg-white px-6 py-3.5 text-sm font-bold text-primary-900 shadow-lg shadow-black/10 transition hover:bg-primary-50 focus:outline-none focus:ring-4 focus:ring-white/40 min-h-[48px]">
                         Commencer mon inscription
                         <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke-width="2.2" stroke="currentColor"
@@ -171,7 +171,7 @@
                 </div>
 
                 {{-- Parcours --}}
-                <ol class="mt-10 grid grid-cols-2 sm:grid-cols-5 gap-3" aria-label="Étapes de l'inscription">
+                <ol class="mt-10 grid grid-cols-2 sm:grid-cols-5 gap-3" aria-label="Étapes de l'inscription" data-motion-hero-item>
                     @foreach([
                             ['1', 'Préparer', 'Vos informations et pièces'],
                             ['2', 'Remplir', 'Le formulaire guidé'],
@@ -359,7 +359,7 @@
         </section>
 
         {{-- ════════════ 3. AIDE ════════════ --}}
-        <section id="aide" aria-labelledby="titre-aide"
+        <section id="aide" aria-labelledby="titre-aide" data-reveal="fade-up"
             class="mt-8 scroll-mt-24 rounded-3xl border border-slate-200 bg-white p-6 sm:p-8 shadow-sm">
             <h2 id="titre-aide" class="text-lg font-black text-slate-900">Besoin d'aide ?</h2>
             <div class="mt-4 divide-y divide-slate-200 rounded-2xl border border-slate-200">
@@ -382,8 +382,7 @@
                 @endforeach
                 <div class="p-4 text-xs sm:text-sm text-slate-600">
                     Consultez la <a href="{{ route('inscription.faq') }}"
-                        class="font-bold text-primary-700 underline decoration-primary-300 underline-offset-2 hover:text-primary-900">FAQ
-                        officielle</a>
+                        class="font-bold text-primary-700 underline decoration-primary-300 underline-offset-2 hover:text-primary-900">FAQ officielle</a>
                     ou contactez la scolarité : {{ config('inscriptions.contact_scolarite.email') }} —
                     {{ config('inscriptions.contact_scolarite.horaires') }}.
                 </div>

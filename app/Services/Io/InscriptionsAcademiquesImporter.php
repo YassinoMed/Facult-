@@ -6,7 +6,7 @@ use App\Models\AnneeUniversitaire;
 use App\Models\Etudiant;
 use App\Models\InscriptionAcademique;
 use App\Models\Semestre;
-use Illuminate\Database\UniqueConstraintViolationException;
+use App\Services\InscriptionService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
 
@@ -100,27 +100,34 @@ class InscriptionsAcademiquesImporter
 
         $importes = 0;
         $ignores = $preview->doublons();
+        $inscriptions = app(InscriptionService::class);
 
-        DB::transaction(function () use ($preview, $mode, &$importes, &$ignores, &$erreurs) {
+        DB::transaction(function () use ($preview, $mode, $inscriptions, &$importes, &$ignores, &$erreurs) {
             foreach ($preview->lignesValides as $ligne) {
                 try {
-                    $inscription = InscriptionAcademique::create([
-                        'etudiant_id' => $ligne['_etudiant_id'],
-                        'annee_universitaire_id' => $ligne['_annee_id'],
-                        'niveau' => $ligne['niveau'],
-                        'filiere' => $ligne['filiere'] ?? null,
-                        'groupe' => $ligne['groupe'] ?? null,
-                        'statut' => $ligne['statut'],
-                        'observation' => $ligne['observation'] ?? null,
-                    ]);
+                    // Création sous la règle d'unicité annuelle CENTRALISÉE
+                    // (InscriptionService) — la garde ou le conflit
+                    // concurrent lèvent la même DomainException, traduite
+                    // ici en « ligne ignorée » (import semi-automatique).
+                    $inscription = $inscriptions->creerInscriptionAnnuelle(
+                        (int) $ligne['_etudiant_id'],
+                        (int) $ligne['_annee_id'],
+                        [
+                            'niveau' => $ligne['niveau'],
+                            'filiere' => $ligne['filiere'] ?? null,
+                            'groupe' => $ligne['groupe'] ?? null,
+                            'statut' => $ligne['statut'],
+                            'observation' => $ligne['observation'] ?? null,
+                        ],
+                    );
 
                     foreach ([1, 2] as $numero) {
                         Semestre::create(['inscription_academique_id' => $inscription->id, 'numero' => $numero]);
                     }
                     $importes++;
-                } catch (UniqueConstraintViolationException) {
+                } catch (\DomainException $e) {
                     $ignores++;
-                    $erreurs[] = "Ligne {$ligne['matricule']} : insertion concurrente détectée — ignorée.";
+                    $erreurs[] = "Ligne {$ligne['matricule']} : {$e->getMessage()} — ignorée.";
                 }
             }
 

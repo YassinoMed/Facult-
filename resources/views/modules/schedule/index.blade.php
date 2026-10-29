@@ -9,6 +9,7 @@
             <x-slot:actions>
                 <x-btn variant="secondary" href="{{ route('admin.emplois-du-temps.explorer') }}">Explorer</x-btn>
                 <x-btn variant="ghost" href="{{ route('admin.emplois-du-temps.disponibilites') }}">Disponibilités</x-btn>
+                <x-btn variant="ghost" href="{{ route('admin.emplois-du-temps.indisponibilites.index') }}">Indisponibilités</x-btn>
                 @can('schedules.manage')
                     <x-btn href="{{ route('admin.emplois-du-temps.create') }}">Nouvel emploi du temps</x-btn>
                     <x-btn variant="secondary" href="{{ route('admin.emplois-du-temps.import.form') }}">Import CSV/JSON/XML/XLSX</x-btn>

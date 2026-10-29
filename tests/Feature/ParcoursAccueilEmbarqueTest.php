@@ -90,7 +90,7 @@ class ParcoursAccueilEmbarqueTest extends TestCase
         $this->assertStringContainsString(', false, \'\')"', $nouvelle);
     }
 
-    public function test_branche_existant_json_neutre_puis_donnees(): void
+    public function test_branche_existant_json_email_masque_puis_donnees(): void
     {
         $etudiant = $this->creerEtudiant();
         Notification::fake();
@@ -100,10 +100,16 @@ class ParcoursAccueilEmbarqueTest extends TestCase
             ->assertStatus(403)
             ->assertJson(['ok' => false]);
 
-        // Recherche JSON neutre (dossier existant).
-        $this->postJson(route('inscription.existant.recherche'), [
+        // Recherche JSON (dossier existant) : le message reste neutre,
+        // l'email MASQUÉ est fourni pour l'affichage de l'étape « code ».
+        $recherche = $this->postJson(route('inscription.existant.recherche'), [
             'cin' => '12345678', 'date_naissance' => '2003-05-17',
-        ])->assertOk()->assertJson(['ok' => true, 'etape' => 'code']);
+        ])->assertOk()->assertJson([
+            'ok' => true,
+            'etape' => 'code',
+            'email_masque' => 'moh******@example.com',
+        ]);
+        $this->assertStringNotContainsString('mohamed.benali@example.com', $recherche->getContent());
 
         $code = Notification::sent($etudiant, CodeVerificationDossierExistant::class)->first()->code;
 

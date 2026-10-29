@@ -45,25 +45,74 @@ class SaisieNoteService
      */
     public function saisirLot(Epreuve $epreuve, array $lignes, ?int $auteurId = null, ?string $origine = null): array
     {
-        return DB::transaction(function () use ($epreuve, $lignes, $auteurId) {
-            if ($epreuve->estVerrouillee()) {
+        return DB::transaction(function () use ($epreuve, $lignes, $auteurId, $origine) {
+            /** @var Epreuve $epreuveVerrouillee */
+            $epreuveVerrouillee = Epreuve::whereKey($epreuve->id)->lockForUpdate()->firstOrFail();
+
+            if ($epreuveVerrouillee->estVerrouillee()) {
                 throw new DomainException('Épreuve verrouillée : saisie interdite.');
             }
 
-            $epreuve->loadMissing(['matiere', 'compostages']);
-            $compostagesParNumero = $epreuve->compostages->keyBy('numero');
+            // Borne serveur de dernier recours : un barème absent ou nul
+            // rend toute note ininterprétable. On refuse le lot AVANT
+            // d'écrire quoi que ce soit (défense en profondeur derrière
+            // la règle de validation `NoteDansBareme`).
+            $noteMax = $epreuveVerrouillee->note_max !== null
+                ? (float) $epreuveVerrouillee->note_max
+                : 0.0;
+
+            if (! is_finite($noteMax) || $noteMax <= 0) {
+                throw new DomainException('Barème de l’épreuve invalide : la note maximale doit être strictement positive.');
+            }
+
+            $epreuveVerrouillee->loadMissing(['matiere', 'compostages']);
+            $compostagesParNumero = $epreuveVerrouillee->compostages->keyBy(fn ($c) => mb_strtoupper(trim($c->numero)));
+
+            $estPetitLot = count($lignes) <= 10;
+            $etudiantIdsCibles = [];
+            foreach ($lignes as $l) {
+                if (isset($l['etudiant_id']) && is_numeric($l['etudiant_id'])) {
+                    $etudiantIdsCibles[] = (int) $l['etudiant_id'];
+                }
+                $num = trim((string) ($l['compostage'] ?? $l['numero'] ?? ''));
+                if ($num !== '') {
+                    $comp = $compostagesParNumero->get(mb_strtoupper($num));
+                    if ($comp) {
+                        $etudiantIdsCibles[] = (int) $comp->etudiant_id;
+                    }
+                }
+            }
+            $etudiantIdsCibles = array_values(array_unique($etudiantIdsCibles));
+
+            $candidatsQuery = Candidat::where('epreuve_id', $epreuveVerrouillee->id);
+            $notesQuery = NoteEpreuve::where('epreuve_id', $epreuveVerrouillee->id)->lockForUpdate();
+
+            if ($estPetitLot && ! empty($etudiantIdsCibles)) {
+                $candidatsQuery->whereIn('etudiant_id', $etudiantIdsCibles);
+                $notesQuery->whereIn('etudiant_id', $etudiantIdsCibles);
+            }
+
+            $candidatsParEtudiant = $candidatsQuery->get()->keyBy('etudiant_id');
+            $notesExistantes = $notesQuery->get()->keyBy('etudiant_id');
 
             $saisies = 0;
             $ignorees = 0;
             $erreurs = [];
+
+            $maintenant = now();
+            $aInserer = [];
+            $aMettreAJour = [];
+            $historiquesAPersister = [];
+
+            $etudiantsVus = [];
 
             foreach ($lignes as $index => $ligne) {
                 // Résolution sécurisée : compostage en priorité, sinon etudiant_id interne
                 $numCompostage = trim((string) ($ligne['compostage'] ?? $ligne['numero'] ?? ''));
 
                 if ($numCompostage !== '') {
-                    $comp = $compostagesParNumero->get($numCompostage)
-                        ?? EvaluationCompostage::where('epreuve_id', $epreuve->id)->where('numero', $numCompostage)->first();
+                    $comp = $compostagesParNumero->get(mb_strtoupper($numCompostage))
+                        ?? EvaluationCompostage::where('epreuve_id', $epreuveVerrouillee->id)->where('numero', $numCompostage)->first();
 
                     if ($comp === null) {
                         $erreurs[$index] = "Numéro de compostage « {$numCompostage} » invalide pour cette épreuve.";
@@ -80,9 +129,14 @@ class SaisieNoteService
                     continue;
                 }
 
-                $candidat = Candidat::where('epreuve_id', $epreuve->id)
-                    ->where('etudiant_id', $etudiantId)
-                    ->first();
+                if (isset($etudiantsVus[$etudiantId])) {
+                    $erreurs[$index] = "Doublon détecté dans le lot pour le candidat (étudiant #{$etudiantId}).";
+
+                    continue;
+                }
+                $etudiantsVus[$etudiantId] = true;
+
+                $candidat = $candidatsParEtudiant->get($etudiantId);
 
                 if ($candidat === null) {
                     $erreurs[$index] = 'Étudiant non convoqué à cette épreuve.';
@@ -90,67 +144,210 @@ class SaisieNoteService
                     continue;
                 }
 
-                if ($candidat->estAbsent() && ($ligne['valeur'] ?? null) !== null) {
-                    $erreurs[$index] = 'Candidat absent : aucune note ne peut être saisie.';
-
-                    continue;
-                }
-
                 $valeur = $ligne['valeur'] ?? null;
+                if ($valeur === '') {
+                    $valeur = null;
+                }
 
-                if ($valeur !== null && ($valeur < 0 || $valeur > (float) $epreuve->note_max)) {
-                    $erreurs[$index] = "Note hors bornes 0..{$epreuve->note_max}.";
+                if ($valeur !== null) {
+                    if (! is_numeric($valeur)) {
+                        $erreurs[$index] = 'La note doit être un nombre.';
+
+                        continue;
+                    }
+
+                    $valeur = (float) $valeur;
+
+                    if (! is_finite($valeur)) {
+                        $erreurs[$index] = 'La note doit être un nombre fini.';
+
+                        continue;
+                    }
+
+                    if (abs($valeur - round($valeur, 2)) > 1e-9) {
+                        $erreurs[$index] = 'La note doit comporter au maximum deux décimales.';
+
+                        continue;
+                    }
+
+                    $valeur = round($valeur, 2);
+                }
+
+                if ($candidat->estAbsent()) {
+                    if ($valeur !== null) {
+                        $erreurs[$index] = 'Candidat absent : aucune note ne peut être saisie.';
+                    } else {
+                        $ignorees++;
+                    }
 
                     continue;
                 }
 
-                /** @var NoteEpreuve $note */
-                $note = NoteEpreuve::firstOrNew([
-                    'epreuve_id' => $epreuve->id,
-                    'etudiant_id' => $candidat->etudiant_id,
-                ]);
+                if ($valeur !== null && ($valeur < 0 || $valeur > $noteMax)) {
+                    $erreurs[$index] = "Note hors bornes 0..{$noteMax}.";
 
-                if ($note->exists && $note->estVerrouillee()) {
+                    continue;
+                }
+
+                /** @var NoteEpreuve|null $note */
+                $note = $notesExistantes->get($candidat->etudiant_id);
+                $estNouvelle = ($note === null);
+
+                // F-02 : Si la note n'existe pas et qu'aucun chiffre n'est saisi, ne pas créer d'enregistrement fantôme vide
+                if ($estNouvelle && $valeur === null) {
                     $ignorees++;
 
                     continue;
                 }
 
-                $ancienne = $note->exists ? $note->valeur : null;
-                $estNouvelle = ! $note->exists;
+                if ($note !== null && $note->exists && $note->estVerrouillee()) {
+                    $ignorees++;
 
-                $note->fill([
-                    'candidat_id' => $candidat->id,
-                    'valeur' => $valeur,
-                    'note_max' => $epreuve->note_max,
-                    'coefficient' => $epreuve->coefficient,
-                    'statut' => $note->exists && $note->statut === 'validated' ? 'validated' : 'entered',
-                    'commentaire' => $ligne['commentaire'] ?? $note->commentaire,
-                    'saisi_par' => $auteurId,
-                ]);
-                $note->save();
-
-                if ((string) $ancienne !== (string) $note->valeur) {
-                    NoteEpreuveHistorique::create([
-                        'evaluation_note_id' => $note->id,
-                        'ancienne_valeur' => $ancienne,
-                        'nouvelle_valeur' => $note->valeur,
-                        'motif' => $ligne['motif'] ?? 'Saisie',
-                        'auteur_id' => $auteurId,
-                        'created_at' => now(),
-                    ]);
+                    continue;
                 }
 
-                Log::info($estNouvelle ? 'note.entered' : 'note.updated', [
-                    'epreuve_id' => $epreuve->id,
-                    'note_id' => $note->id,
-                    'auteur_id' => $auteurId,
-                ]);
+                $ancienne = ($note !== null && $note->exists) ? $note->valeur : null;
+
+                // F-01 : Si une note déjà validée est modifiée avec une note différente,
+                // elle doit repasser en 'entered' pour exiger une nouvelle validation.
+                $nouveauStatut = 'entered';
+                if ($note !== null && $note->exists && $note->statut === 'validated' && (string) $ancienne === (string) $valeur) {
+                    $nouveauStatut = 'validated';
+                } elseif ($valeur === null) {
+                    $nouveauStatut = 'draft';
+                }
+
+                if ($estPetitLot) {
+                    if ($note === null) {
+                        $note = new NoteEpreuve([
+                            'epreuve_id' => $epreuveVerrouillee->id,
+                            'etudiant_id' => $candidat->etudiant_id,
+                        ]);
+                    }
+
+                    $note->fill([
+                        'candidat_id' => $candidat->id,
+                        'valeur' => $valeur,
+                        'note_max' => $noteMax,
+                        'coefficient' => $epreuveVerrouillee->coefficient,
+                        'statut' => $nouveauStatut,
+                        'commentaire' => $ligne['commentaire'] ?? $note->commentaire,
+                        'saisi_par' => $auteurId,
+                        'valide_par' => ($nouveauStatut === 'validated') ? $note->valide_par : null,
+                    ]);
+                    $note->save();
+                    $notesExistantes->put($candidat->etudiant_id, $note);
+
+                    if ((string) $ancienne !== (string) $note->valeur) {
+                        NoteEpreuveHistorique::create([
+                            'evaluation_note_id' => $note->id,
+                            'ancienne_valeur' => $ancienne,
+                            'nouvelle_valeur' => $note->valeur,
+                            'motif' => $ligne['motif'] ?? ($origine ? "Saisie ({$origine})" : 'Saisie'),
+                            'auteur_id' => $auteurId,
+                            'created_at' => $maintenant,
+                        ]);
+                    }
+                } else {
+                    $donnees = [
+                        'candidat_id' => $candidat->id,
+                        'valeur' => $valeur,
+                        'note_max' => $noteMax,
+                        'coefficient' => $epreuveVerrouillee->coefficient,
+                        'statut' => $nouveauStatut,
+                        'commentaire' => $ligne['commentaire'] ?? ($note?->commentaire),
+                        'saisi_par' => $auteurId,
+                        'valide_par' => ($nouveauStatut === 'validated') ? $note?->valide_par : null,
+                        'updated_at' => $maintenant,
+                    ];
+
+                    if ($estNouvelle) {
+                        $donnees['epreuve_id'] = $epreuveVerrouillee->id;
+                        $donnees['etudiant_id'] = $candidat->etudiant_id;
+                        $donnees['created_at'] = $maintenant;
+                        $aInserer[$candidat->etudiant_id] = $donnees;
+                    } else {
+                        $donnees['id'] = $note->id;
+                        $donnees['epreuve_id'] = $epreuveVerrouillee->id;
+                        $donnees['etudiant_id'] = $candidat->etudiant_id;
+                        $aMettreAJour[$candidat->etudiant_id] = $donnees;
+                    }
+
+                    if ((string) $ancienne !== (string) $valeur) {
+                        $historiquesAPersister[] = [
+                            'etudiant_id' => $candidat->etudiant_id,
+                            'evaluation_note_id' => $note?->id,
+                            'ancienne_valeur' => $ancienne,
+                            'nouvelle_valeur' => $valeur,
+                            'motif' => $ligne['motif'] ?? ($origine ? "Saisie ({$origine})" : 'Saisie'),
+                            'auteur_id' => $auteurId,
+                            'created_at' => $maintenant,
+                        ];
+                    }
+                }
 
                 $saisies++;
             }
 
-            EvaluationChanged::dispatch('notes.saisies', $epreuve->id);
+            if (! $estPetitLot) {
+                if (! empty($aInserer)) {
+                    foreach (array_chunk(array_values($aInserer), 500) as $chunk) {
+                        DB::table('evaluation_notes')->insert($chunk);
+                    }
+
+                    $nouvellesCrees = NoteEpreuve::where('epreuve_id', $epreuveVerrouillee->id)
+                        ->whereIn('etudiant_id', array_keys($aInserer))
+                        ->get()
+                        ->keyBy('etudiant_id');
+
+                    foreach ($nouvellesCrees as $etudiantId => $noteCree) {
+                        $notesExistantes->put($etudiantId, $noteCree);
+                    }
+                }
+
+                if (! empty($aMettreAJour)) {
+                    foreach (array_chunk(array_values($aMettreAJour), 500) as $chunk) {
+                        NoteEpreuve::upsert(
+                            $chunk,
+                            ['epreuve_id', 'etudiant_id'],
+                            ['candidat_id', 'valeur', 'note_max', 'coefficient', 'statut', 'commentaire', 'saisi_par', 'valide_par', 'updated_at']
+                        );
+                    }
+                }
+
+                if (! empty($historiquesAPersister)) {
+                    $historiquesInserts = [];
+                    foreach ($historiquesAPersister as $hist) {
+                        $noteId = $hist['evaluation_note_id'] ?? $notesExistantes->get($hist['etudiant_id'])?->id;
+                        if ($noteId) {
+                            $historiquesInserts[] = [
+                                'evaluation_note_id' => $noteId,
+                                'ancienne_valeur' => $hist['ancienne_valeur'],
+                                'nouvelle_valeur' => $hist['nouvelle_valeur'],
+                                'motif' => $hist['motif'],
+                                'auteur_id' => $hist['auteur_id'],
+                                'created_at' => $hist['created_at'],
+                            ];
+                        }
+                    }
+
+                    if (! empty($historiquesInserts)) {
+                        foreach (array_chunk($historiquesInserts, 500) as $chunk) {
+                            DB::table('evaluation_notes_historique')->insert($chunk);
+                        }
+                    }
+                }
+            }
+
+            Log::info('notes.lot_saisi', [
+                'epreuve_id' => $epreuveVerrouillee->id,
+                'saisies' => $saisies,
+                'ignorees' => $ignorees,
+                'auteur_id' => $auteurId,
+                'origine' => $origine,
+            ]);
+
+            EvaluationChanged::dispatch('notes.saisies', $epreuveVerrouillee->id);
 
             return ['saisies' => $saisies, 'ignorees' => $ignorees, 'erreurs' => $erreurs];
         });
@@ -221,69 +418,195 @@ class SaisieNoteService
     public function valider(NoteEpreuve $note, int $validateurId, ?string $motif = null): NoteEpreuve
     {
         return DB::transaction(function () use ($note, $validateurId, $motif) {
-            $note->loadMissing(['epreuve.matiere', 'etudiant', 'candidat']);
+            /** @var NoteEpreuve $noteVerrouillee */
+            $noteVerrouillee = NoteEpreuve::whereKey($note->id)->lockForUpdate()->firstOrFail();
+            $noteVerrouillee->loadMissing(['epreuve.matiere', 'etudiant', 'candidat']);
 
-            if ($note->estVerrouillee()) {
-                throw new DomainException('Note verrouillée.');
-            }
+            return $this->validerNoteVerrouillee($noteVerrouillee, $validateurId, $motif)->fresh();
+        });
+    }
 
-            if ($note->valeur === null) {
-                throw new DomainException('Aucune valeur à valider.');
-            }
+    /**
+     * Cœur de validation, exécutable dans la transaction de `valider`
+     * (verrou posé par l'appelant) ou dans celle de `validerTout` (Lot 7 :
+     * pas de savepoint par note). `$inscriptionPrechargee` /
+     * `$semestrePrecharge` sont résolus une fois par lot.
+     */
+    private function validerNoteVerrouillee(
+        NoteEpreuve $noteVerrouillee,
+        int $validateurId,
+        ?string $motif,
+        ?InscriptionAcademique $inscriptionPrechargee = null,
+        ?Semestre $semestrePrecharge = null,
+    ): NoteEpreuve {
+        if ($noteVerrouillee->estVerrouillee()) {
+            throw new DomainException('Note verrouillée.');
+        }
 
-            if (! $note->peutTransiterVers('validated')) {
-                throw new DomainException("Validation interdite depuis « {$note->statut} ».");
-            }
+        if ($noteVerrouillee->valeur === null) {
+            throw new DomainException('Aucune valeur à valider.');
+        }
 
-            if ($note->candidat !== null && $note->candidat->estAbsent()) {
-                throw new DomainException('Candidat absent : validation interdite.');
-            }
+        if (! $noteVerrouillee->peutTransiterVers('validated')) {
+            throw new DomainException("Validation interdite depuis « {$noteVerrouillee->statut} ».");
+        }
 
-            $epreuve = $note->epreuve;
-            $etudiant = $note->etudiant;
+        if ($noteVerrouillee->candidat !== null && $noteVerrouillee->candidat->estAbsent()) {
+            throw new DomainException('Candidat absent : validation interdite.');
+        }
 
-            $inscription = $this->inscriptionPourEpreuve($etudiant, $epreuve);
-            $semestre = $this->semestrePourMatiere($inscription, $epreuve->matiere->semestreRelatif());
+        $epreuve = $noteVerrouillee->epreuve;
+        $etudiant = $noteVerrouillee->etudiant;
 
-            $sessionOfficielle = $this->sessionOfficielle($epreuve);
+        $inscription = $inscriptionPrechargee ?? $this->inscriptionPourEpreuve($etudiant, $epreuve);
+        $semestre = $semestrePrecharge ?? $this->semestrePourMatiere($inscription, $epreuve->matiere->semestreRelatif());
 
-            $officielle = Note::where('semestre_id', $semestre->id)
-                ->where('matiere_id', $epreuve->matiere_id)
-                ->where('session', $sessionOfficielle)
-                ->first();
+        $sessionOfficielle = $this->sessionOfficielle($epreuve);
 
-            // Verrou officiel indépendant (NotePolicy : verrouillée =
-            // rôles supérieurs) : la voie épreuve ne doit jamais
-            // réécrire une note officielle verrouillée. La voie
-            // sanctionnée est la correction autorisée (qui déverrouille).
-            if ($officielle !== null && $officielle->estVerrouillee()) {
-                throw new DomainException('Note officielle verrouillée : demandez une correction autorisée.');
-            }
+        $officielle = Note::where('semestre_id', $semestre->id)
+            ->where('matiere_id', $epreuve->matiere_id)
+            ->where('session', $sessionOfficielle)
+            ->lockForUpdate()
+            ->first();
 
-            if ($officielle === null) {
-                $officielle = $this->archives->saisirNote($inscription, [
-                    'semestre_numero' => $semestre->numero,
-                    'matiere_id' => (int) $epreuve->matiere_id,
-                    'note' => (float) $note->valeur,
-                    'session' => $sessionOfficielle,
-                    'observation' => $motif,
-                ]);
-            } else {
-                $this->archives->modifierNote($officielle, [
-                    'note' => (float) $note->valeur,
-                    'raison' => $motif ?? 'Validation épreuve',
-                ]);
-            }
+        // Verrou officiel indépendant (NotePolicy : verrouillée =
+        // rôles supérieurs) : la voie épreuve ne doit jamais
+        // réécrire une note officielle verrouillée. La voie
+        // sanctionnée est la correction autorisée (qui déverrouille).
+        if ($officielle !== null && $officielle->estVerrouillee()) {
+            throw new DomainException('Note officielle verrouillée : demandez une correction autorisée.');
+        }
 
-            $note->update([
-                'note_id' => $officielle->id,
-                'statut' => 'validated',
-                'valide_par' => $validateurId,
+        if ($officielle === null) {
+            $officielle = $this->archives->saisirNote($inscription, [
+                'semestre_numero' => $semestre->numero,
+                'matiere_id' => (int) $epreuve->matiere_id,
+                'note' => (float) $noteVerrouillee->valeur,
+                'session' => $sessionOfficielle,
+                'observation' => $motif,
             ]);
+        } else {
+            $this->archives->modifierNote($officielle, [
+                'note' => (float) $noteVerrouillee->valeur,
+                'raison' => $motif ?? 'Validation épreuve',
+            ]);
+        }
 
-            EvaluationChanged::dispatch('note.validee', $epreuve->id);
+        // LOT 05 — auditabilité : horodatage de la DERNIÈRE validation
+        // (révalidation écrase). Le drapeau d'audit
+        // `a_ete_modifiee_apres_validation` s'appuie sur cette borne.
+        // Garde fail-soft : si la colonne additive n'est pas encore
+        // appliquée dans l'environnement, on n'écrit pas (jamais d'erreur).
+        $donnees = [
+            'note_id' => $officielle->id,
+            'statut' => 'validated',
+            'valide_par' => $validateurId,
+        ];
+        if (NoteEpreuve::existeColonneValideAt()) {
+            $donnees['valide_at'] = now();
+        }
+        $noteVerrouillee->update($donnees);
 
-            return $note->fresh();
+        EvaluationChanged::dispatch('note.validee', $epreuve->id);
+
+        return $noteVerrouillee;
+    }
+
+    /**
+     * Resynchronise explicitement une note d'épreuve validée vers la table officielle (notes).
+     */
+    public function resynchroniserNoteOfficielle(NoteEpreuve $note, int $validateurId): NoteEpreuve
+    {
+        return $this->valider($note, $validateurId, 'Resynchronisation officielle automatique');
+    }
+
+    /**
+     * Validation collective de toutes les notes saisies d'une épreuve (§14.4).
+     *
+     * @return array{validees: int, ignorees: int, erreurs: array<int, string>}
+     */
+    public function validerTout(Epreuve $epreuve, int $validateurId, ?string $motif = null): array
+    {
+        return DB::transaction(function () use ($epreuve, $validateurId, $motif) {
+            /** @var Epreuve $epreuveVerrouillee */
+            $epreuveVerrouillee = Epreuve::whereKey($epreuve->id)->lockForUpdate()->firstOrFail();
+
+            if ($epreuveVerrouillee->estVerrouillee()) {
+                throw new DomainException('Épreuve verrouillée : validation interdite.');
+            }
+
+            $notes = NoteEpreuve::where('epreuve_id', $epreuveVerrouillee->id)
+                ->whereNotNull('valeur')
+                ->whereIn('statut', ['entered', 'submitted'])
+                ->lockForUpdate()
+                ->get();
+
+            if ($notes->isEmpty()) {
+                return ['validees' => 0, 'ignorees' => 0, 'erreurs' => []];
+            }
+
+            // Perf (Lot 7) : inscriptions, semestres, candidats et
+            // identités préchargés UNE fois pour tout le lot (plus de
+            // savepoint ni de requêtes inscription/semestre par note).
+            $epreuveVerrouillee->loadMissing(['matiere', 'session']);
+            $etudiantIds = $notes->pluck('etudiant_id')->unique()->all();
+
+            $inscriptionsParEtudiant = InscriptionAcademique::query()
+                ->whereIn('etudiant_id', $etudiantIds)
+                ->where('annee_universitaire_id', $epreuveVerrouillee->annee_universitaire_id)
+                ->with('semestres')
+                ->get()
+                ->keyBy('etudiant_id');
+
+            $candidatsParEtudiant = Candidat::where('epreuve_id', $epreuveVerrouillee->id)->get()->keyBy('etudiant_id');
+            $etudiantsParId = Etudiant::whereIn('id', $etudiantIds)->get()->keyBy('id');
+
+            $numeroMatiere = $epreuveVerrouillee->matiere->semestreRelatif();
+            $numeroSemestre = in_array($numeroMatiere, [1, 2], true) ? $numeroMatiere : 1;
+
+            $validees = 0;
+            $ignorees = 0;
+            $erreurs = [];
+
+            foreach ($notes as $note) {
+                $inscription = $inscriptionsParEtudiant->get($note->etudiant_id);
+                $semestre = $inscription?->semestres->firstWhere('numero', $numeroSemestre);
+
+                try {
+                    $note->setRelation('epreuve', $epreuveVerrouillee);
+
+                    $etudiant = $etudiantsParId->get($note->etudiant_id);
+                    if ($etudiant !== null) {
+                        $note->setRelation('etudiant', $etudiant);
+                    } else {
+                        $note->loadMissing('etudiant');
+                    }
+
+                    $candidat = $candidatsParEtudiant->get($note->etudiant_id);
+                    if ($candidat !== null) {
+                        $note->setRelation('candidat', $candidat);
+                    } else {
+                        $note->loadMissing('candidat');
+                    }
+
+                    $this->validerNoteVerrouillee(
+                        $note,
+                        $validateurId,
+                        $motif ?? 'Validation collective',
+                        $inscription,
+                        $semestre,
+                    );
+                    $validees++;
+                } catch (DomainException $e) {
+                    $erreurs[] = "Copie #{$note->id} : ".$e->getMessage();
+                }
+            }
+
+            return [
+                'validees' => $validees,
+                'ignorees' => $ignorees,
+                'erreurs' => $erreurs,
+            ];
         });
     }
 
@@ -401,7 +724,14 @@ class SaisieNoteService
     {
         $numero = in_array($numeroMatiere, [1, 2], true) ? $numeroMatiere : 1;
 
-        return $inscription->semestres()->where('numero', $numero)->firstOrFail();
+        $semestre = $inscription->semestres()->where('numero', $numero)->first();
+
+        if ($semestre === null) {
+            // Erreur métier lisible (lot 1) : jamais de ModelNotFoundException (500).
+            throw new DomainException("Semestre S{$numero} introuvable sur l'inscription académique : note non rattachable.");
+        }
+
+        return $semestre;
     }
 
     private function sessionOfficielle(Epreuve $epreuve): string

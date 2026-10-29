@@ -3,7 +3,7 @@
 @section('title', 'Hors ligne')
 
 @section('content')
-    <div class="mx-auto max-w-md px-4 py-16 text-center">
+    <div class="mx-auto max-w-md px-4 py-16 text-center" data-reveal="fade-up">
         <p class="text-4xl" aria-hidden="true">📡</p>
         <h1 class="mt-4 text-2xl font-black text-slate-900">Connexion perdue</h1>
         <p class="mt-2 text-sm text-slate-500">

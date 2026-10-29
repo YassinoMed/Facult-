@@ -5,11 +5,14 @@ namespace App\Services;
 use App\Models\AnomalieQualite;
 use App\Models\Etudiant;
 use App\Models\InscriptionAcademique;
+use App\Models\KpiDefinition;
 use App\Models\Note;
 use App\Modules\Enseignement\Models\Enseignement;
 use App\Modules\Evaluation\Models\DecisionDeliberation;
 use App\Modules\OnlineRequests\Models\OnlineRequest;
 use App\Modules\StudentDossiers\Models\GeneratedDocument;
+use App\Services\Kpi\CatalogueKpi;
+use App\Services\Kpi\VersionKpi;
 use Illuminate\Support\Facades\Cache;
 
 /**
@@ -41,8 +44,14 @@ class BIService
             ? DecisionDeliberation::max('updated_at').DecisionDeliberation::count() : '';
         $documents = class_exists(GeneratedDocument::class)
             ? GeneratedDocument::max('updated_at').GeneratedDocument::count() : '';
+        $demandes = class_exists(OnlineRequest::class)
+            ? OnlineRequest::max('updated_at').OnlineRequest::count() : '';
+        $anomalies = class_exists(AnomalieQualite::class)
+            ? AnomalieQualite::max('updated_at').AnomalieQualite::count() : '';
+        $enseignements = class_exists(Enseignement::class)
+            ? Enseignement::max('updated_at').Enseignement::count() : '';
 
-        return md5("{$inscriptions}|{$notes}|{$etudiants}|{$decisions}|{$documents}");
+        return md5(VersionKpi::courante()."|{$inscriptions}|{$notes}|{$etudiants}|{$decisions}|{$documents}|{$demandes}|{$anomalies}|{$enseignements}");
     }
 
     /** @return array<string, array{valeur: int|float|string|null, definition: string, source: string}> */
@@ -61,6 +70,17 @@ class BIService
         $distribution = ['<10' => 0, '10-12' => 0, '12-14' => 0, '14-16' => 0, '16+' => 0];
         foreach ($moyennes as $moyenne) {
             $distribution[$moyenne < 10 ? '<10' : ($moyenne < 12 ? '10-12' : ($moyenne < 14 ? '12-14' : ($moyenne < 16 ? '14-16' : '16+')))]++;
+        }
+
+        $mediane = null;
+        if ($moyennes->isNotEmpty()) {
+            $triees = $moyennes->sort()->values();
+            $effectif = $triees->count();
+            $milieu = intdiv($effectif, 2);
+            $mediane = $effectif % 2 === 1
+                ? (float) $triees->get($milieu)
+                : ((float) $triees->get($milieu - 1) + (float) $triees->get($milieu)) / 2;
+            $mediane = round($mediane, 2);
         }
 
         $credits = [
@@ -85,7 +105,7 @@ class BIService
                 'source' => 'inscriptions_academiques',
             ],
             'moyenne_mediane' => [
-                'valeur' => $moyennes->isNotEmpty() ? round($moyennes->sort()->values()->get((int) floor(($moyennes->count() - 1) / 2)), 2) : null,
+                'valeur' => $mediane,
                 'definition' => 'Médiane des moyennes annuelles (n='.$moyennes->count().', insuffisant si n<5).',
                 'source' => 'inscriptions_academiques.moyenne_annuelle',
             ],
@@ -217,6 +237,152 @@ class BIService
             ->count();
 
         return "{$total} valides / {$revoques} révoqués";
+    }
+
+    /**
+     * LOT 03 — Registre persistant des définitions KPI (table
+     * `kpi_definitions`, migration additive 2026_10_24_110000) : reflète
+     * les catalogues de code (BI centrale ci-dessus + catalogue du
+     * cockpit `App\Services\Kpi\CatalogueKpi`), versionne la dérive
+     * documentaire (bump de version dès que définition ou source change)
+     * et fige le dernier snapshot de valeur du périmètre BI. Descriptive
+     * uniquement — jamais d'écriture métier.
+     *
+     * Fail-soft : table absente (migration non appliquée) = registre
+     * ignoré, renvoyé `actif: false` — la couche KPI de code reste la
+     * source de vérité fonctionnelle et rien ne casse au rendu.
+     *
+     * @return array{actif: bool, raison?: string, creees: int, mises_a_jour: int, figurees: int, cockpit: int, bi_service: int}
+     */
+    public function synchroniserDefinitions(
+        ?int $anneeId = null,
+        ?int $faculteId = null,
+        ?int $programmeId = null,
+        int $ttl = 600,
+    ): array {
+        if (! KpiDefinition::tableDisponible(true)) {
+            return [
+                'actif' => false,
+                'raison' => 'Table kpi_definitions absente (migration 2026_10_24_110000 non appliquée) : registre ignoré, couche KPI de code active.',
+            ];
+        }
+
+        $creees = 0;
+        $misesAJour = 0;
+        $figurees = 0;
+        $compteurCockpit = 0;
+        $compteurBi = 0;
+
+        $contexte = array_filter([
+            'annee_id' => $anneeId,
+            'faculte_id' => $faculteId,
+            'programme_id' => $programmeId,
+        ], fn ($v) => $v !== null);
+
+        // 1) BI centrale — les indicateurs() sont déjà calculés et cache
+        // versionné : le registre reflète le texte documentaire en place.
+        foreach ($this->indicateurs($anneeId, $faculteId, $programmeId, $ttl) as $cle => $donnees) {
+            $definition = (string) $donnees['definition'];
+            $source = (string) $donnees['source'];
+            $hash = md5("{$definition}|{$source}");
+
+            $def = KpiDefinition::where('cle', $cle)->where('provenance', 'bi_service')->first();
+
+            if ($def === null) {
+                KpiDefinition::create([
+                    'cle' => $cle,
+                    'provenance' => 'bi_service',
+                    'definition' => $definition,
+                    'source' => $source,
+                    'definition_hash' => $hash,
+                    'version' => 1,
+                    'actif' => true,
+                    'dernier_snapshot' => ['valeur' => $donnees['valeur']] + $contexte,
+                    'dernier_snapshot_a' => now(),
+                ]);
+                $creees++;
+            } elseif ($def->definition_hash !== $hash || $def->definition !== $definition || $def->source !== $source) {
+                $def->fill([
+                    'definition' => $definition,
+                    'source' => $source,
+                    'definition_hash' => $hash,
+                    'version' => $def->version + 1,
+                    'actif' => true,
+                ])->save();
+                $misesAJour++;
+            }
+
+            if ($def !== null) {
+                $def->fill([
+                    'dernier_snapshot' => ['valeur' => $donnees['valeur']] + $contexte,
+                    'dernier_snapshot_a' => now(),
+                ])->save();
+            }
+
+            $figurees++;
+            $compteurBi++;
+        }
+
+        // 2) Catalogue du cockpit (définitions uniquement) : la valeur
+        // vit et se calcule côté CockpitKpiService — aucune duplication
+        // de calcul ici, seule la documentation est versionnée.
+        if (class_exists(CatalogueKpi::class)) {
+            foreach (CatalogueKpi::tous() as $code => $definition) {
+                $hash = md5("{$definition->definition}|{$definition->sourceVerite}");
+
+                $defRegistre = KpiDefinition::where('cle', (string) $code)
+                    ->where('provenance', 'catalogue_cockpit')
+                    ->first();
+
+                if ($defRegistre === null) {
+                    KpiDefinition::create([
+                        'cle' => (string) $code,
+                        'provenance' => 'catalogue_cockpit',
+                        'nom' => $definition->nom,
+                        'definition' => $definition->definition,
+                        'source' => $definition->sourceVerite,
+                        'unite' => $definition->unite,
+                        'categorie' => $definition->categorie,
+                        'definition_hash' => $hash,
+                        'version' => 1,
+                        'actif' => true,
+                        'dernier_snapshot' => null,
+                        'dernier_snapshot_a' => null,
+                    ]);
+                    $creees++;
+                } elseif ($defRegistre->definition_hash !== $hash) {
+                    $defRegistre->fill([
+                        'nom' => $definition->nom,
+                        'definition' => $definition->definition,
+                        'source' => $definition->sourceVerite,
+                        'unite' => $definition->unite,
+                        'categorie' => $definition->categorie,
+                        'definition_hash' => $hash,
+                        'version' => $defRegistre->version + 1,
+                        'actif' => true,
+                    ])->save();
+                    $misesAJour++;
+                } else {
+                    $defRegistre->fill([
+                        'nom' => $definition->nom,
+                        'unite' => $definition->unite,
+                        'categorie' => $definition->categorie,
+                        'actif' => true,
+                    ])->save();
+                }
+
+                $compteurCockpit++;
+            }
+        }
+
+        return [
+            'actif' => true,
+            'creees' => $creees,
+            'mises_a_jour' => $misesAJour,
+            'figurees' => $figurees,
+            'cockpit' => $compteurCockpit,
+            'bi_service' => $compteurBi,
+        ];
     }
 
     /**

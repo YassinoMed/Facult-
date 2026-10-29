@@ -75,6 +75,7 @@ class AttestationController extends Controller
             'inscription_id' => ['required', 'integer', 'exists:inscriptions_academiques,id'],
             'type' => ['required', 'string', 'in:'.implode(',', array_keys(OfficialDocumentService::catalogue()))],
             'semestre' => ['nullable', 'integer', 'in:1,2'],
+            'langue' => ['nullable', 'string', 'in:ar,fr'],
         ]);
 
         $etudiant = Etudiant::findOrFail($donnees['etudiant_id']);
@@ -82,11 +83,13 @@ class AttestationController extends Controller
 
         $definition = OfficialDocumentService::catalogue()[$donnees['type']];
         $semestre = ($definition['semestre_requis'] ?? false) ? ($donnees['semestre'] ?? null) : null;
+        $langue = $donnees['langue'] ?? (in_array($donnees['type'], ['attestation_inscription', 'attestation_reussite', 'certificat_reussite'], true) ? 'ar' : 'fr');
 
         try {
             $document = $this->officiels->generer(
                 $etudiant, $donnees['type'], (int) $donnees['inscription_id'],
-                (int) $request->user()->id, $semestre
+                (int) $request->user()->id, $semestre,
+                ['langue' => $langue]
             );
         } catch (\DomainException $e) {
             return back()->withErrors(['document' => $e->getMessage()])->withInput();
