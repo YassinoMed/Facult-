@@ -95,7 +95,12 @@ class InscriptionRequest extends FormRequest
             'annee_bac' => ['required', 'string', 'regex:/^\d{4}$/'],
             'mention_bac' => 'nullable|in:Passable,Assez Bien,Bien,Très Bien,Excellent',
             'type_inscription' => 'nullable|string|in:premiere,reinscription,transfert',
-            'derogation_administrative' => 'nullable|string|max:100',
+            // SÉCURITÉ (LOOP-146) : la dérogation administrative est une décision
+            // d'autorité. Elle ne peut pas être auto-déclarée par le candidat sur la
+            // route publique : l'accepter permettait de contourner la capacité
+            // d'accueil et l'admission préalable requise aux niveaux avancés.
+            'derogation_administrative' => 'prohibited',
+            'recu_paiement' => ['nullable', 'file', 'mimes:pdf,jpg,jpeg,png,webp', 'max:10240'],
             'confirmation' => ['sometimes', 'accepted'],
             'idempotency_token' => 'nullable|string|max:64',
             'password' => ['required', 'string', 'max:64', 'confirmed', Password::defaults()],
@@ -151,6 +156,9 @@ class InscriptionRequest extends FormRequest
             'password.letters' => 'Le mot de passe doit contenir au moins une lettre.',
             'password.numbers' => 'Le mot de passe doit contenir au moins un chiffre.',
             'password.uncompromised' => 'Ce mot de passe a été compromis dans une fuite de données connue. Veuillez en choisir un autre.',
+            'recu_paiement.file' => 'Le reçu de paiement doit être un fichier valide.',
+            'recu_paiement.mimes' => 'Le reçu de paiement doit être au format PNG, PDF, JPG, JPEG ou WEBP.',
+            'recu_paiement.max' => 'Le reçu de paiement ne doit pas dépasser 10 Mo.',
         ];
     }
 }

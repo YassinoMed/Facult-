@@ -40,11 +40,38 @@ use DateTimeImmutable;
  */
 final class ServiceSimulationTemporelle
 {
-    public const VERSION_MOTEUR = '1.0';
+    /**
+     * ST-14 / SIM-01 : 1.1 expose la trajectoire d'admissions par période
+     * dans les mesures de chaque variante (auparavant uniquement dans les
+     * snapshots de la variante 0). Aucune formule modifiée.
+     * ST-14 / SIM-03 : 1.2 supporte l'interruption temporaire (extension_temporelle,
+     * gel des admissions paramétré par duree_gel_annees).
+     * ST-14 / SIM-04 : 1.3 supporte le choc ponctuel d'admissions
+     * (extension_temporelle, pas_exceptionnel + admissions_exceptionnelles).
+     * ST-14 / SIM-05 : 1.4 supporte la comparaison à une trajectoire de
+     * croissance cible (analyse_nouvelle, taux_cible_croissance saisi).
+     * ST-14 / SIM-06 : 1.5 supporte la récupération démographique
+     * (extension_temporelle, creux progressif puis retour à la référence).
+     * ST-14 / SIM-07 : 1.6 supporte la comparaison de deux jeux de taux
+     * (analyse_nouvelle, taux_ameliore déclaré, sortants restitués).
+     * ST-14 / SIM-08 : 1.7 supporte la dégradation de la réussite
+     * (miroir : taux_degrade déclaré, baisse_passage restituée).
+     * ST-14 / SIM-09→SIM-12 : 1.8 supporte le descripteur d'axe générique
+     * (taux_modifie + axe_variation + sens_variation ; alias préservés).
+     */
+    public const VERSION_MOTEUR = '1.8';
+
+    /** Bornes du taux de croissance CIBLE (référence : bornes du delta). */
+    public const BORNE_TAUX_CIBLE_MIN = 0.0;
 
     public const PLAFOND_VARIANTES = 20;
 
     public const PLAFOND_HORIZON = 6;
+
+    /** Bornes du delta annuel d'admissions (référence unique : catalogue ST-14). */
+    public const BORNE_DELTA_MIN = -0.5;
+
+    public const BORNE_DELTA_MAX = 2.0;
 
     public function __construct(
         private readonly AdaptateurEffectifsCohortes $adaptateur,
@@ -195,14 +222,214 @@ final class ServiceSimulationTemporelle
         );
 
         $anneeBase = (int) substr((string) $etatInitial['annee_source'], 0, 4);
+        $dureeGel = isset($criteres['duree_gel_annees']) ? (int) $criteres['duree_gel_annees'] : null;
+        // ST-14 / SIM-04 — choc ponctuel : deux paramètres indissociables.
+        $chocAdmissions = (isset($criteres['pas_exceptionnel'], $criteres['admissions_exceptionnelles']))
+            ? [
+                'pas' => (int) $criteres['pas_exceptionnel'],
+                'admissions' => (int) $criteres['admissions_exceptionnelles'],
+            ]
+            : null;
+        // ST-14 / SIM-05 — cible de croissance : trajectoire saisie, comparée
+        // par pas aux admissions réellement produites. Absente = aucune clé
+        // de cible ajoutée (rétrocompatibilité stricte).
+        $tauxCibleCroissance = array_key_exists('taux_cible_croissance', $criteres)
+            ? (float) $criteres['taux_cible_croissance']
+            : null;
+        $baseL1 = (float) (reset($etatInitial['cohortes']) ?: 0);
+
+        // ST-14 / SIM-06 — récupération : trio indissociable. Garde
+        // d'exécution minimale (bornes de forme) en plus de la validation
+        // de définition : une ligne insérée hors service ne doit jamais
+        // provoquer de division par zéro ni un creux non interprétable.
+        $clesRecuperation = ['profondeur_baisse', 'duree_baisse_annees', 'duree_recuperation_annees'];
+        $presentesRecuperation = array_values(array_filter(
+            $clesRecuperation,
+            static fn (string $cle): bool => array_key_exists($cle, $criteres)
+        ));
+        if ($presentesRecuperation !== [] && count($presentesRecuperation) !== count($clesRecuperation)) {
+            throw new \DomainException('SIM-06 (récupération) : profondeur_baisse, duree_baisse_annees et duree_recuperation_annees sont indissociables.');
+        }
+        $recuperation = null;
+        if ($presentesRecuperation !== []) {
+            $dureeBaisse = (int) $criteres['duree_baisse_annees'];
+            $dureeRecuperation = (int) $criteres['duree_recuperation_annees'];
+            $profondeurBaisse = (float) $criteres['profondeur_baisse'];
+            $horizonAnnees = (int) $criteres['horizon_annees'];
+            if ($dureeBaisse < 1 || $dureeRecuperation < 1 || $profondeurBaisse <= 0.0 || $profondeurBaisse > 1.0) {
+                throw new \DomainException('SIM-06 (récupération) : paramètres du creux invalides (profondeur ∈ ]0 ; 1], durées ≥ 1).');
+            }
+            if ($dureeBaisse + $dureeRecuperation > $horizonAnnees) {
+                throw new \DomainException("SIM-06 (récupération) : la baisse ({$dureeBaisse}) + la récupération ({$dureeRecuperation}) dépassent l'horizon ({$horizonAnnees}) — le retour à la référence doit être observable dans l'horizon.");
+            }
+            $recuperation = [
+                'duree_baisse' => $dureeBaisse,
+                'duree_recuperation' => $dureeRecuperation,
+                'profondeur' => $profondeurBaisse,
+            ];
+        }
+
+        // ST-14 / SIM-07 — amélioration de la réussite : deux jeux de taux
+        // COMPLETS déclarés (référence + amélioré). Garde de forme : aucune
+        // compensation inventée, aucune combinaison avec les autres profils.
+        $tauxAmeliore = null;
+        if (array_key_exists('taux_ameliore', $criteres)) {
+            $ameliore = $criteres['taux_ameliore'];
+            if (! is_array($ameliore)
+                || ! array_key_exists('passage', $ameliore)
+                || ! array_key_exists('redoublement', $ameliore)
+                || ! array_key_exists('abandon', $ameliore)) {
+                throw new \DomainException('SIM-07 (réussite) : taux_ameliore doit fournir passage, redoublement et abandon.');
+            }
+            $tauxReference = $criteres['taux'] ?? null;
+            if (! is_array($tauxReference)
+                || ! array_key_exists('passage', $tauxReference)
+                || ! array_key_exists('redoublement', $tauxReference)
+                || ! array_key_exists('abandon', $tauxReference)) {
+                throw new \DomainException('SIM-07 (réussite) : taux de référence requis pour comparer la réussite.');
+            }
+            if ($dureeGel !== null || $chocAdmissions !== null || $tauxCibleCroissance !== null || $recuperation !== null
+                || array_key_exists('taux_degrade', $criteres) || self::aVariationGenerique($criteres)) {
+                throw new \DomainException('SIM-07 (réussite) : incompatible avec gel, choc, cible, creux ou une autre variation — un seul profil à la fois.');
+            }
+            $tauxAmeliore = [
+                'passage' => (float) $ameliore['passage'],
+                'redoublement' => (float) $ameliore['redoublement'],
+                'abandon' => (float) $ameliore['abandon'],
+            ];
+        }
+
+        // ST-14 / SIM-08 — dégradation de la réussite : miroir de SIM-07
+        // (jeu dégradé complet déclaré, passage strictement inférieur).
+        // L'exclusion mutuelle avec taux_ameliore est garantie par la garde
+        // SIM-07 ci-dessus, exécutée en premier.
+        $tauxDegrade = null;
+        if (array_key_exists('taux_degrade', $criteres)) {
+            $degrade = $criteres['taux_degrade'];
+            if (! is_array($degrade)
+                || ! array_key_exists('passage', $degrade)
+                || ! array_key_exists('redoublement', $degrade)
+                || ! array_key_exists('abandon', $degrade)) {
+                throw new \DomainException('SIM-08 (réussite) : taux_degrade doit fournir passage, redoublement et abandon.');
+            }
+            $tauxReference = $criteres['taux'] ?? null;
+            if (! is_array($tauxReference)
+                || ! array_key_exists('passage', $tauxReference)
+                || ! array_key_exists('redoublement', $tauxReference)
+                || ! array_key_exists('abandon', $tauxReference)) {
+                throw new \DomainException('SIM-08 (réussite) : taux de référence requis pour comparer la réussite.');
+            }
+            if ($dureeGel !== null || $chocAdmissions !== null || $tauxCibleCroissance !== null || $recuperation !== null
+                || self::aVariationGenerique($criteres)) {
+                throw new \DomainException('SIM-08 (réussite) : incompatible avec gel, choc, cible, creux ou une autre variation — un seul profil à la fois.');
+            }
+            $tauxDegrade = [
+                'passage' => (float) $degrade['passage'],
+                'redoublement' => (float) $degrade['redoublement'],
+                'abandon' => (float) $degrade['abandon'],
+            ];
+        }
+
+        // ST-14 / SIM-09→SIM-12 — descripteur d'axe générique : taux_modifie
+        // + axe_variation + sens_variation indissociables. L'exclusion
+        // mutuelle avec les alias est garantie par les gardes précédentes,
+        // exécutées en premier (SIM-07 → SIM-08 → générique).
+        $reussiteGenerique = null;
+        if (self::aVariationGenerique($criteres)) {
+            if (! array_key_exists('taux_modifie', $criteres)
+                || ! array_key_exists('axe_variation', $criteres)
+                || ! array_key_exists('sens_variation', $criteres)) {
+                throw new \DomainException('SIM-09→SIM-12 (réussite) : taux_modifie, axe_variation et sens_variation sont indissociables.');
+            }
+            $modifie = $criteres['taux_modifie'];
+            if (! is_array($modifie)
+                || ! array_key_exists('passage', $modifie)
+                || ! array_key_exists('redoublement', $modifie)
+                || ! array_key_exists('abandon', $modifie)) {
+                throw new \DomainException('SIM-09→SIM-12 (réussite) : taux_modifie doit fournir passage, redoublement et abandon.');
+            }
+            $axe = (string) $criteres['axe_variation'];
+            $sens = (string) $criteres['sens_variation'];
+            if (! in_array($axe, ['passage', 'redoublement', 'abandon'], true)) {
+                throw new \DomainException('SIM-09→SIM-12 (réussite) : axe_variation doit être passage, redoublement ou abandon.');
+            }
+            if (! in_array($sens, ['hausse', 'baisse'], true)) {
+                throw new \DomainException('SIM-09→SIM-12 (réussite) : sens_variation doit être hausse ou baisse.');
+            }
+            $tauxReference = $criteres['taux'] ?? null;
+            if (! is_array($tauxReference)
+                || ! array_key_exists('passage', $tauxReference)
+                || ! array_key_exists('redoublement', $tauxReference)
+                || ! array_key_exists('abandon', $tauxReference)) {
+                throw new \DomainException('SIM-09→SIM-12 (réussite) : taux de référence requis pour comparer la réussite.');
+            }
+            if ($dureeGel !== null || $chocAdmissions !== null || $tauxCibleCroissance !== null || $recuperation !== null) {
+                throw new \DomainException('SIM-09→SIM-12 (réussite) : incompatible avec gel, choc, cible ou creux — un seul profil à la fois.');
+            }
+            $reussiteGenerique = [
+                'taux' => [
+                    'passage' => (float) $modifie['passage'],
+                    'redoublement' => (float) $modifie['redoublement'],
+                    'abandon' => (float) $modifie['abandon'],
+                ],
+                'axe' => $axe,
+                'sens' => $sens,
+            ];
+        }
+
+        // Descripteur commun de la comparaison de réussite (trois formes) :
+        // jeu simulé, clé de variation (sens_axe) et magnitude POSITIVE.
+        $reussiteTaux = null;
+        $reussiteCle = null;
+        $reussiteVariation = null;
+        if ($tauxAmeliore !== null) {
+            $reussiteTaux = $tauxAmeliore;
+            $reussiteCle = 'hausse_passage';
+            $reussiteVariation = $tauxAmeliore['passage'] - (float) $criteres['taux']['passage'];
+        } elseif ($tauxDegrade !== null) {
+            $reussiteTaux = $tauxDegrade;
+            $reussiteCle = 'baisse_passage';
+            $reussiteVariation = (float) $criteres['taux']['passage'] - $tauxDegrade['passage'];
+        } elseif ($reussiteGenerique !== null) {
+            $reussiteTaux = $reussiteGenerique['taux'];
+            $reussiteCle = $reussiteGenerique['sens'].'_'.$reussiteGenerique['axe'];
+            $reussiteVariation = $reussiteGenerique['sens'] === 'hausse'
+                ? $reussiteTaux[$reussiteGenerique['axe']] - (float) $criteres['taux'][$reussiteGenerique['axe']]
+                : (float) $criteres['taux'][$reussiteGenerique['axe']] - $reussiteTaux[$reussiteGenerique['axe']];
+        }
+
         $variantesEvaluees = [];
         $snapshotsParVariante = [];
 
         foreach ($deltas as $index => $delta) {
-            [$mesures, $snapshots] = $this->simulerVariante(
+            $tauxScenario = $reussiteTaux ?? ($criteres['taux'] ?? null);
+            [$mesures, $snapshots, $sortantsSimules] = $this->simulerVariante(
                 $etatInitial['cohortes'], $delta, (int) $criteres['horizon_annees'],
-                $criteres['taux'] ?? null, $anneeBase,
+                $tauxScenario, $anneeBase, $dureeGel, $chocAdmissions, $recuperation
             );
+            if ($tauxCibleCroissance !== null) {
+                $mesures += $this->analyserCibleCroissance(
+                    $mesures['admissions_par_periode'],
+                    $baseL1,
+                    $tauxCibleCroissance
+                );
+            }
+            if ($reussiteTaux !== null) {
+                // Trajectoire témoin : mêmes admissions, mêmes variantes,
+                // seuls les taux de flux diffèrent (taux de référence).
+                [$mesuresReferenceReussite, , $sortantsReference] = $this->simulerVariante(
+                    $etatInitial['cohortes'], $delta, (int) $criteres['horizon_annees'],
+                    $criteres['taux'], $anneeBase
+                );
+                $mesures += $this->analyserReussite(
+                    $mesures['totaux'],
+                    $mesuresReferenceReussite['totaux'],
+                    $sortantsSimules,
+                    $sortantsReference,
+                    $reussiteCle,
+                    $reussiteVariation
+                );
+            }
             $snapshotsParVariante[$index] = $snapshots;
             $evaluation = $this->evaluateur->evaluer($mesures, $scenario->contraintes, $scenario->objectifs);
             $variantesEvaluees[] = ['index' => $index, 'delta' => $delta, 'mesures' => $mesures, 'evaluation' => $evaluation];
@@ -254,12 +481,18 @@ final class ServiceSimulationTemporelle
         );
 
         // 6. Analyse de sensibilité OAT (Lot 7)
-        $simulateurFn = function ($cohortes, $delta, $horizon, $taux) use ($anneeBase) {
-            [$m, $s] = $this->simulerVariante($cohortes, $delta, $horizon, $taux, $anneeBase);
+        // Les analyses portent sur la trajectoire PRINCIPALE : jeu simulé
+        // si le scénario en déclare un (aucune substitution).
+        $criteresAnalyses = $criteres;
+        if ($reussiteTaux !== null) {
+            $criteresAnalyses['taux'] = $reussiteTaux;
+        }
+        $simulateurFn = function ($cohortes, $delta, $horizon, $taux) use ($anneeBase, $dureeGel, $chocAdmissions, $recuperation) {
+            [$m, $s] = $this->simulerVariante($cohortes, $delta, $horizon, $taux, $anneeBase, $dureeGel, $chocAdmissions, $recuperation);
 
             return $m['total_final'];
         };
-        $sensibilite = $this->analyseurSensibilite->analyser($etatInitial['cohortes'], $criteres, $simulateurFn);
+        $sensibilite = $this->analyseurSensibilite->analyser($etatInitial['cohortes'], $criteresAnalyses, $simulateurFn);
 
         // 7. Optimisation multiobjectif & Frontière de Pareto (Lot 9)
         $variantesPourPareto = array_map(fn ($v) => [
@@ -281,7 +514,7 @@ final class ServiceSimulationTemporelle
         }
         $monteCarlo = $this->simulateurMonteCarlo->simuler(
             $etatInitial['cohortes'],
-            $criteres,
+            $criteresAnalyses,
             50, // 50 itérations rapides et déterministes
             $graine,
             $simulateurFn,
@@ -315,17 +548,19 @@ final class ServiceSimulationTemporelle
             'avertissements' => isset($criteres['taux']) ? [] : [
                 'Aucun taux de progression saisi : les cohortes restent gelées après admission (donnée absente, jamais remplacée par zéro).',
             ],
-            'classement' => array_map(fn ($v) => [
+            'classement' => array_map(fn ($v) => array_merge([
                 'index' => $v['index'], 'delta' => $v['delta'],
                 'score' => $v['evaluation']['score'], 'contributions' => $v['evaluation']['contributions'],
                 'total_final' => $v['mesures']['total_final'],
                 'totaux' => $v['mesures']['totaux'],
-            ], $classement['classement']),
-            'non_conformes' => array_map(fn ($v) => [
+                'admissions_par_periode' => $v['mesures']['admissions_par_periode'],
+            ], $this->champsSpecifiques($v['mesures'])), $classement['classement']),
+            'non_conformes' => array_map(fn ($v) => array_merge([
                 'index' => $v['index'], 'delta' => $v['delta'], 'violations' => $v['evaluation']['violations'],
                 'total_final' => $v['mesures']['total_final'],
                 'totaux' => $v['mesures']['totaux'],
-            ], $classement['non_conformes']),
+                'admissions_par_periode' => $v['mesures']['admissions_par_periode'],
+            ], $this->champsSpecifiques($v['mesures'])), $classement['non_conformes']),
             'rappel' => 'Appui à la décision : AUCUNE décision réelle — toute application passe par un workflow distinct et autorisé.',
         ];
 
@@ -362,19 +597,53 @@ final class ServiceSimulationTemporelle
      * Simulation d'une variante : moteur d'événements (rentree puis
      * progression par année simulée) — temps construit, jamais now().
      *
-     * @return array{0: array<string, mixed>, 1: array<int, array>}
+     * @return array{0: array<string, mixed>, 1: array<int, array>, 2: array<int, int>}
+     *                                                                                  [mesures, snapshots, sortants par pas] — les sortants sont les
+     *                                                                                  partants du dernier niveau du périmètre (restitution SIM-07).
      */
-    private function simulerVariante(array $cohortesDepart, float $delta, int $horizon, ?array $taux, int $anneeBase): array
+    private function simulerVariante(array $cohortesDepart, float $delta, int $horizon, ?array $taux, int $anneeBase, ?int $dureeGel = null, ?array $chocAdmissions = null, ?array $recuperation = null): array
     {
         $moteur = new MoteurEvenements;
         $cohortes = $cohortesDepart;
         $baseL1 = (float) (reset($cohortesDepart) ?: 0);
         $ordres = array_keys($cohortesDepart); // niveaux triés par l'adaptateur
         $snapshots = [0 => ['cohortes' => $cohortes, 'total' => array_sum($cohortes)]];
+        $sortants = [];
 
-        $handler = function ($evenement) use (&$moteur, &$cohortes, &$snapshots, &$delta, &$taux, &$horizon, &$baseL1, &$ordres, $anneeBase): void {
+        $handler = function ($evenement) use (&$moteur, &$cohortes, &$snapshots, &$delta, &$taux, &$horizon, &$baseL1, &$ordres, &$sortants, $anneeBase, $dureeGel, $chocAdmissions, $recuperation): void {
             $pas = count($snapshots); // 1-based pour ce pas
-            $admissions = (int) round($baseL1 * pow(1 + $delta, $pas));
+            $reference = null;
+            $facteur = null;
+            $phase = null;
+
+            // ST-14 / SIM-06 — récupération : creux multiplicatif sur la
+            // trajectoire de référence, rampes linéaires, retour exact au
+            // pas duree_baisse + duree_recuperation. Exclusif par validation.
+            if ($recuperation !== null) {
+                $reference = (int) round($baseL1 * pow(1 + $delta, $pas));
+                [$facteur, $phase] = self::facteurRecuperation(
+                    $pas,
+                    $recuperation['duree_baisse'],
+                    $recuperation['duree_recuperation'],
+                    $recuperation['profondeur']
+                );
+                $admissions = (int) round($reference * $facteur);
+            } elseif ($dureeGel !== null && $pas <= $dureeGel) {
+                // ST-14 / SIM-03 : gel des admissions.
+                $admissions = 0;
+            } elseif ($dureeGel !== null) {
+                $pasApresGel = $pas - $dureeGel;
+                $admissions = (int) round($baseL1 * pow(1 + $delta, $pasApresGel));
+            } else {
+                $admissions = (int) round($baseL1 * pow(1 + $delta, $pas));
+            }
+
+            // ST-14 / SIM-04 — choc PONCTUEL : uniquement au pas déclaré.
+            // La trajectoire de fond (delta) n'est ni modifiée ni composée :
+            // les périodes suivantes retrouvent les admissions de référence.
+            if ($chocAdmissions !== null && $pas === (int) $chocAdmissions['pas']) {
+                $admissions += (int) $chocAdmissions['admissions'];
+            }
 
             // Progression par niveaux, du dernier vers le premier — chaque
             // taux SAISI s'applique explicitement (somme ≤ 1 validée) ;
@@ -385,6 +654,22 @@ final class ServiceSimulationTemporelle
                 $effectif = $cohortes[$code];
                 $partent = (int) round($effectif * ($taux['passage'] ?? 0));
                 $redoublants = (int) round($effectif * ($taux['redoublement'] ?? 0));
+
+                // ST-11 P1-1 — conservation : aux frontières d'arrondi
+                // (petits effectifs, taux ≈ 0.5+0.5), la somme des flux
+                // arrondis peut dépasser l'effectif du niveau. Le
+                // redoublement est plafonné pour que partent + redoublants
+                // ≤ effectif : aucune population n'est créée.
+                if ($partent + $redoublants > $effectif) {
+                    $redoublants = max(0, $effectif - $partent);
+                }
+
+                if ($i === count($ordres) - 1) {
+                    // ST-14 / SIM-07 — sortants du dernier niveau du périmètre
+                    // (auparavant calculés puis jetés).
+                    $sortants[$pas] = $partent;
+                }
+
                 if ($i + 1 < count($ordres)) {
                     $nouveaux[$ordres[$i + 1]] = ($nouveaux[$ordres[$i + 1]] ?? 0) + $partent;
                 }
@@ -397,6 +682,13 @@ final class ServiceSimulationTemporelle
 
             $total = array_sum($cohortes);
             $snapshots[$pas] = ['cohortes' => $cohortes, 'total' => $total, 'admissions' => $admissions];
+            if ($reference !== null) {
+                // Trajectoire de référence et facteur stockés TELLS QUELS :
+                // les restitutions sont construites sans recalcul parallèle.
+                $snapshots[$pas]['admissions_reference'] = $reference;
+                $snapshots[$pas]['facteur_recuperation'] = round((float) $facteur, 6);
+                $snapshots[$pas]['phase_recuperation'] = $phase;
+            }
 
             if ($pas < $horizon) {
                 $moteur->planifier(
@@ -416,10 +708,278 @@ final class ServiceSimulationTemporelle
             $variations[] = $totaux[$i - 1] > 0 ? round(($totaux[$i] - $totaux[$i - 1]) / $totaux[$i - 1], 4) : 0;
         }
 
-        return [
-            ['total_final' => end($totaux), 'totaux' => array_values($totaux), 'variations_annuelles' => $variations],
-            $snapshots,
+        // ST-14 / SIM-01 — trajectoire d'admissions explicitement datée,
+        // reprise TELLE QUELLE des snapshots du moteur (aucun recalcul).
+        $admissionsParPeriode = [];
+        foreach (array_slice($snapshots, 1, null, true) as $pas => $snapshot) {
+            $admissionsParPeriode[] = [
+                'pas' => (int) $pas,
+                'admissions' => (int) ($snapshot['admissions'] ?? 0),
+            ];
+        }
+
+        $mesures = [
+            'total_final' => end($totaux),
+            'totaux' => array_values($totaux),
+            'variations_annuelles' => $variations,
+            'admissions_par_periode' => $admissionsParPeriode,
         ];
+        if ($recuperation !== null) {
+            $mesures += $this->analyserRecuperation($snapshots);
+        }
+
+        return [$mesures, $snapshots, $sortants];
+    }
+
+    /**
+     * ST-14 / SIM-06 — facteur de creux et phase pour un pas donné.
+     * Rampe linéaire : 1 → (1 − profondeur) sur [1 ; d], puis
+     * (1 − profondeur) → 1 sur ]d ; d + r], puis 1. Le retour est exact
+     * au pas d + r par construction.
+     *
+     * @return array{0: float, 1: string} [facteur, phase]
+     */
+    private static function facteurRecuperation(int $pas, int $dureeBaisse, int $dureeRecuperation, float $profondeur): array
+    {
+        if ($pas <= $dureeBaisse) {
+            return [1.0 - $profondeur * ($pas / $dureeBaisse), 'baisse'];
+        }
+
+        if ($pas <= $dureeBaisse + $dureeRecuperation) {
+            return [(1.0 - $profondeur) + $profondeur * (($pas - $dureeBaisse) / $dureeRecuperation), 'recuperation'];
+        }
+
+        return [1.0, 'reference'];
+    }
+
+    /**
+     * ST-14 / SIM-06 — restitutions du creux, construites depuis les
+     * snapshots (référence et admissions déjà produites), sans recalcul
+     * de la trajectoire. Le cumul et le creux sont exprimés en étudiants
+     * (écarts entiers arrondis).
+     *
+     * @param  array<int, array<string, mixed>>  $snapshots
+     * @return array<string, mixed>
+     */
+    private function analyserRecuperation(array $snapshots): array
+    {
+        $referenceParPeriode = [];
+        $ecartsParPeriode = [];
+        $ecartCumule = 0;
+        $creux = 0;
+
+        foreach (array_slice($snapshots, 1, null, true) as $pas => $snapshot) {
+            $admissions = (int) ($snapshot['admissions'] ?? 0);
+            $reference = (int) ($snapshot['admissions_reference'] ?? 0);
+            $ecart = $admissions - $reference;
+            $ecartCumule += $ecart;
+            $creux = min($creux, $ecart);
+
+            $referenceParPeriode[] = ['pas' => (int) $pas, 'admissions_reference' => $reference];
+            $ecartsParPeriode[] = [
+                'pas' => (int) $pas,
+                'admissions' => $admissions,
+                'admissions_reference' => $reference,
+                'ecart' => $ecart,
+                'phase' => $snapshot['phase_recuperation'] ?? 'reference',
+                'facteur' => (float) ($snapshot['facteur_recuperation'] ?? 1.0),
+            ];
+        }
+
+        return [
+            'admissions_reference_par_periode' => $referenceParPeriode,
+            'ecarts_recuperation_par_periode' => $ecartsParPeriode,
+            'ecart_recuperation_cumule' => $ecartCumule,
+            'creux_recuperation' => $creux,
+        ];
+    }
+
+    /**
+     * ST-14 / SIM-07 / SIM-08 — comparaison de la trajectoire simulée
+     * (taux améliorés ou dégradés) à la trajectoire de référence (taux
+     * déclarés) : admissions identiques, seule la progression diffère. Les
+     * deux jeux de taux sont entièrement déclarés : aucune compensation
+     * n'est inventée. La direction de la variation est portée par
+     * $cleVariation ('hausse_passage' ou 'baisse_passage') avec une
+     * magnitude positive ; les cinq champs de comparaison sont neutres.
+     *
+     * @param  array<int, int>  $totauxSimules  totaux pas 0 → H (trajectoire principale)
+     * @param  array<int, int>  $totauxReference  totaux pas 0 → H (trajectoire témoin)
+     * @param  array<int, int>  $sortantsSimules  partants du dernier niveau par pas
+     * @param  array<int, int>  $sortantsReference  idem pour la trajectoire témoin
+     * @param  string  $cleVariation  'hausse_passage' (SIM-07) ou 'baisse_passage' (SIM-08)
+     * @return array<string, mixed>
+     */
+    private function analyserReussite(
+        array $totauxSimules,
+        array $totauxReference,
+        array $sortantsSimules,
+        array $sortantsReference,
+        string $cleVariation,
+        float $variationPassage
+    ): array {
+        $ecartsParPeriode = [];
+        for ($pas = 1; $pas < count($totauxSimules); $pas++) {
+            $totalSimule = (int) ($totauxSimules[$pas] ?? 0);
+            $totalReference = (int) ($totauxReference[$pas] ?? 0);
+            $ecartsParPeriode[] = [
+                'pas' => $pas,
+                'total_simule' => $totalSimule,
+                'total_reference' => $totalReference,
+                'ecart' => $totalSimule - $totalReference,
+            ];
+        }
+
+        $sortantsParPeriode = [];
+        $effetSortants = 0;
+        foreach ($sortantsSimules as $pas => $sortants) {
+            $sortantsRef = (int) ($sortantsReference[$pas] ?? 0);
+            $effetSortants += (int) $sortants - $sortantsRef;
+            $sortantsParPeriode[] = [
+                'pas' => (int) $pas,
+                'sortants' => (int) $sortants,
+                'sortants_reference' => $sortantsRef,
+            ];
+        }
+
+        return [
+            $cleVariation => round($variationPassage, 4),
+            'totaux_reference_reussite' => array_values($totauxReference),
+            'ecarts_reussite_par_periode' => $ecartsParPeriode,
+            'ecart_reussite_final' => ((int) end($totauxSimules)) - ((int) end($totauxReference)),
+            'sortants_par_periode' => $sortantsParPeriode,
+            'effet_sortants_cumules' => $effetSortants,
+        ];
+    }
+
+    /**
+     * ST-14 / SIM-05 — comparaison des admissions produites à une
+     * trajectoire de croissance cible SAISIE. La cible est composée avec la
+     * même formule que la trajectoire réelle, appliquée à $tauxCible.
+     * Aucune écriture, aucun effet sur les cohortes : les écarts portent
+     * sur les admissions entières réellement produites (arrondis assumés).
+     *
+     * @param  array<int, array{pas: int, admissions: int}>  $admissionsParPeriode
+     * @return array<string, mixed>
+     */
+    private function analyserCibleCroissance(array $admissionsParPeriode, float $baseL1, float $tauxCible): array
+    {
+        $cibleParPeriode = [];
+        $ecartsParPeriode = [];
+        $ecartCumule = 0;
+        $depassement = false;
+
+        foreach ($admissionsParPeriode as $ligne) {
+            $pas = (int) $ligne['pas'];
+            $admissions = (int) $ligne['admissions'];
+            $admissionsCible = (int) round($baseL1 * pow(1 + $tauxCible, $pas));
+            $ecart = $admissions - $admissionsCible;
+            $ecartCumule += $ecart;
+            $depassement = $depassement || $ecart > 0;
+
+            $cibleParPeriode[] = ['pas' => $pas, 'admissions_cible' => $admissionsCible];
+            $ecartsParPeriode[] = [
+                'pas' => $pas,
+                'admissions' => $admissions,
+                'admissions_cible' => $admissionsCible,
+                'ecart' => $ecart,
+                'depassement' => $ecart > 0,
+            ];
+        }
+
+        return [
+            'admissions_cible_par_periode' => $cibleParPeriode,
+            'ecarts_cible_par_periode' => $ecartsParPeriode,
+            'ecart_cible_cumule' => $ecartCumule,
+            'depassement_cible' => $depassement,
+        ];
+    }
+
+    /**
+     * Champs spécifiques à exposer dans le classement : présents
+     * UNIQUEMENT si la variante porte l'analyse correspondante — cible de
+     * croissance (SIM-05), récupération (SIM-06) ou réussite (SIM-07).
+     * Aucune clé null ajoutée.
+     *
+     * @param  array<string, mixed>  $mesures
+     * @return array<string, mixed>
+     */
+    private function champsSpecifiques(array $mesures): array
+    {
+        $champs = [];
+        foreach ([
+            'admissions_cible_par_periode', 'ecarts_cible_par_periode', 'ecart_cible_cumule', 'depassement_cible',
+            'admissions_reference_par_periode', 'ecarts_recuperation_par_periode', 'ecart_recuperation_cumule', 'creux_recuperation',
+            'hausse_passage', 'baisse_passage', 'hausse_redoublement', 'baisse_redoublement',
+            'hausse_abandon', 'baisse_abandon',
+            'totaux_reference_reussite', 'ecarts_reussite_par_periode',
+            'ecart_reussite_final', 'sortants_par_periode', 'effet_sortants_cumules',
+        ] as $cle) {
+            if (array_key_exists($cle, $mesures)) {
+                $champs[$cle] = $mesures[$cle];
+            }
+        }
+
+        return $champs;
+    }
+
+    /**
+     * Une forme générique de variation de réussite est déclarée dès que
+     * l'une des trois clés indissociables est présente ; la validation
+     * ultérieure exige les trois.
+     *
+     * @param  array<string, mixed>  $criteres
+     */
+    private static function aVariationGenerique(array $criteres): bool
+    {
+        foreach (['taux_modifie', 'axe_variation', 'sens_variation'] as $cle) {
+            if (array_key_exists($cle, $criteres)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Lecture d'un paramètre numérique SAISI (int, float ou chaîne
+     * numérique) — refuse tout le reste, y compris les valeurs non finies.
+     *
+     * @throws \DomainException
+     */
+    private static function nombreSaisi(mixed $valeur, string $nom): float
+    {
+        if (! is_int($valeur) && ! is_float($valeur) && ! (is_string($valeur) && is_numeric($valeur))) {
+            throw new \DomainException("Paramètre {$nom} : un nombre est attendu.");
+        }
+
+        $nombre = (float) $valeur;
+        if (! is_finite($nombre)) {
+            throw new \DomainException("Paramètre {$nom} : valeur non finie refusée.");
+        }
+
+        return $nombre;
+    }
+
+    /**
+     * Lecture d'un paramètre entier SAISI (int, float entier ou chaîne
+     * entière) — refuse les fractions et les types non numériques.
+     *
+     * @throws \DomainException
+     */
+    private static function entierSaisi(mixed $valeur, string $nom): int
+    {
+        if (is_int($valeur)) {
+            return $valeur;
+        }
+        if (is_float($valeur) && floor($valeur) === $valeur) {
+            return (int) $valeur;
+        }
+        if (is_string($valeur) && preg_match('/^-?\d+$/', $valeur) === 1) {
+            return (int) $valeur;
+        }
+
+        throw new \DomainException("Paramètre {$nom} : un entier est attendu.");
     }
 
     /** @throws \DomainException */
@@ -435,13 +995,286 @@ final class ServiceSimulationTemporelle
         $min = (float) $criteres['bornes']['min'];
         $max = (float) $criteres['bornes']['max'];
 
-        if ($min > $max || $delta < $min || $delta > $max || $min < -0.5 || $max > 2.0) {
-            throw new \DomainException('Delta/bornes d\'admissions invalides (bornes ∈ [-0.5, 2.0], delta dans les bornes).');
+        if ($min > $max || $delta < $min || $delta > $max || $min < self::BORNE_DELTA_MIN || $max > self::BORNE_DELTA_MAX) {
+            throw new \DomainException('Delta/bornes d\'admissions invalides (bornes ∈ ['.self::BORNE_DELTA_MIN.', '.self::BORNE_DELTA_MAX.'], delta dans les bornes).');
         }
 
         $horizon = (int) $criteres['horizon_annees'];
         if ($horizon < 1 || $horizon > self::PLAFOND_HORIZON) {
             throw new \DomainException('Horizon hors bornes [1, '.self::PLAFOND_HORIZON.'] ans.');
+        }
+
+        if (isset($criteres['duree_gel_annees'])) {
+            $dureeGel = (int) $criteres['duree_gel_annees'];
+            if ($dureeGel < 1 || $dureeGel > $horizon) {
+                throw new \DomainException("La durée de gel ({$dureeGel} an(s)) doit être comprise entre 1 et l'horizon ({$horizon} an(s)).");
+            }
+        }
+
+        // ST-14 / SIM-04 — choc ponctuel : les deux paramètres vont ensemble,
+        // le pas doit exister dans l'horizon et le choc doit être strictement
+        // positif (un choc nul relève de la trajectoire de fond).
+        $pasExceptionnel = isset($criteres['pas_exceptionnel']) ? (int) $criteres['pas_exceptionnel'] : null;
+        $admissionsExceptionnelles = isset($criteres['admissions_exceptionnelles']) ? (int) $criteres['admissions_exceptionnelles'] : null;
+
+        if (($pasExceptionnel === null) !== ($admissionsExceptionnelles === null)) {
+            throw new \DomainException('Choc exceptionnel incomplet : pas_exceptionnel et admissions_exceptionnelles sont indissociables.');
+        }
+
+        if ($pasExceptionnel !== null) {
+            if ($pasExceptionnel < 1 || $pasExceptionnel > $horizon) {
+                throw new \DomainException("Le pas exceptionnel ({$pasExceptionnel}) doit être compris entre 1 et l'horizon ({$horizon} an(s)).");
+            }
+            if ($admissionsExceptionnelles < 1) {
+                throw new \DomainException('Le choc exceptionnel doit être strictement positif (un choc nul relève de la trajectoire de fond).');
+            }
+        }
+
+        // ST-14 / SIM-05 — cible de croissance : type, bornes, supériorité
+        // stricte du delta et incompatibilité avec gel / choc. La cible est
+        // un paramètre SAISI : aucune valeur par défaut n'est introduite.
+        if (array_key_exists('taux_cible_croissance', $criteres)) {
+            $valeurCible = $criteres['taux_cible_croissance'];
+            if (! is_int($valeurCible) && ! is_float($valeurCible) && ! (is_string($valeurCible) && is_numeric($valeurCible))) {
+                throw new \DomainException('SIM-05 (cible de croissance) : taux_cible_croissance doit être un nombre.');
+            }
+            $tauxCible = (float) $valeurCible;
+            if (! is_finite($tauxCible)) {
+                throw new \DomainException('SIM-05 (cible de croissance) : taux_cible_croissance non fini refusé.');
+            }
+            if ($tauxCible < self::BORNE_TAUX_CIBLE_MIN || $tauxCible > self::BORNE_DELTA_MAX) {
+                throw new \DomainException('SIM-05 (cible de croissance) : taux_cible_croissance hors bornes ['.self::BORNE_TAUX_CIBLE_MIN.' ; '.self::BORNE_DELTA_MAX.'].');
+            }
+            if (isset($criteres['duree_gel_annees'])) {
+                throw new \DomainException('SIM-05 (cible de croissance) : incompatible avec duree_gel_annees — un gel relève de SIM-03.');
+            }
+            if ($pasExceptionnel !== null) {
+                throw new \DomainException('SIM-05 (cible de croissance) : incompatible avec un choc ponctuel — un choc relève de SIM-04.');
+            }
+            if ($delta < 0) {
+                throw new \DomainException('SIM-05 (croissance) : delta_admissions négatif refusé — utiliser SIM-02.');
+            }
+            if ($delta <= $tauxCible) {
+                throw new \DomainException("SIM-05 (croissance supérieure à la cible) : delta_admissions ({$delta}) doit être strictement supérieur au taux cible ({$tauxCible}).");
+            }
+        }
+
+        // ST-14 / SIM-06 — récupération démographique : trio indissociable,
+        // bornes de forme, observabilité du retour dans l'horizon et
+        // incompatibilités explicites (gel SIM-03, choc SIM-04, cible SIM-05).
+        $clesRecuperation = ['profondeur_baisse', 'duree_baisse_annees', 'duree_recuperation_annees'];
+        $presentesRecuperation = array_values(array_filter(
+            $clesRecuperation,
+            static fn (string $cle): bool => array_key_exists($cle, $criteres)
+        ));
+        if ($presentesRecuperation !== [] && count($presentesRecuperation) !== count($clesRecuperation)) {
+            throw new \DomainException('SIM-06 (récupération) : profondeur_baisse, duree_baisse_annees et duree_recuperation_annees sont indissociables.');
+        }
+
+        if ($presentesRecuperation !== []) {
+            $profondeurBaisse = self::nombreSaisi($criteres['profondeur_baisse'], 'profondeur_baisse');
+            if ($profondeurBaisse <= 0.0) {
+                throw new \DomainException('SIM-06 (récupération) : profondeur_baisse doit être strictement positive — un creux nul relève de la trajectoire de fond.');
+            }
+            if ($profondeurBaisse > 1.0) {
+                throw new \DomainException('SIM-06 (récupération) : profondeur_baisse doit être au plus égale à 1 (aucune admission négative possible).');
+            }
+
+            $dureeBaisse = self::entierSaisi($criteres['duree_baisse_annees'], 'duree_baisse_annees');
+            $dureeRecuperation = self::entierSaisi($criteres['duree_recuperation_annees'], 'duree_recuperation_annees');
+            if ($dureeBaisse < 1) {
+                throw new \DomainException('SIM-06 (récupération) : duree_baisse_annees doit être au moins égale à 1.');
+            }
+            if ($dureeRecuperation < 1) {
+                throw new \DomainException('SIM-06 (récupération) : duree_recuperation_annees doit être au moins égale à 1.');
+            }
+            if ($dureeBaisse + $dureeRecuperation > $horizon) {
+                throw new \DomainException("SIM-06 (récupération) : la baisse ({$dureeBaisse}) + la récupération ({$dureeRecuperation}) dépassent l'horizon ({$horizon}) — le retour à la référence doit être observable dans l'horizon.");
+            }
+
+            if (isset($criteres['duree_gel_annees'])) {
+                throw new \DomainException('SIM-06 (récupération) : incompatible avec duree_gel_annees — un gel relève de SIM-03.');
+            }
+            if ($pasExceptionnel !== null) {
+                throw new \DomainException('SIM-06 (récupération) : incompatible avec un choc ponctuel — un choc relève de SIM-04.');
+            }
+            if (array_key_exists('taux_cible_croissance', $criteres)) {
+                throw new \DomainException('SIM-06 (récupération) : incompatible avec taux_cible_croissance — une cible relève de SIM-05.');
+            }
+        }
+
+        // ST-14 / SIM-07 — amélioration de la réussite : deux jeux de taux
+        // COMPLETS déclarés. Le moteur ne compense rien : les trois taux
+        // améliorés viennent du scénario, seule la hausse de passage est
+        // contrainte (strictement positive).
+        if (array_key_exists('taux_ameliore', $criteres)) {
+            $ameliore = $criteres['taux_ameliore'];
+            if (! is_array($ameliore)
+                || ! array_key_exists('passage', $ameliore)
+                || ! array_key_exists('redoublement', $ameliore)
+                || ! array_key_exists('abandon', $ameliore)) {
+                throw new \DomainException('SIM-07 (réussite) : taux_ameliore doit fournir passage, redoublement et abandon.');
+            }
+
+            $tauxAmelioreValide = [];
+            foreach (['passage', 'redoublement', 'abandon'] as $cle) {
+                $valeur = self::nombreSaisi($ameliore[$cle], 'taux_ameliore.'.$cle);
+                if ($valeur < 0.0 || $valeur > 1.0) {
+                    throw new \DomainException("SIM-07 (réussite) : taux_ameliore.{$cle} hors [0,1].");
+                }
+                $tauxAmelioreValide[$cle] = $valeur;
+            }
+            if (array_sum($tauxAmelioreValide) > 1.0001) {
+                throw new \DomainException('SIM-07 (réussite) : passage + redoublement + abandon (amélioré) > 1 : incohérent.');
+            }
+
+            if (! isset($criteres['taux']) || ! is_array($criteres['taux'])) {
+                throw new \DomainException('SIM-07 (réussite) : taux de référence requis pour comparer la réussite.');
+            }
+            if ($tauxAmelioreValide['passage'] <= (float) $criteres['taux']['passage']) {
+                throw new \DomainException('SIM-07 (réussite) : taux_ameliore.passage doit être strictement supérieur au passage de référence.');
+            }
+
+            if (isset($criteres['duree_gel_annees'])) {
+                throw new \DomainException('SIM-07 (réussite) : incompatible avec duree_gel_annees — un gel relève de SIM-03.');
+            }
+            if ($pasExceptionnel !== null) {
+                throw new \DomainException('SIM-07 (réussite) : incompatible avec un choc ponctuel — un choc relève de SIM-04.');
+            }
+            if (array_key_exists('taux_cible_croissance', $criteres)) {
+                throw new \DomainException('SIM-07 (réussite) : incompatible avec taux_cible_croissance — une cible relève de SIM-05.');
+            }
+            if ($presentesRecuperation !== []) {
+                throw new \DomainException('SIM-07 (réussite) : incompatible avec le trio de récupération — un creux relève de SIM-06.');
+            }
+            if (array_key_exists('taux_degrade', $criteres)) {
+                throw new \DomainException('SIM-07 (réussite) : incompatible avec taux_degrade — une dégradation relève de SIM-08.');
+            }
+            if (self::aVariationGenerique($criteres)) {
+                throw new \DomainException('SIM-07 (réussite) : incompatible avec une variation mono-axe — utiliser SIM-09 à SIM-12.');
+            }
+        }
+
+        // ST-14 / SIM-08 — dégradation de la réussite : miroir du contrat
+        // SIM-07. Les deux jeux de taux sont COMPLETS et déclarés ; seule la
+        // baisse de passage est contrainte (strictement négative en
+        // variation). L'exclusion mutuelle avec taux_ameliore est garantie
+        // par le bloc SIM-07 ci-dessus, exécuté en premier.
+        if (array_key_exists('taux_degrade', $criteres)) {
+            $degrade = $criteres['taux_degrade'];
+            if (! is_array($degrade)
+                || ! array_key_exists('passage', $degrade)
+                || ! array_key_exists('redoublement', $degrade)
+                || ! array_key_exists('abandon', $degrade)) {
+                throw new \DomainException('SIM-08 (réussite) : taux_degrade doit fournir passage, redoublement et abandon.');
+            }
+
+            $tauxDegradeValide = [];
+            foreach (['passage', 'redoublement', 'abandon'] as $cle) {
+                $valeur = self::nombreSaisi($degrade[$cle], 'taux_degrade.'.$cle);
+                if ($valeur < 0.0 || $valeur > 1.0) {
+                    throw new \DomainException("SIM-08 (réussite) : taux_degrade.{$cle} hors [0,1].");
+                }
+                $tauxDegradeValide[$cle] = $valeur;
+            }
+            if (array_sum($tauxDegradeValide) > 1.0001) {
+                throw new \DomainException('SIM-08 (réussite) : passage + redoublement + abandon (dégradé) > 1 : incohérent.');
+            }
+
+            if (! isset($criteres['taux']) || ! is_array($criteres['taux'])) {
+                throw new \DomainException('SIM-08 (réussite) : taux de référence requis pour comparer la réussite.');
+            }
+            if ($tauxDegradeValide['passage'] >= (float) $criteres['taux']['passage']) {
+                throw new \DomainException('SIM-08 (réussite) : taux_degrade.passage doit être strictement inférieur au passage de référence.');
+            }
+
+            if (isset($criteres['duree_gel_annees'])) {
+                throw new \DomainException('SIM-08 (réussite) : incompatible avec duree_gel_annees — un gel relève de SIM-03.');
+            }
+            if ($pasExceptionnel !== null) {
+                throw new \DomainException('SIM-08 (réussite) : incompatible avec un choc ponctuel — un choc relève de SIM-04.');
+            }
+            if (array_key_exists('taux_cible_croissance', $criteres)) {
+                throw new \DomainException('SIM-08 (réussite) : incompatible avec taux_cible_croissance — une cible relève de SIM-05.');
+            }
+            if ($presentesRecuperation !== []) {
+                throw new \DomainException('SIM-08 (réussite) : incompatible avec le trio de récupération — un creux relève de SIM-06.');
+            }
+            if (self::aVariationGenerique($criteres)) {
+                throw new \DomainException('SIM-08 (réussite) : incompatible avec une variation mono-axe — utiliser SIM-09 à SIM-12.');
+            }
+        }
+
+        // ST-14 / SIM-09→SIM-12 — variation de réussite mono-axe : le jeu
+        // modifié complet et le descripteur (axe, sens) sont indissociables.
+        // Seul l'axe déclaré est contraint ; les autres taux restent libres
+        // (origine déclarée, aucune compensation inventée). L'exclusion
+        // mutuelle avec taux_ameliore / taux_degrade est garantie par les
+        // blocs SIM-07 et SIM-08 ci-dessus, exécutés en premier.
+        if (self::aVariationGenerique($criteres)) {
+            if (! array_key_exists('taux_modifie', $criteres)
+                || ! array_key_exists('axe_variation', $criteres)
+                || ! array_key_exists('sens_variation', $criteres)) {
+                throw new \DomainException('SIM-09→SIM-12 (réussite) : taux_modifie, axe_variation et sens_variation sont indissociables.');
+            }
+
+            $modifie = $criteres['taux_modifie'];
+            if (! is_array($modifie)
+                || ! array_key_exists('passage', $modifie)
+                || ! array_key_exists('redoublement', $modifie)
+                || ! array_key_exists('abandon', $modifie)) {
+                throw new \DomainException('SIM-09→SIM-12 (réussite) : taux_modifie doit fournir passage, redoublement et abandon.');
+            }
+
+            $tauxModifieValide = [];
+            foreach (['passage', 'redoublement', 'abandon'] as $cle) {
+                $valeur = self::nombreSaisi($modifie[$cle], 'taux_modifie.'.$cle);
+                if ($valeur < 0.0 || $valeur > 1.0) {
+                    throw new \DomainException("SIM-09→SIM-12 (réussite) : taux_modifie.{$cle} hors [0,1].");
+                }
+                $tauxModifieValide[$cle] = $valeur;
+            }
+            if (array_sum($tauxModifieValide) > 1.0001) {
+                throw new \DomainException('SIM-09→SIM-12 (réussite) : passage + redoublement + abandon (modifié) > 1 : incohérent.');
+            }
+
+            $axe = $criteres['axe_variation'];
+            if (! is_string($axe) || ! in_array($axe, ['passage', 'redoublement', 'abandon'], true)) {
+                throw new \DomainException('SIM-09→SIM-12 (réussite) : axe_variation doit être passage, redoublement ou abandon.');
+            }
+            $sens = $criteres['sens_variation'];
+            if (! is_string($sens) || ! in_array($sens, ['hausse', 'baisse'], true)) {
+                throw new \DomainException('SIM-09→SIM-12 (réussite) : sens_variation doit être hausse ou baisse.');
+            }
+
+            if (! isset($criteres['taux']) || ! is_array($criteres['taux'])
+                || ! array_key_exists('passage', $criteres['taux'])
+                || ! array_key_exists('redoublement', $criteres['taux'])
+                || ! array_key_exists('abandon', $criteres['taux'])) {
+                throw new \DomainException('SIM-09→SIM-12 (réussite) : taux de référence requis pour comparer la réussite.');
+            }
+
+            $referenceAxe = (float) $criteres['taux'][$axe];
+            $modifieAxe = $tauxModifieValide[$axe];
+            if ($sens === 'hausse' && $modifieAxe <= $referenceAxe) {
+                throw new \DomainException("SIM-09→SIM-12 (réussite) : taux_modifie.{$axe} doit être strictement supérieur au taux de référence (sens hausse).");
+            }
+            if ($sens === 'baisse' && $modifieAxe >= $referenceAxe) {
+                throw new \DomainException("SIM-09→SIM-12 (réussite) : taux_modifie.{$axe} doit être strictement inférieur au taux de référence (sens baisse).");
+            }
+
+            if (isset($criteres['duree_gel_annees'])) {
+                throw new \DomainException('SIM-09→SIM-12 (réussite) : incompatible avec duree_gel_annees — un gel relève de SIM-03.');
+            }
+            if ($pasExceptionnel !== null) {
+                throw new \DomainException('SIM-09→SIM-12 (réussite) : incompatible avec un choc ponctuel — un choc relève de SIM-04.');
+            }
+            if (array_key_exists('taux_cible_croissance', $criteres)) {
+                throw new \DomainException('SIM-09→SIM-12 (réussite) : incompatible avec taux_cible_croissance — une cible relève de SIM-05.');
+            }
+            if ($presentesRecuperation !== []) {
+                throw new \DomainException('SIM-09→SIM-12 (réussite) : incompatible avec le trio de récupération — un creux relève de SIM-06.');
+            }
         }
 
         if (isset($criteres['taux'])) {

@@ -3,28 +3,40 @@
 namespace App\Modules\StudentDossiers\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\Etudiant;
+use App\Models\HistoriqueAcademique;
 use App\Modules\StudentDossiers\Models\StudentDocument;
 use App\Modules\StudentDossiers\Models\StudentDossier;
 use App\Modules\StudentDossiers\Resources\StudentDocumentResource;
 use App\Modules\StudentDossiers\Resources\StudentDossierResource;
+use App\Modules\StudentDossiers\Services\StudentDossierService;
+use App\Services\AuditService;
 use App\Support\Recherche;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
+use Illuminate\Support\Facades\Gate;
+use Illuminate\Validation\Rule;
 
 /**
  * API v1 — dossiers administratifs permanents (module StudentDossiers).
  *
- * Lecture seule (§16) : les Resources exposent des métadonnées, jamais
- * `storage_path` ni le contenu des fichiers. Chaque route porte son
- * scope Sanctum + throttle ; les filtres passent par une liste blanche
- * et la pagination est bornée (§58-59).
+ * Lecture + écritures contrôlées (§16) : les Resources exposent des
+ * métadonnées, jamais `storage_path` ni le contenu des fichiers. Chaque
+ * route porte son scope Sanctum + throttle ; les filtres passent par une
+ * liste blanche et la pagination est bornée (§58-59).
  *
- * Isolation par faculté (§17) : un admin_faculte ne voit que les
- * dossiers des étudiants de sa faculté — vérifié en base à chaque
+ * Isolation par faculté (§17) : un admin_faculte ne voit et ne modifie que
+ * les dossiers des étudiants de sa faculté — vérifié en base à chaque
  * requête, avec un 404 (jamais 403) hors périmètre.
  */
 class StudentDossierApiController extends Controller
 {
+    public function __construct(
+        private readonly StudentDossierService $dossiers,
+        private readonly AuditService $audit,
+    ) {}
+
     /**
      * Liste paginée des dossiers (scope archives:read).
      */
@@ -75,6 +87,93 @@ class StudentDossierApiController extends Controller
         )->additional([
             'meta' => ['per_page_max' => $this->perPageMax()],
         ]);
+    }
+
+    /**
+     * Création idempotente du dossier unique d'un étudiant (scope
+     * archives:write) : 201 à la création, 200 si le dossier existait —
+     * `meta.created` distingue les deux cas. Aucune donnée fournie par le
+     * client n'est reprise hors `etudiant_id` (référence et statut serveur).
+     */
+    public function store(Request $request): JsonResponse
+    {
+        // Permission vérifiée AVANT toute recherche : un token non habilité
+        // reçoit 403 sans pouvoir sonder l'existence d'un étudiant.
+        Gate::authorize('create', StudentDossier::class);
+
+        $donnees = $request->validate([
+            'etudiant_id' => ['required', 'integer', 'min:1'],
+        ]);
+
+        $faculteRestreinteId = $request->user()?->faculteRestreinteId();
+
+        // Étudiant inconnu ET étudiant hors périmètre produisent le même
+        // 404 : aucune confirmation d'existence (anti-BOLA §17).
+        $etudiant = Etudiant::query()
+            ->when($faculteRestreinteId !== null, fn ($q) => $q->where('faculte_id', $faculteRestreinteId))
+            ->find($donnees['etudiant_id']);
+
+        abort_if($etudiant === null, 404, 'Étudiant introuvable dans votre périmètre.');
+
+        $dossier = $this->dossiers->obtenirOuCreer($etudiant);
+        $cree = (bool) $dossier->wasRecentlyCreated;
+
+        if ($cree) {
+            $this->audit->tracer(
+                $etudiant,
+                HistoriqueAcademique::ACTION_CREATION_DOSSIER,
+                'dossier',
+                $dossier->id,
+                null,
+                ['reference' => $dossier->reference, 'status' => $dossier->status],
+                'api',
+            );
+        }
+
+        return (new StudentDossierResource(
+            $dossier->loadMissing(['etudiant.faculte'])->loadCount('documents'),
+        ))->additional(['meta' => ['created' => $cree]])
+            ->response()
+            ->setStatusCode($cree ? 201 : 200);
+    }
+
+    /**
+     * Mise à jour du statut d'un dossier (scope archives:write). Statut
+     * inchangé = aucune écriture ni audit ; `etudiant_id` et `reference`
+     * ne sont jamais modifiables par l'API.
+     */
+    public function update(Request $request, StudentDossier $dossier): JsonResponse
+    {
+        // Hors périmètre = 404 AVANT le contrôle de permission : aucune
+        // confirmation d'existence à un token non habilité.
+        $this->verifierPerimetre($request, $dossier);
+
+        Gate::authorize('update', $dossier);
+
+        $donnees = $request->validate([
+            'status' => ['required', Rule::in(StudentDossier::STATUTS)],
+        ]);
+
+        $ancienStatut = $dossier->status;
+        $nouveauStatut = (string) $donnees['status'];
+
+        if ($ancienStatut !== $nouveauStatut) {
+            $dossier->update(['status' => $nouveauStatut]);
+
+            $this->audit->tracer(
+                $dossier->etudiant,
+                HistoriqueAcademique::ACTION_MODIFICATION_DOSSIER,
+                'dossier',
+                $dossier->id,
+                ['status' => $ancienStatut],
+                ['status' => $nouveauStatut],
+                'api',
+            );
+        }
+
+        return (new StudentDossierResource(
+            $dossier->loadMissing(['etudiant.faculte'])->loadCount('documents'),
+        ))->response();
     }
 
     /**

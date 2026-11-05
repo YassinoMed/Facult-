@@ -18,28 +18,32 @@ return new class extends Migration
 {
     public function up(): void
     {
-        Schema::create('seance_appels', function (Blueprint $table) {
-            $table->id();
-            $table->foreignId('schedule_slot_id')->constrained('schedule_slots')->cascadeOnDelete();
-            $table->date('date');
-            $table->enum('statut', ['en_cours', 'cloture'])->default('en_cours');
-            $table->foreignId('teacher_id')->constrained('teachers')->cascadeOnDelete();
-            $table->unsignedInteger('presents')->default(0);
-            $table->unsignedInteger('absents')->default(0);
-            $table->unsignedInteger('retards')->default(0);
-            $table->unsignedInteger('non_renseignes')->default(0);
-            $table->timestamp('cloture_le')->nullable();
-            $table->timestamps();
-            $table->unique(['schedule_slot_id', 'date']);
-            $table->index(['teacher_id', 'date']);
-        });
+        if (! Schema::hasTable('seance_appels')) {
+            Schema::create('seance_appels', function (Blueprint $table) {
+                $table->id();
+                $table->foreignId('schedule_slot_id')->constrained('schedule_slots')->cascadeOnDelete();
+                $table->date('date');
+                $table->enum('statut', ['en_cours', 'cloture'])->default('en_cours');
+                $table->foreignId('teacher_id')->constrained('teachers')->cascadeOnDelete();
+                $table->unsignedInteger('presents')->default(0);
+                $table->unsignedInteger('absents')->default(0);
+                $table->unsignedInteger('retards')->default(0);
+                $table->unsignedInteger('non_renseignes')->default(0);
+                $table->timestamp('cloture_le')->nullable();
+                $table->timestamps();
+                $table->unique(['schedule_slot_id', 'date']);
+                $table->index(['teacher_id', 'date']);
+            });
+        }
 
-        Schema::table('presences', function (Blueprint $table) {
-            $table->foreignId('schedule_slot_id')->nullable()->after('etudiant_id')->constrained('schedule_slots')->nullOnDelete();
-            $table->foreignId('teacher_id')->nullable()->after('schedule_slot_id')->constrained('teachers')->nullOnDelete();
-            $table->json('historique')->nullable()->after('motif');
-            $table->index(['schedule_slot_id', 'date']);
-        });
+        if (Schema::hasTable('presences') && ! Schema::hasColumn('presences', 'schedule_slot_id')) {
+            Schema::table('presences', function (Blueprint $table) {
+                $table->foreignId('schedule_slot_id')->nullable()->after('etudiant_id')->constrained('schedule_slots')->nullOnDelete();
+                $table->foreignId('teacher_id')->nullable()->after('schedule_slot_id')->constrained('teachers')->nullOnDelete();
+                $table->json('historique')->nullable()->after('motif');
+                $table->index(['schedule_slot_id', 'date']);
+            });
+        }
     }
 
     public function down(): void

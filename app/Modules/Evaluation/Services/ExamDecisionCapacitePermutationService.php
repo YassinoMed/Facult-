@@ -314,6 +314,359 @@ class ExamDecisionCapacitePermutationService
     }
 
     /**
+     * Diagnostic opposable en lecture seule de la capacité de salle d'une épreuve (D-04).
+     *
+     * Identifie :
+     *  - Les capacités non confirmées (NULL ou <= 0) ou insuffisantes
+     *  - Les salles candidates compatibles avec capacité confirmée suffisante et sans conflit
+     *  - L'explication explicite de l'exclusion de chaque salle inadmissible
+     *  - La distinction nette entre données insuffisantes et absence de candidates
+     *  - Une empreinte déterministe pour la détection d'obsolescence
+     *
+     * Strictement en lecture seule : aucune écriture, aucune affectation, aucun déblocage d'export.
+     *
+     * @return array<string, mixed>
+     */
+    public function diagnostiquerCapaciteSalle(Epreuve $epreuve, ?User $user = null): array
+    {
+        if ($user !== null) {
+            $faculteRestreinte = $user->faculteRestreinteId();
+            if ($faculteRestreinte !== null && $epreuve->faculteId() !== null && (int) $epreuve->faculteId() !== (int) $faculteRestreinte) {
+                throw new DomainException('Accès refusé : épreuve en dehors de votre périmètre facultaire.');
+            }
+        }
+
+        $epreuve->loadMissing([
+            'salle',
+            'matiere.ue.programme.faculte',
+            'groupe.faculte',
+            'examen.programme.faculte',
+            'session.anneeUniversitaire',
+            'candidats.etudiant',
+        ]);
+
+        $analyseCorrespondance = $this->correspondance->analyserEpreuve($epreuve);
+        $idsEligiblesRef = array_flip($this->correspondance->identifiantsEligiblesReference($epreuve));
+        $candidats = collect($epreuve->candidats);
+        $candidatsEligibles = $candidats->filter(fn (Candidat $c) => isset($idsEligiblesRef[(int) $c->etudiant_id]));
+        $effectifEligible = $candidatsEligibles->count();
+        $effectifReference = (int) ($analyseCorrespondance['compteurs']['eligibles'] ?? 0);
+        $effectifRequis = $effectifEligible > 0
+            ? $effectifEligible
+            : ($effectifReference > 0
+                ? $effectifReference
+                : max((int) $epreuve->capacite_necessaire, (int) ($epreuve->groupe?->capacite ?? 0)));
+
+        $salleActuelle = $epreuve->salle;
+        $statutCapacite = 'non_affectee';
+        $motifStatut = "Aucune salle d'examen affectée à cette épreuve.";
+        $capUtileActuelle = 0;
+        $capNominaleActuelle = 0;
+
+        if ($salleActuelle !== null) {
+            if ($salleActuelle->capacite === null || (int) $salleActuelle->capacite <= 0) {
+                $statutCapacite = 'non_confirmee';
+                $motifStatut = "Capacité de la salle {$salleActuelle->code} inconnue ou non confirmée (Règle impérative D-04).";
+            } else {
+                $capNominaleActuelle = (int) $salleActuelle->capacite;
+                $capUtileActuelle = $this->capaciteUtileSalle($salleActuelle);
+                if ($capUtileActuelle < $effectifRequis) {
+                    $deficit = $effectifRequis - $capUtileActuelle;
+                    $statutCapacite = 'insuffisante';
+                    $motifStatut = "Capacité utile insuffisante : {$capUtileActuelle} places utiles pour {$effectifRequis} candidats (déficit de {$deficit} places).";
+                } else {
+                    $statutCapacite = 'validee';
+                    $motifStatut = "Capacité confirmée suffisante ({$capUtileActuelle} places utiles pour {$effectifRequis} candidats).";
+                }
+            }
+        }
+
+        $donneesIncompletes = [];
+        if ($epreuve->date === null) {
+            $donneesIncompletes[] = "Date d'examen non fixée";
+        }
+        if (empty($epreuve->heure_debut) || empty($epreuve->heure_fin)) {
+            $donneesIncompletes[] = 'Créneau horaire non fixé';
+        }
+        if ($effectifRequis <= 0) {
+            $donneesIncompletes[] = 'Effectif de candidats éligibles nul ou non déterminé';
+        }
+
+        if ($donneesIncompletes !== []) {
+            $diagnosticGlobal = 'donnees_insuffisantes';
+            $motifDiagnostic = 'Données de planification insuffisantes : '.implode(', ', $donneesIncompletes).". Impossible d'évaluer les salles compatibles.";
+            $candidatesCompatibles = [];
+            $sallesExclues = [];
+            $empreinte = hash('sha256', "insuffisant_{$epreuve->id}_".implode('|', $donneesIncompletes));
+        } else {
+            $anneeId = $epreuve->annee_universitaire_id ?? $epreuve->session?->annee_universitaire_id;
+            $faculteId = $epreuve->faculteId();
+            $contexte = $this->chargerContexte($anneeId, $faculteId, $epreuve->session_id, $epreuve->examen_id, $epreuve->id);
+
+            $candidatesCompatibles = [];
+            $sallesExclues = [];
+
+            foreach ($contexte['salles'] as $salle) {
+                $eval = $this->evaluerDisponibiliteSallePourEpreuve($salle, $epreuve, $contexte, [$epreuve->id]);
+                $motifs = $eval['motifs'];
+                $capUtile = $eval['capacite_utile_d04'];
+                $capNominale = $eval['capacite_nominale'];
+                $estAmphi = $eval['est_amphitheatre'];
+
+                if ($capUtile > 0 && $capUtile < $effectifRequis) {
+                    $deficit = $effectifRequis - $capUtile;
+                    $motifs[] = [
+                        'type' => 'capacite_insuffisante',
+                        'message' => "Capacité utile D-04 insuffisante : {$capUtile} places utiles pour {$effectifRequis} candidats requis (déficit de {$deficit} places).",
+                    ];
+                }
+
+                if ($salleActuelle !== null && (int) $salle->id === (int) $salleActuelle->id) {
+                    $motifs[] = [
+                        'type' => 'salle_actuelle',
+                        'message' => 'Salle déjà actuellement assignée à cette épreuve.',
+                    ];
+                }
+
+                if ($motifs === []) {
+                    $surplus = $capUtile - $effectifRequis;
+                    $score = max(10, 100 - $surplus);
+                    $candidatesCompatibles[] = [
+                        'id' => (int) $salle->id,
+                        'code' => (string) $salle->code,
+                        'nom' => (string) $salle->nom,
+                        'batiment' => (string) ($salle->batiment ?? 'Campus'),
+                        'capacite_nominale' => $capNominale,
+                        'capacite_utile_d04' => $capUtile,
+                        'surplus_places' => $surplus,
+                        'score' => $score,
+                        'est_amphitheatre' => $estAmphi,
+                    ];
+                } else {
+                    $sallesExclues[] = [
+                        'id' => (int) $salle->id,
+                        'code' => (string) $salle->code,
+                        'nom' => (string) $salle->nom,
+                        'capacite_nominale' => $capNominale,
+                        'capacite_utile_d04' => $capUtile,
+                        'est_amphitheatre' => $estAmphi,
+                        'motifs_exclusion' => array_column($motifs, 'message'),
+                        'types_exclusion' => array_column($motifs, 'type'),
+                    ];
+                }
+            }
+
+            usort($candidatesCompatibles, function (array $a, array $b) {
+                return ($a['surplus_places'] <=> $b['surplus_places'])
+                    ?: ($a['code'] <=> $b['code']);
+            });
+
+            if ($candidatesCompatibles === []) {
+                $diagnosticGlobal = 'aucune_candidate';
+                $motifDiagnostic = "Aucune salle disponible ne satisfait tous les critères D-04 (capacité confirmée >= {$effectifRequis}, créneau {$epreuve->heure_debut} - {$epreuve->heure_fin}, disponibilité et rattachement facultaire).";
+            } else {
+                $diagnosticGlobal = 'candidates_trouvees';
+                $nbCand = count($candidatesCompatibles);
+                $motifDiagnostic = "{$nbCand} salle(s) compatible(s) trouvée(s) avec capacité confirmée suffisante et sans conflit.";
+            }
+
+            $empreinte = hash('sha256', (string) json_encode([
+                'epreuve_id' => $epreuve->id,
+                'epreuve_maj' => $epreuve->updated_at?->toIso8601String(),
+                'date' => $epreuve->date?->format('Y-m-d'),
+                'debut' => (string) $epreuve->heure_debut,
+                'fin' => (string) $epreuve->heure_fin,
+                'salle_id' => $epreuve->salle_id,
+                'effectif_requis' => $effectifRequis,
+                'contexte_empreinte' => $contexte['empreinte'] ?? '',
+            ]));
+        }
+
+        IntegrationLog::tracer(
+            'evaluation',
+            'internal',
+            'exam.room.diagnostic_consulted',
+            'completed',
+            (string) json_encode([
+                'epreuve_id' => $epreuve->id,
+                'faculte_id' => $epreuve->faculteId(),
+                'statut_capacite' => $statutCapacite,
+                'effectif_requis' => $effectifRequis,
+                'nb_candidates' => count($candidatesCompatibles),
+                'nb_exclues' => count($sallesExclues),
+                'diagnostic_global' => $diagnosticGlobal,
+            ], JSON_UNESCAPED_UNICODE),
+            200,
+            null,
+            null,
+            (string) Str::uuid(),
+            'EPR-'.$epreuve->id,
+        );
+
+        return [
+            'epreuve' => [
+                'id' => (int) $epreuve->id,
+                'code' => (string) $epreuve->code,
+                'titre' => (string) ($epreuve->titre ?? $epreuve->matiere?->nom ?? '—'),
+                'date' => $epreuve->date?->format('d/m/Y'),
+                'date_brute' => $epreuve->date?->format('Y-m-d'),
+                'heure_debut' => $epreuve->heure_debut ? substr((string) $epreuve->heure_debut, 0, 5) : null,
+                'heure_fin' => $epreuve->heure_fin ? substr((string) $epreuve->heure_fin, 0, 5) : null,
+                'matiere_code' => $epreuve->matiere?->code ?? '—',
+                'matiere_nom' => $epreuve->matiere?->nom ?? '—',
+                'session_nom' => $epreuve->session?->nom ?? '—',
+                'faculte_id' => $epreuve->faculteId(),
+                'faculte_nom' => $epreuve->groupe?->faculte?->nom ?? '—',
+            ],
+            'salle_actuelle' => [
+                'id' => $salleActuelle?->id,
+                'code' => $salleActuelle?->code ?? 'Non affectée',
+                'nom' => $salleActuelle?->nom ?? 'Aucune salle affectée',
+                'capacite_nominale' => $capNominaleActuelle,
+                'capacite_utile_d04' => $capUtileActuelle,
+                'statut_capacite' => $statutCapacite,
+                'motif_statut' => $motifStatut,
+                'est_non_confirmee' => in_array($statutCapacite, ['non_affectee', 'non_confirmee', 'insuffisante'], true),
+            ],
+            'effectif_requis' => $effectifRequis,
+            'candidats_eligibles_count' => $effectifEligible,
+            'diagnostic_global' => $diagnosticGlobal,
+            'motif_diagnostic' => $motifDiagnostic,
+            'candidates_compatibles' => $candidatesCompatibles,
+            'nb_candidates' => count($candidatesCompatibles),
+            'salles_exclues' => $sallesExclues,
+            'nb_exclues' => count($sallesExclues),
+            'empreinte' => $empreinte,
+            'export_officiel_autorise' => ($statutCapacite === 'validee'),
+            'action_lecture_seule' => true,
+            'avertissement_lecture_seule' => "Mode consultation diagnostique D-04 : aucune modification n'a été apportée au planning.",
+        ];
+    }
+
+    /**
+     * Détecte si un diagnostic préalablement affiché est devenu obsolète suite à une modification.
+     */
+    public function estDiagnosticObsolete(string $empreinteFournie, Epreuve $epreuve): bool
+    {
+        $nouveau = $this->diagnostiquerCapaciteSalle($epreuve);
+
+        return $nouveau['empreinte'] !== $empreinteFournie;
+    }
+
+    /**
+     * Classe des variantes D-04 selon des critères explicites et déterministes.
+     *
+     * Objectif documenté (dans l'ordre) :
+     * 1. viabilité (aucun dépassement, aucun conflit) ;
+     * 2. dépassement croissant ;
+     * 3. places restantes croissantes (limiter le gaspillage de jauge) ;
+     * 4. nombre de salles croissant ;
+     * 5. score métier décroissant.
+     *
+     * Aucune variante n'est déclarée « optimale » : le classement dépend
+     * exclusivement des critères ci-dessus.
+     *
+     * @param  array<int, array<string, mixed>>  $variantes
+     * @return array{criteres: array<int, string>, variantes: array<int, array<string, mixed>>, recommandee: ?string}
+     */
+    public function classerVariantes(array $variantes): array
+    {
+        $lignes = [];
+
+        foreach ($variantes as $variante) {
+            $capacite = (int) ($variante['capacite_utile_totale'] ?? $variante['capacite_utile_cible'] ?? 0);
+            $effectif = (int) ($variante['effectif_couvert'] ?? $variante['effectif_eligible'] ?? 0);
+            $restantes = $capacite - $effectif;
+            $depassement = max(0, -$restantes);
+            $conflits = count($variante['conflits'] ?? []);
+            $nbSalles = (int) ($variante['nb_salles']
+                ?? (count($variante['salle_ids'] ?? []) + count($variante['salle_partenaire_ids'] ?? [])));
+            $viable = (bool) ($variante['viable'] ?? true) && $depassement === 0 && $conflits === 0;
+
+            $lignes[] = $variante + [
+                'capacite_utile_totale' => $capacite,
+                'effectif_couvert' => $effectif,
+                'places_restantes' => $restantes,
+                'depassement' => $depassement,
+                'taux_utilisation' => $capacite > 0
+                    ? round(min(1, $effectif / $capacite) * 100, 1)
+                    : null,
+                'nb_salles' => $nbSalles,
+                'conflits_count' => $conflits,
+                'viable' => $viable,
+            ];
+        }
+
+        usort($lignes, function (array $a, array $b): int {
+            if ($a['viable'] !== $b['viable']) {
+                return $a['viable'] ? -1 : 1;
+            }
+            if ($a['depassement'] !== $b['depassement']) {
+                return $a['depassement'] <=> $b['depassement'];
+            }
+            if ($a['places_restantes'] !== $b['places_restantes']) {
+                return $a['places_restantes'] <=> $b['places_restantes'];
+            }
+            if ($a['nb_salles'] !== $b['nb_salles']) {
+                return $a['nb_salles'] <=> $b['nb_salles'];
+            }
+
+            return (int) ($b['score'] ?? 0) <=> (int) ($a['score'] ?? 0);
+        });
+
+        foreach ($lignes as $index => &$ligne) {
+            $ligne['rang'] = $index + 1;
+        }
+        unset($ligne);
+
+        return [
+            'criteres' => [
+                'viabilité (aucun dépassement, aucun conflit)',
+                'dépassement croissant',
+                'places restantes croissantes',
+                'nombre de salles croissant',
+                'score métier décroissant',
+            ],
+            'variantes' => $lignes,
+            'recommandee' => $lignes[0]['cle'] ?? null,
+        ];
+    }
+
+    /**
+     * Compare et classe des variantes D-04 sans aucune écriture.
+     *
+     * @param  array<int, array<string, mixed>>  $variantes
+     * @return array<string, mixed>
+     */
+    public function comparerVariantes(array $variantes): array
+    {
+        $classement = $this->classerVariantes($variantes);
+        $premiere = $classement['variantes'][0] ?? null;
+        $seconde = $classement['variantes'][1] ?? null;
+
+        $differences = [];
+        if ($premiere !== null && $seconde !== null) {
+            foreach (['capacite_utile_totale', 'places_restantes', 'taux_utilisation', 'nb_salles', 'depassement', 'score'] as $critere) {
+                $differences[$critere] = [
+                    'rang_1' => $premiere[$critere] ?? null,
+                    'rang_2' => $seconde[$critere] ?? null,
+                ];
+            }
+        }
+
+        return [
+            'criteres' => $classement['criteres'],
+            'classement' => $classement['variantes'],
+            'recommandee' => $classement['recommandee'],
+            'justification' => $premiere !== null
+                ? 'Le rang 1 est retenu car il est viable, présente le plus faible dépassement et le moins de places restantes, puis le moins de salles.'
+                : 'Aucune variante comparable dans le périmètre.',
+            'differences_rang_1_2' => $differences,
+            'nombre_scenarios' => count($classement['variantes']),
+        ];
+    }
+
+    /**
      * Calcule la capacité réelle utile d'une salle selon la règle D-04 (ratio 50% par défaut).
      * Toute salle inactive ou à capacité nominale nulle/inconnue renvoie 0.
      */

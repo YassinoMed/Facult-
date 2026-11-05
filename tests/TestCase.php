@@ -2,6 +2,7 @@
 
 namespace Tests;
 
+use App\Support\Iam\MoteurAutorisation;
 use Illuminate\Foundation\Testing\TestCase as BaseTestCase;
 
 abstract class TestCase extends BaseTestCase
@@ -9,6 +10,13 @@ abstract class TestCase extends BaseTestCase
     protected function setUp(): void
     {
         parent::setUp();
+
+        // Le cache statique du moteur d'autorisation survit à la recréation
+        // de l'application entre deux tests. Avec RefreshDatabase, les
+        // identifiants utilisateurs sont réutilisés : sans purge, un test
+        // pourrait lire le contexte d'un autre test. La production n'est
+        // pas concernée (identifiants monotones + invalidation explicite).
+        MoteurAutorisation::invalider();
 
         // Garde anti-catastrophe (16/10/2026 : la base de dev a été vidée
         // par une opération destructive) : aucun test ne doit jamais

@@ -57,19 +57,23 @@ return new class extends Migration
 
     private function colonneExiste(): bool
     {
-        return (int) DB::selectOne(
+        $res = DB::selectOne(
             'SELECT COUNT(*) AS n FROM information_schema.COLUMNS
              WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?',
             ['maquettes', 'active_programme_id']
-        )->n > 0;
+        );
+
+        return (int) ($res?->n ?? 0) > 0;
     }
 
     private function indexExiste(): bool
     {
-        return (int) DB::selectOne(
+        $res = DB::selectOne(
             'SELECT COUNT(*) AS n FROM information_schema.STATISTICS
              WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND INDEX_NAME = ?',
             ['maquettes', 'maquettes_active_programme_unique']
-        )->n > 0;
+        );
+
+        return (int) ($res?->n ?? 0) > 0;
     }
 };

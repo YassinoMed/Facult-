@@ -5,38 +5,88 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\AttribuerRoleRequest;
 use App\Models\Faculte;
+use App\Models\Iam\AffectationIam;
+use App\Models\Iam\DemandeIam;
+use App\Models\Iam\ProfilIam;
 use App\Models\User;
 use App\Services\AttributionRoleService;
+use App\Support\Iam\CataloguePermissions;
 use App\Support\Permissions;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\View\View;
 use Symfony\Component\HttpKernel\Exception\HttpException;
 
 /**
- * Gestion des rôles : consultation (matrice + effectifs) et attribution
- * via `AttributionRoleService` (même mécanisme que le menu des comptes).
- * `roles.view` ≠ droit d'attribuer : la mutation exige `roles.manage`
- * (détenue par super_admin uniquement — aucun privilège inventé).
+ * Gestion des rôles : consultation unifiée (système + personnalisés),
+ * attribution de rôles système via `AttributionRoleService`, et passerelle vers
+ * les modules d'administration avancée IAM (CRUD profils, permissions, 4 yeux).
  */
 class RoleController extends Controller
 {
     public function index(AttributionRoleService $attribution, Request $request): View
     {
-        $roles = [];
+        $this->authorize('roles.view');
+
+        // 1. Rôles système
+        $rolesSysteme = [];
         foreach (Permissions::ROLES as $role) {
-            $roles[] = [
+            $rolesSysteme[] = [
                 'code' => $role,
+                'nom' => ucwords(str_replace('_', ' ', $role)),
+                'type' => 'systeme',
                 'permissions' => $role === 'super_admin' ? Permissions::TOUTES : Permissions::pourRole($role),
                 'effectif' => User::where('role', $role)->count(),
+                'portee' => $role === 'admin_faculte' ? 'Facultaire' : 'Globale',
+                'statut' => 'actif',
             ];
         }
 
+        // 2. Rôles personnalisés (ProfilIam)
+        $queryProfils = ProfilIam::query()->with(['permissions', 'faculte', 'createur']);
+
+        // Isolation facultaire : un admin restreint ne voit que les rôles de sa faculté
+        $restreinte = $request->user()?->faculteRestreinteId();
+        if ($restreinte !== null) {
+            $queryProfils->where(function ($q) use ($restreinte) {
+                $q->where('faculte_id', $restreinte)->orWhereNull('faculte_id');
+            });
+        }
+
+        // Recherche par mot-clé
+        $recherche = trim((string) $request->input('q', ''));
+        if ($recherche !== '') {
+            $queryProfils->where(function ($q) use ($recherche) {
+                $q->where('nom', 'like', "%{$recherche}%")
+                    ->orWhere('code', 'like', "%{$recherche}%")
+                    ->orWhere('description', 'like', "%{$recherche}%");
+            });
+        }
+
+        // Filtre de statut
+        $filtreStatut = (string) $request->input('statut', 'tous');
+        if ($filtreStatut !== 'tous' && in_array($filtreStatut, ProfilIam::STATUTS, true)) {
+            $queryProfils->where('statut', $filtreStatut);
+        }
+
+        $rolesPersonnalises = $queryProfils->latest('id')->paginate(15)->withQueryString();
+
+        // 3. Indicateurs de gouvernance
+        $totalAffectations = Schema::hasTable('iam_affectations')
+            ? AffectationIam::where('statut', AffectationIam::STATUT_ACTIVE)->count()
+            : 0;
+
+        $demandesEnAttente = Schema::hasTable('iam_demandes')
+            ? DemandeIam::where('statut', DemandeIam::STATUT_SOUMISE)->count()
+            : 0;
+
         return view('admin.roles.index', [
-            'roles' => $roles,
-            'totalPermissions' => count(Permissions::TOUTES),
+            // Données historiques pour rétro-compatibilité
+            'roles' => $rolesSysteme,
+            'totalPermissions' => count(CataloguePermissions::toutes()),
             'peutAttribuer' => $request->user()->can('roles.manage'),
             'rolesAttribuables' => $attribution->rolesAttribuables($request->user()),
             'registrePermissions' => array_merge(...array_map(
@@ -44,6 +94,18 @@ class RoleController extends Controller
                 Permissions::ROLES
             )),
             'facultes' => Faculte::where('active', true)->orderBy('nom')->get(['id', 'nom']),
+
+            // Données enrichies IAM
+            'rolesSysteme' => $rolesSysteme,
+            'rolesPersonnalises' => $rolesPersonnalises,
+            'recherche' => $recherche,
+            'filtreStatut' => $filtreStatut,
+            'indicateurs' => [
+                'total_systeme' => count($rolesSysteme),
+                'total_personnalises' => ProfilIam::count(),
+                'total_affectations' => $totalAffectations,
+                'demandes_en_attente' => $demandesEnAttente,
+            ],
         ]);
     }
 

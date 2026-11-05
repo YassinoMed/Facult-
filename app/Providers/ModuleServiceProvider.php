@@ -39,13 +39,19 @@ use App\Modules\AssistantIa\Tools\Commun\ConsulterDocumentationWebTool;
 use App\Modules\AssistantIa\Tools\Developpeur\InspecterFichiersCodeTool;
 use App\Modules\AssistantIa\Tools\Developpeur\InspecterRoutesTool;
 use App\Modules\AssistantIa\Tools\Developpeur\ProposerPatchTool;
+use App\Modules\AssistantIa\Tools\Metier\ComparerScenariosD04Tool;
+use App\Modules\AssistantIa\Tools\Metier\ConsulterDerivesSessionTool;
 use App\Modules\AssistantIa\Tools\Metier\ConsulterEligibiliteExamenTool;
 use App\Modules\AssistantIa\Tools\Metier\ConsulterProduitDataMeshTool;
 use App\Modules\AssistantIa\Tools\Metier\ConsulterStatutTacheTool;
 use App\Modules\AssistantIa\Tools\Metier\DiagnostiquerBlocageDossierTool;
+use App\Modules\AssistantIa\Tools\Metier\ExpliquerAcquisRedoublementTool;
 use App\Modules\AssistantIa\Tools\Metier\ExpliquerCycleInscriptionTool;
+use App\Modules\AssistantIa\Tools\Metier\ExpliquerDecisionAcademiqueTool;
+use App\Modules\AssistantIa\Tools\Metier\ExpliquerExclusionsEpreuveTool;
 use App\Modules\AssistantIa\Tools\Metier\ExpliquerReferentielLmdTool;
 use App\Modules\AssistantIa\Tools\Metier\PreparerActionScolariteTool;
+use App\Modules\AssistantIa\Tools\Metier\ResumerAnomaliesPublicationTool;
 use App\Modules\AssistantIa\Tools\Metier\VerifierPiecesManquantesTool;
 use App\Modules\AssistantIa\Tools\Metier\VerifierReglesEvaluationTool;
 use App\Modules\Attendance\Events\AbsenceJustifiee;
@@ -69,6 +75,7 @@ use App\Modules\Enseignement\Events\EnseignementChanged;
 use App\Modules\Enseignement\Listeners\AuditEnseignement;
 use App\Modules\Enseignement\Models\Enseignement;
 use App\Modules\Enseignement\Policies\EnseignementPolicy;
+use App\Modules\Evaluation\Console\AuditerGroupesVirtuelsCommand;
 use App\Modules\Evaluation\Console\DiagnostiquerSeparationRolesCommand;
 use App\Modules\Evaluation\Console\TestChargeExamensCommand;
 use App\Modules\Evaluation\Events\EvaluationChanged;
@@ -254,8 +261,14 @@ class ModuleServiceProvider extends ServiceProvider
             $registre->enregistrer($app->make(PreparerActionScolariteTool::class));
             $registre->enregistrer($app->make(ConsulterDocumentationWebTool::class));
             $registre->enregistrer($app->make(ExpliquerReferentielLmdTool::class));
+            $registre->enregistrer($app->make(ExpliquerAcquisRedoublementTool::class));
+            $registre->enregistrer($app->make(ExpliquerDecisionAcademiqueTool::class));
             $registre->enregistrer($app->make(VerifierReglesEvaluationTool::class));
             $registre->enregistrer($app->make(ConsulterEligibiliteExamenTool::class));
+            $registre->enregistrer($app->make(ConsulterDerivesSessionTool::class));
+            $registre->enregistrer($app->make(ExpliquerExclusionsEpreuveTool::class));
+            $registre->enregistrer($app->make(ComparerScenariosD04Tool::class));
+            $registre->enregistrer($app->make(ResumerAnomaliesPublicationTool::class));
             $registre->enregistrer($app->make(ConsulterProduitDataMeshTool::class));
             $registre->enregistrer($app->make(ConsulterActionsDisponiblesTool::class));
 
@@ -269,6 +282,7 @@ class ModuleServiceProvider extends ServiceProvider
             $this->commands([
                 SynchroniserSourcesIaCommand::class,
                 DiagnostiquerSeparationRolesCommand::class,
+                AuditerGroupesVirtuelsCommand::class,
                 TestChargeExamensCommand::class,
             ]);
         }

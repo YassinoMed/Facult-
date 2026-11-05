@@ -54,6 +54,18 @@ class ConsultationExportGroupeVirtuelService
 
     public const DOCUMENTS_SELECTION = ['synthese_matiere', 'synthese_session'];
 
+    /** Statuts calculés en PHP (non exprimables en SQL simple). */
+    public const STATUTS_CALCULES = ['derive', 'sans_salle', 'depassement', 'sans_eligible', 'bloquant', 'capacite_non_confirmee'];
+
+    /** Tris autorisés (liste blanche stricte). */
+    public const TRIS_AUTORISES = ['recent', 'ancien', 'libelle', 'effectif'];
+
+    /** Tailles de page autorisées. */
+    public const PAGES_AUTORISEES = [15, 25, 50, 100];
+
+    /** Plafond explicite du scan d'anomalies (jamais silencieux). */
+    public const KPI_SCAN_LIMIT = 2000;
+
     public function __construct(
         private readonly ServiceEligibiliteExamen $serviceEligibilite,
         private readonly CorrespondanceExamenService $correspondanceService,
@@ -127,7 +139,9 @@ class ConsultationExportGroupeVirtuelService
      *     examen_id: ?int,
      *     epreuve_id: ?int,
      *     statut: ?string,
-     *     recherche: ?string
+     *     recherche: ?string,
+     *     tri: string,
+     *     par_page: int
      * }
      */
     public function normaliserFiltres(array $entrees, User $user): array
@@ -143,9 +157,22 @@ class ConsultationExportGroupeVirtuelService
             ? trim($entrees['statut'])
             : null;
 
-        $statutsAutorises = ['propose', 'remplace', 'annule', 'valide', 'non_valide', 'publie', 'derive', 'tous'];
+        $statutsAutorises = [
+            'propose', 'remplace', 'annule', 'valide', 'non_valide', 'publie', 'derive', 'tous',
+            'sans_salle', 'depassement', 'sans_eligible', 'bloquant', 'capacite_non_confirmee',
+        ];
         if ($statut !== null && ! in_array($statut, $statutsAutorises, true)) {
             $statut = null;
+        }
+
+        $tri = isset($entrees['tri']) && is_string($entrees['tri']) ? trim($entrees['tri']) : 'recent';
+        if (! in_array($tri, self::TRIS_AUTORISES, true)) {
+            $tri = 'recent';
+        }
+
+        $parPage = isset($entrees['par_page']) ? (int) $entrees['par_page'] : 15;
+        if (! in_array($parPage, self::PAGES_AUTORISEES, true)) {
+            $parPage = 15;
         }
 
         $recherche = isset($entrees['recherche']) && is_string($entrees['recherche'])
@@ -163,6 +190,8 @@ class ConsultationExportGroupeVirtuelService
             'epreuve_id' => ! empty($entrees['epreuve_id']) ? (int) $entrees['epreuve_id'] : null,
             'statut' => $statut,
             'recherche' => $recherche !== '' ? $recherche : null,
+            'tri' => $tri,
+            'par_page' => $parPage,
         ];
     }
 
@@ -281,7 +310,12 @@ class ConsultationExportGroupeVirtuelService
             });
         }
 
-        return $query->orderByDesc('id');
+        return match ($f['tri'] ?? 'recent') {
+            'ancien' => $query->orderBy('id'),
+            'libelle' => $query->orderBy('libelle'),
+            'effectif' => $query->orderByDesc('eligibles_count')->orderByDesc('id'),
+            default => $query->orderByDesc('id'),
+        };
     }
 
     /**
@@ -301,31 +335,29 @@ class ConsultationExportGroupeVirtuelService
         $f = $this->normaliserFiltres($filtres, $user);
         $query = $this->construireRequete($f, $user);
 
-        // KPIs sur la sélection filtrée
-        $tousPourKpis = (clone $query)->limit(200)->get();
-        $lignesKpis = $tousPourKpis->map(fn (GroupeVirtuelExamen $gv) => $this->resumerGroupeVirtuel($gv));
+        $scan = ['ids' => [], 'kpis' => []];
 
-        if ($f['statut'] === 'derive') {
-            $idsEnDerive = $lignesKpis->filter(fn (array $item) => $item['en_derive'] || ! $item['conforme'])->pluck('id')->all();
-            $query->whereIn('id', $idsEnDerive === [] ? [0] : $idsEnDerive);
-            $lignesKpis = $lignesKpis->filter(fn (array $item) => $item['en_derive'] || ! $item['conforme'])->values();
+        // Les statuts calculés (dérive, sans salle, dépassement…) exigent une
+        // évaluation métier exhaustive : on collecte les identifiants exacts
+        // par lots, sans plafond silencieux.
+        if (in_array($f['statut'], self::STATUTS_CALCULES, true)) {
+            $scan = $this->scannerGroupes($query, $f['statut']);
+            $query->whereIn('id', $scan['ids'] === [] ? [0] : $scan['ids']);
+        } else {
+            // Toute sélection doit exposer des KPI d'anomalies exacts.
+            $scan = $this->scannerGroupes($query);
         }
 
-        $paginator = $query->paginate($parPage)->withQueryString();
+        $kpis = $this->kpisSql($query) + $scan['kpis'];
+        $kpis['total_eligibles'] = (int) ($scan['kpis']['total_eligibles'] ?? 0);
+        $kpis['plafond_atteint'] = (bool) ($scan['kpis']['plafond_atteint'] ?? false);
+
+        $paginator = $query->paginate($f['par_page'] ?: $parPage)->withQueryString();
 
         $lignes = collect($paginator->items())
             ->map(fn (GroupeVirtuelExamen $gv) => $this->resumerGroupeVirtuel($gv))
             ->values()
             ->all();
-
-        $kpis = [
-            'total_groupes' => $f['statut'] === 'derive' ? $lignesKpis->count() : $paginator->total(),
-            'actifs_proposes' => $lignesKpis->where('statut_generation', GroupeVirtuelExamen::STATUT_PROPOSE)->count(),
-            'valides' => $lignesKpis->where('statut_validation', 'valide')->count(),
-            'publies' => $lignesKpis->where('statut_publication', 'publie')->count(),
-            'total_eligibles' => (int) $lignesKpis->sum('effectif_eligible'),
-            'alertes_count' => $lignesKpis->filter(fn (array $r) => ! $r['conforme'] || $r['en_derive'])->count(),
-        ];
 
         return [
             'paginator' => $paginator,
@@ -333,6 +365,179 @@ class ConsultationExportGroupeVirtuelService
             'kpis' => $kpis,
             'filtres_appliques' => $f,
             'referentiels' => $this->chargerReferentielsFiltres($f['faculte_id'], $f['annee_id']),
+        ];
+    }
+
+    /**
+     * Indique si un résumé correspond à un statut calculé.
+     *
+     * @param  array<string, mixed>  $resume
+     */
+    private function correspondStatutCalcule(array $resume, string $statut): bool
+    {
+        return match ($statut) {
+            'derive' => (bool) ($resume['en_derive'] ?? false) || ! ($resume['conforme'] ?? false),
+            'sans_salle' => empty($resume['salle_id']),
+            'capacite_non_confirmee' => ! empty($resume['salle_id'])
+                && (($resume['salle_capacite'] ?? null) === null || (int) ($resume['salle_capacite'] ?? 0) <= 0),
+            'depassement' => $resume['salle_capacite'] !== null
+                && (int) ($resume['salle_capacite'] ?? 0) > 0
+                && (int) ($resume['effectif_eligible'] ?? 0) > (int) $resume['salle_capacite'],
+            'sans_eligible' => (int) ($resume['effectif_eligible'] ?? 0) === 0,
+            'bloquant' => ! empty($resume['bloquants']),
+            default => true,
+        };
+    }
+
+    /**
+     * Parcourt la sélection par lots et calcule les indicateurs d'anomalies.
+     *
+     * Le plafond de sécurité est explicite : aucun chiffre tronqué n'est
+     * présenté comme exact (`plafond_atteint`).
+     *
+     * Lorsque `$statutFiltre` désigne un statut calculé, les KPI retournés
+     * portent sur le sous-ensemble réellement filtré (et non sur la
+     * sélection complète), afin que les cartes restent cohérentes avec la
+     * liste affichée.
+     *
+     * @return array{ids: array<int, int>, kpis: array<string, mixed>, kpis_globaux: array<string, mixed>}
+     */
+    private function scannerGroupes(Builder $query, ?string $statutFiltre = null): array
+    {
+        $ids = [];
+        $kpis = $this->kpisAnomaliesVides();
+        $kpisFiltres = $statutFiltre !== null ? $this->kpisAnomaliesVides() : null;
+
+        $compteur = 0;
+        $limite = self::KPI_SCAN_LIMIT;
+
+        (clone $query)
+            ->reorder()
+            ->setEagerLoads([])
+            ->chunkById(200, function (Collection $lot) use (&$ids, &$kpis, &$kpisFiltres, &$compteur, $limite, $statutFiltre) {
+                foreach ($lot as $gv) {
+                    if ($compteur >= $limite) {
+                        $kpis['plafond_atteint'] = true;
+                        if ($kpisFiltres !== null) {
+                            $kpisFiltres['plafond_atteint'] = true;
+                        }
+
+                        return false;
+                    }
+                    $compteur++;
+
+                    $resume = $this->resumerGroupeVirtuel($gv);
+                    $this->accumulerAnomalies($kpis, $resume);
+
+                    if ($statutFiltre !== null && $this->correspondStatutCalcule($resume, $statutFiltre)) {
+                        $ids[] = (int) $resume['id'];
+                        $this->accumulerAnomalies($kpisFiltres, $resume);
+                    }
+                }
+
+                return true;
+            });
+
+        return [
+            'ids' => $ids,
+            'kpis' => $kpisFiltres ?? $kpis,
+            'kpis_globaux' => $kpis,
+        ];
+    }
+
+    /**
+     * Compteurs d'anomalies initialisés à zéro.
+     *
+     * @return array<string, mixed>
+     */
+    private function kpisAnomaliesVides(): array
+    {
+        return [
+            'groupes_en_derive' => 0,
+            'anomalies_bloquantes' => 0,
+            'alertes_count' => 0,
+            'groupes_sans_eligible' => 0,
+            'groupes_depassement' => 0,
+            'groupes_capacite_non_confirmee' => 0,
+            'total_eligibles' => 0,
+            'plafond_atteint' => false,
+        ];
+    }
+
+    /**
+     * Accumule les compteurs d'anomalies pour un groupe résumé.
+     *
+     * @param  array<string, mixed>  $kpis
+     * @param  array<string, mixed>  $resume
+     */
+    private function accumulerAnomalies(array &$kpis, array $resume): void
+    {
+        $kpis['total_eligibles'] += (int) ($resume['effectif_eligible'] ?? 0);
+
+        if (($resume['en_derive'] ?? false) || ! ($resume['conforme'] ?? false)) {
+            $kpis['alertes_count']++;
+        }
+        if ($resume['en_derive'] ?? false) {
+            $kpis['groupes_en_derive']++;
+        }
+        if (! empty($resume['bloquants'])) {
+            $kpis['anomalies_bloquantes']++;
+        }
+        if ((int) ($resume['effectif_eligible'] ?? 0) === 0) {
+            $kpis['groupes_sans_eligible']++;
+        }
+        if (! empty($resume['salle_id'])
+            && (($resume['salle_capacite'] ?? null) === null || (int) ($resume['salle_capacite'] ?? 0) <= 0)) {
+            $kpis['groupes_capacite_non_confirmee']++;
+        }
+        if (($resume['salle_capacite'] ?? null) !== null
+            && (int) ($resume['salle_capacite'] ?? 0) > 0
+            && (int) ($resume['effectif_eligible'] ?? 0) > (int) $resume['salle_capacite']) {
+            $kpis['groupes_depassement']++;
+        }
+    }
+
+    /**
+     * Indicateurs exacts calculables en SQL (aucun chargement de modèles).
+     *
+     * @return array<string, int>
+     */
+    private function kpisSql(Builder $query): array
+    {
+        $base = (clone $query)->reorder();
+        $ids = (clone $base)->select('id');
+
+        $valides = (clone $base)
+            ->where('statut', GroupeVirtuelExamen::STATUT_PROPOSE)
+            ->whereHas('epreuve', fn (Builder $ep) => $ep->whereNotNull('population_validated_at'))
+            ->count();
+
+        $publies = (clone $base)
+            ->where('statut', GroupeVirtuelExamen::STATUT_PROPOSE)
+            ->where(fn (Builder $q) => $q
+                ->whereHas('examen', fn (Builder $ex) => $ex->whereIn('statut', ['published', 'ongoing', 'completed']))
+                ->orWhereHas('epreuve', fn (Builder $ep) => $ep->whereIn('statut', ['published', 'ongoing', 'completed'])))
+            ->count();
+
+        return [
+            'total_groupes' => (clone $base)->count(),
+            'actifs_proposes' => (clone $base)->where('statut', GroupeVirtuelExamen::STATUT_PROPOSE)->count(),
+            'valides' => $valides,
+            'publies' => $publies,
+            'total_exclus' => GroupeVirtuelMembre::query()
+                ->whereIn('groupe_virtuel_id', $ids)
+                ->where('decision', '!=', GroupeVirtuelMembre::DECISION_ELIGIBLE)
+                ->count(),
+            'etudiants_eligibles_uniques' => GroupeVirtuelMembre::query()
+                ->whereIn('groupe_virtuel_id', $ids)
+                ->where('decision', GroupeVirtuelMembre::DECISION_ELIGIBLE)
+                ->distinct()
+                ->count('etudiant_id'),
+            'groupes_sans_salle' => (clone $base)
+                ->where(fn (Builder $q) => $q
+                    ->whereNull('epreuve_id')
+                    ->orWhereHas('epreuve', fn (Builder $ep) => $ep->whereNull('salle_id')))
+                ->count(),
         ];
     }
 
@@ -472,6 +677,7 @@ class ConsultationExportGroupeVirtuelService
             'export_officiel_autorise' => $controle['export_officiel_autorise'],
             'alertes' => $controle['alertes'],
             'bloquants' => $controle['bloquants'],
+            'anomalies_detaillees' => $controle['anomalies_detaillees'] ?? [],
         ];
     }
 
@@ -652,6 +858,7 @@ class ConsultationExportGroupeVirtuelService
             'export_officiel_autorise' => $controle['export_officiel_autorise'],
             'alertes' => $controle['alertes'],
             'bloquants' => $controle['bloquants'],
+            'anomalies_detaillees' => $controle['anomalies_detaillees'] ?? [],
         ];
     }
 
@@ -670,18 +877,39 @@ class ConsultationExportGroupeVirtuelService
 
         $alertes = [];
         $bloquants = [];
+        $anomaliesDetaillees = [];
         $explicationsEcarts = [];
 
         if ($matiereId === null) {
             $msg = 'Matière absente : le groupe virtuel doit être rattaché à une matière explicite.';
             $bloquants[] = $msg;
             $alertes[] = $msg;
+            $anomaliesDetaillees[] = [
+                'titre' => 'Matière académique absente',
+                'detecte' => 'Le groupe virtuel ne possède aucune matière d\'examen rattachée.',
+                'regle' => 'Correspondance académique stricte : chaque épreuve et groupe virtuel doit être rattaché à une matière valide.',
+                'impact' => 'Impossible de contrôler l\'éligibilité réglementaire des candidats. Publication strictement bloquée.',
+                'type' => 'bloquant',
+                'action_corrective' => 'Associer le groupe virtuel à la matière officielle de l\'épreuve.',
+                'conditions_revalidation' => 'Revalidation de l\'épreuve par le responsable pédagogique.',
+                'action_type' => 'autre',
+            ];
         }
 
         if ($sourcesIds === [] || $groupesSources->count() !== count($sourcesIds)) {
             $msg = 'Groupes académiques sources manquants ou introuvables.';
             $bloquants[] = $msg;
             $alertes[] = $msg;
+            $anomaliesDetaillees[] = [
+                'titre' => 'Groupes sources introuvables',
+                'detecte' => 'Les groupes académiques sources enregistrés sont introuvables ou incomplets dans le référentiel.',
+                'regle' => 'Agrégation traçable : un groupe virtuel doit agréger des groupes réels existants.',
+                'impact' => 'Effectifs potentiellement faussés et étudiants orphelins. Exports officiels bloqués.',
+                'type' => 'bloquant',
+                'action_corrective' => 'Resynchroniser le groupe virtuel pour réassocier les groupes actifs.',
+                'conditions_revalidation' => 'Contrôle de scolarité obligatoire.',
+                'action_type' => 'resynchroniser',
+            ];
         }
 
         // 1. Cohérence académique entre les groupes sources et le périmètre
@@ -692,6 +920,16 @@ class ConsultationExportGroupeVirtuelService
                     $msg = "Le groupe source {$gs->code} ne correspond pas au périmètre académique de l'épreuve (faculté, programme, niveau ou filière incompatible).";
                     $bloquants[] = $msg;
                     $alertes[] = $msg;
+                    $anomaliesDetaillees[] = [
+                        'titre' => "Incompatibilité du groupe source {$gs->code}",
+                        'detecte' => "Le groupe source {$gs->code} appartient à un programme, niveau ou faculté différent de l'épreuve.",
+                        'regle' => 'Isolation des cohortes : interdiction de mélanger des filières ou niveaux distincts.',
+                        'impact' => 'Risque majeur d\'affectation erronée d\'étudiants à une matière hors de leur maquette.',
+                        'type' => 'bloquant',
+                        'action_corrective' => 'Exclure le groupe incompatible ou adapter le paramétrage de l\'épreuve.',
+                        'conditions_revalidation' => 'Validation formelle par la direction des études.',
+                        'action_type' => 'resynchroniser',
+                    ];
                 }
             }
         }
@@ -769,6 +1007,16 @@ class ConsultationExportGroupeVirtuelService
             $msg = "Dérive de population détectée depuis la génération du groupe virtuel ({$retraitCount} devenu(s) non éligible(s), {$ajoutCount} nouvellement éligible(s)). Une revalidation est requise.";
             $alertes[] = $msg;
             $bloquants[] = $msg;
+            $anomaliesDetaillees[] = [
+                'titre' => 'Dérive de population depuis la génération',
+                'detecte' => "La composition des étudiants éligibles a évolué après la génération du groupe ({$retraitCount} retrait(s), {$ajoutCount} ajout(s)).",
+                'regle' => 'Intégrité de la cohorte d\'examen : le groupe virtuel doit refléter exactement les inscriptions pédagogiques valides au moment de l\'épreuve.',
+                'impact' => 'Divergence entre la feuille d\'émargement officielle et les listes académiques. Export officiel bloqué.',
+                'type' => 'bloquant',
+                'action_corrective' => 'Cliquer sur « Actualiser la proposition » pour resynchroniser automatiquement le groupe virtuel.',
+                'conditions_revalidation' => 'Revalidation de la cohorte avant impression des documents finaux.',
+                'action_type' => 'resynchroniser',
+            ];
         }
 
         // 5. Détection de dérive depuis la validation de population sur l'épreuve (G4)
@@ -779,6 +1027,16 @@ class ConsultationExportGroupeVirtuelService
                 .'. Veuillez revalider la population via le workflow de préparation.';
             $alertes[] = $msg;
             $bloquants[] = $msg;
+            $anomaliesDetaillees[] = [
+                'titre' => 'Dérive de population après validation officielle',
+                'detecte' => 'La population validée le '.($epreuve->population_validated_at?->format('d/m/Y H:i') ?? '—').' a été altérée par des modifications ultérieures.',
+                'regle' => 'Invariance des validations de gouvernance : toute dérive invalide formellement l\'approbation antérieure.',
+                'impact' => 'Publication officielle de l\'examen et génération des convocations formellement interdites.',
+                'type' => 'bloquant',
+                'action_corrective' => 'Relancer le workflow de revalidation officielle de la population sur la fiche épreuve.',
+                'conditions_revalidation' => 'Approbation par le responsable de session ou le doyen.',
+                'action_type' => 'revalider',
+            ];
         }
 
         // 6. Contrôle CorrespondanceExamenService sur l'épreuve associée
@@ -805,12 +1063,72 @@ class ConsultationExportGroupeVirtuelService
                 if (! in_array($b, $alertes, true)) {
                     $alertes[] = $b;
                 }
+                $anomaliesDetaillees[] = [
+                    'titre' => 'Bloquant de correspondance pédagogique',
+                    'detecte' => $b,
+                    'regle' => 'Conformité stricte de correspondance Matière ↔ Groupes ↔ Étudiants.',
+                    'impact' => 'Impossibilité d\'éditer des convocations conformes.',
+                    'type' => 'bloquant',
+                    'action_corrective' => 'Corriger l\'affectation de l\'épreuve ou de ses candidats selon la règle violée.',
+                    'conditions_revalidation' => 'Nouveau contrôle de correspondance passant à 100%.',
+                    'action_type' => 'autre',
+                ];
             }
         }
 
         $effectifAttendu = $epreuve !== null ? count($idsActuelsEligibles) : count($idsMembresEligibles);
         $effectifEligible = count($idsMembresEligibles);
         $effectifExclu = $groupe->membres->where('decision', '!=', GroupeVirtuelMembre::DECISION_ELIGIBLE)->count();
+
+        // 7. Contrôle capacitaire D-04 de la salle
+        if ($epreuve !== null) {
+            $salle = $epreuve->salle;
+            if ($salle === null) {
+                $anomaliesDetaillees[] = [
+                    'titre' => 'Salle d\'examen non affectée (D-04)',
+                    'detecte' => 'Aucune salle ni amphithéâtre n\'a encore été affecté à cette épreuve.',
+                    'regle' => 'Planification complète D-04 requise avant validation et publication officielles.',
+                    'impact' => 'Impossibilité de publier le planning des épreuves et de générer les convocations avec lieu.',
+                    'type' => 'avertissement',
+                    'action_corrective' => 'Utiliser le module D-04 pour affecter une salle adaptée ou un amphithéâtre.',
+                    'conditions_revalidation' => 'Vérification de la disponibilité du créneau horaire.',
+                    'action_type' => 'salle_d04',
+                ];
+            } elseif ($salle->capacite === null || (int) $salle->capacite <= 0) {
+                $msg = "Capacité de salle non confirmée (D-04) : la capacité de la salle {$salle->code} est indéterminée ou non renseignée (aucun accueil d'étudiants ne peut être garanti).";
+                $alertes[] = $msg;
+                $bloquants[] = $msg;
+                $anomaliesDetaillees[] = [
+                    'titre' => 'Capacité de salle non confirmée (D-04)',
+                    'detecte' => "La salle {$salle->code} affectée à l'épreuve n'a pas de capacité nominale ou utile validée.",
+                    'regle' => 'Une capacité inconnue ne peut jamais être considérée comme confirmée (Règle impérative D-04).',
+                    'impact' => 'Incertitude sur les conditions matérielles d\'examen. Export officiel et publication bloqués.',
+                    'type' => 'bloquant',
+                    'action_corrective' => 'Consulter les propositions de salles compatibles en lecture seule ou renseigner la capacité certifiée dans le référentiel des salles.',
+                    'conditions_revalidation' => 'Affectation d\'une salle à capacité confirmée suffisante et sans conflit.',
+                    'action_type' => 'salle_d04',
+                    'salle_id' => $salle->id,
+                    'salle_code' => $salle->code,
+                ];
+            } elseif ($effectifEligible > (int) $salle->capacite) {
+                $deficit = $effectifEligible - (int) $salle->capacite;
+                $msg = "Capacité de salle insuffisante : {$effectifEligible} étudiant(s) éligible(s) pour une capacité de {$salle->capacite} places dans la salle {$salle->code} (déficit de {$deficit} places).";
+                $alertes[] = $msg;
+                $bloquants[] = $msg;
+                $anomaliesDetaillees[] = [
+                    'titre' => 'Dépassement de capacité utile D-04',
+                    'detecte' => "La salle {$salle->code} ({$salle->capacite} places) ne peut pas accueillir les {$effectifEligible} étudiants du groupe virtuel.",
+                    'regle' => 'Jauge utile D-04 : aucun dépassement de capacité n\'est toléré pour garantir les conditions d\'examen.',
+                    'impact' => 'Risque de surpeuplement et d\'invalidation matérielle de l\'examen. Publication bloquée.',
+                    'type' => 'bloquant',
+                    'action_corrective' => 'Permuter vers un amphithéâtre ou diviser en plusieurs salles via le comparateur de scénarios D-04.',
+                    'conditions_revalidation' => 'Nouvelle proposition de salle validée avec jauge résiduelle positive.',
+                    'action_type' => 'salle_d04',
+                    'salle_id' => $salle->id,
+                    'salle_code' => $salle->code,
+                ];
+            }
+        }
 
         // Explication systématique des différences d'effectifs (Phase C)
         if ($totalOrigine !== $effectifEligible) {
@@ -832,6 +1150,16 @@ class ConsultationExportGroupeVirtuelService
             $msg = 'Ce groupe virtuel a été annulé et ne peut pas faire l’objet d’un export officiel.';
             $bloquants[] = $msg;
             $alertes[] = $msg;
+            $anomaliesDetaillees[] = [
+                'titre' => 'Groupe virtuel annulé',
+                'detecte' => 'Ce groupe virtuel a été explicitement marqué comme annulé.',
+                'regle' => 'Les groupes annulés sont exclus du cycle actif d\'évaluation.',
+                'impact' => 'Exports officiels et impressions de feuilles d\'émargement désactivés.',
+                'type' => 'bloquant',
+                'action_corrective' => 'Générer une nouvelle proposition si l\'épreuve doit être maintenue.',
+                'conditions_revalidation' => 'Création d\'un nouveau groupe virtuel actif.',
+                'action_type' => 'autre',
+            ];
         }
 
         $enDerive = $deriveDepuisGeneration || $deriveDepuisValidation;
@@ -853,8 +1181,86 @@ class ConsultationExportGroupeVirtuelService
             'export_officiel_autorise' => $exportOfficielAutorise,
             'alertes' => array_values(array_unique($alertes)),
             'bloquants' => array_values(array_unique($bloquants)),
+            'anomalies_detaillees' => $anomaliesDetaillees,
             'explications_ecarts' => $explicationsEcarts,
             'correspondance_epreuve' => $correspondanceEpreuve,
+        ];
+    }
+
+    /**
+     * Phase 2.4 — Centre des anomalies centralisé des groupes virtuels.
+     * Collecte, catégorise et structure l'ensemble des anomalies (bloquantes, dérives, capacités).
+     *
+     * @param  array<string, mixed>  $filtres
+     * @return array{
+     *     anomalies: array<int, array<string, mixed>>,
+     *     compteurs: array{total: int, bloquants: int, avertissements: int, derives: int, capacites: int},
+     *     filtres_appliques: array<string, mixed>,
+     *     referentiels: array<string, mixed>
+     * }
+     */
+    public function listerAnomaliesCentralisees(array $filtres, User $user): array
+    {
+        $this->verifierPermissionConsultation($user);
+        $f = $this->normaliserFiltres($filtres, $user);
+        $query = $this->construireRequete($f, $user);
+
+        $anomalies = [];
+        $compteurs = [
+            'total' => 0,
+            'bloquants' => 0,
+            'avertissements' => 0,
+            'derives' => 0,
+            'capacites' => 0,
+        ];
+
+        $groupes = (clone $query)->limit(200)->get();
+
+        foreach ($groupes as $gv) {
+            $fiche = $this->construireFicheDetaillee($gv, $user);
+            $resume = $fiche['resume'];
+
+            foreach ($fiche['anomalies_detaillees'] ?? [] as $anom) {
+                $compteurs['total']++;
+                if (($anom['type'] ?? '') === 'bloquant') {
+                    $compteurs['bloquants']++;
+                } else {
+                    $compteurs['avertissements']++;
+                }
+
+                if (str_contains($anom['action_type'] ?? '', 'salle') || str_contains($anom['titre'] ?? '', 'capacité') || str_contains($anom['titre'] ?? '', 'Salle')) {
+                    $compteurs['capacites']++;
+                }
+
+                $anomalies[] = array_merge($anom, [
+                    'groupe_id' => (int) $gv->id,
+                    'groupe_libelle' => (string) ($resume['libelle'] ?? '—'),
+                    'matiere_code' => (string) ($resume['matiere_code'] ?? '—'),
+                    'matiere_nom' => (string) ($resume['matiere_nom'] ?? '—'),
+                    'session_nom' => (string) ($resume['session_nom'] ?? '—'),
+                    'faculte_nom' => (string) ($resume['faculte_nom'] ?? '—'),
+                    'epreuve_id' => $resume['epreuve_id'],
+                    'examen_id' => $resume['examen_id'],
+                    'effectif_eligible' => (int) ($resume['effectif_eligible'] ?? 0),
+                    'date_detection' => now()->format('d/m/Y H:i'),
+                ]);
+            }
+
+            if ($fiche['en_derive']) {
+                $compteurs['derives']++;
+            }
+        }
+
+        $graviteFiltre = $filtres['gravite'] ?? null;
+        if ($graviteFiltre && in_array($graviteFiltre, ['bloquant', 'avertissement'], true)) {
+            $anomalies = array_values(array_filter($anomalies, fn ($a) => ($a['type'] ?? '') === $graviteFiltre));
+        }
+
+        return [
+            'anomalies' => $anomalies,
+            'compteurs' => $compteurs,
+            'filtres_appliques' => $f + ['gravite' => $graviteFiltre],
+            'referentiels' => $this->chargerReferentielsFiltres($f['faculte_id'], $f['annee_id']),
         ];
     }
 
@@ -901,6 +1307,7 @@ class ConsultationExportGroupeVirtuelService
         string $format,
         string $type,
         User $user,
+        bool $modeSpecimen = false,
     ): array {
         $format = mb_strtolower(trim($format));
         if (! in_array($format, self::FORMATS_EXPORT, true)) {
@@ -912,7 +1319,7 @@ class ConsultationExportGroupeVirtuelService
         $fiche = $this->construireFicheDetaillee($groupe, $user);
 
         // Blocage de l'export officiel lorsque la correspondance est invalide ou en dérive (Phase C, F, G.11, G.12)
-        if (! $fiche['export_officiel_autorise']) {
+        if (! $fiche['export_officiel_autorise'] && ! $modeSpecimen) {
             $motif = implode(' ', $fiche['bloquants']) ?: CorrespondanceExamenService::ALERTE_PUBLICATION_BLOQUEE;
             throw new DomainException("Export officiel bloqué : {$motif}");
         }
@@ -1023,6 +1430,7 @@ class ConsultationExportGroupeVirtuelService
         array $filtres,
         string $format,
         User $user,
+        bool $modeSpecimen = false,
     ): array {
         $format = mb_strtolower(trim($format));
         if (! in_array($format, self::FORMATS_EXPORT, true)) {

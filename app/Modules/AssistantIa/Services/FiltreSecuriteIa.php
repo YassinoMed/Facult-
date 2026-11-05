@@ -128,7 +128,7 @@ class FiltreSecuriteIa
                 'faculte_cible' => $faculteIdCible,
             ]);
 
-            throw new SecuriteIaException("Accès refusé : la ressource demandée n'appartient pas à votre faculté de rattachement.");
+            throw new SecuriteIaException("Accès refusé : la ressource demandée n'appartient pas à votre faculté de rattachement. Périmètre non autorisé.");
         }
     }
 

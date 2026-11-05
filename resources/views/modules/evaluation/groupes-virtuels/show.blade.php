@@ -102,11 +102,234 @@
                 </div>
             </div>
 
-            <ul class="list-disc list-inside space-y-1 text-rose-900 font-medium">
-                @foreach($fiche['alertes'] as $alerte)
-                    <li>{{ $alerte }}</li>
-                @endforeach
-            </ul>
+            @if(!empty($fiche['anomalies_detaillees']))
+                <div class="mt-4 space-y-3">
+                    <h4 class="text-xs font-bold uppercase tracking-wider text-rose-950">Diagnostic réglementaire & actions requises :</h4>
+                    <div class="grid grid-cols-1 gap-3">
+                        @foreach($fiche['anomalies_detaillees'] as $anom)
+                            <div class="rounded-xl border border-rose-200/90 bg-white/90 p-4 text-xs shadow-2xs">
+                                <div class="flex items-center justify-between gap-2 border-b border-rose-100 pb-2 mb-2">
+                                    <div class="flex items-center gap-2">
+                                        <span class="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-bold {{ ($anom['type'] ?? '') === 'bloquant' ? 'bg-rose-100 text-rose-800' : 'bg-amber-100 text-amber-800' }}">
+                                            {{ ($anom['type'] ?? '') === 'bloquant' ? '🔴 Bloquant' : '🟡 Avertissement' }}
+                                        </span>
+                                        <span class="font-bold text-slate-900 text-sm">{{ $anom['titre'] }}</span>
+                                    </div>
+                                    @if(($anom['action_type'] ?? '') === 'salle_d04' && !empty($resume['epreuve_id']))
+                                        <a href="{{ route('admin.evaluation.examens.groupes', ['mode' => 'B', 'epreuve_id' => $resume['epreuve_id']]) }}"
+                                           class="inline-flex items-center gap-1 rounded-lg bg-purple-600 hover:bg-purple-700 text-white font-bold px-2.5 py-1 text-[11px] shadow-2xs transition">
+                                            🏛️ Ouvrir comparateur D-04
+                                        </a>
+                                    @endif
+                                </div>
+                                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2 text-slate-700">
+                                    <div>
+                                        <span class="font-bold text-slate-900">1. Détection :</span>
+                                        <p class="mt-0.5 text-slate-600">{{ $anom['detecte'] }}</p>
+                                    </div>
+                                    <div>
+                                        <span class="font-bold text-slate-900">2. Règle concernée :</span>
+                                        <p class="mt-0.5 text-slate-600">{{ $anom['regle'] }}</p>
+                                    </div>
+                                    <div>
+                                        <span class="font-bold text-slate-900">3. Impact sur l'examen :</span>
+                                        <p class="mt-0.5 text-slate-600">{{ $anom['impact'] }}</p>
+                                    </div>
+                                    <div>
+                                        <span class="font-bold text-slate-900">4. Caractère :</span>
+                                        <p class="mt-0.5 font-semibold {{ ($anom['type'] ?? '') === 'bloquant' ? 'text-rose-700' : 'text-amber-700' }}">
+                                            {{ ($anom['type'] ?? '') === 'bloquant' ? 'Bloquant officiel' : 'Informatif' }}
+                                        </p>
+                                    </div>
+                                    <div>
+                                        <span class="font-bold text-slate-900">5. Action corrective autorisée :</span>
+                                        <p class="mt-0.5 text-slate-600">{{ $anom['action_corrective'] }}</p>
+                                    </div>
+                                    <div>
+                                        <span class="font-bold text-slate-900">6. Conditions de revalidation :</span>
+                                        <p class="mt-0.5 text-slate-600">{{ $anom['conditions_revalidation'] }}</p>
+                                    </div>
+                                </div>
+                            </div>
+                        @endforeach
+                    </div>
+                </div>
+            @else
+                <ul class="list-disc list-inside space-y-1 text-rose-900 font-medium">
+                    @foreach($fiche['alertes'] as $alerte)
+                        <li>{{ $alerte }}</li>
+                    @endforeach
+                </ul>
+            @endif
+        </div>
+    @endif
+
+    {{-- Panneau de diagnostic capacitaire D-04 et propositions de salles en lecture seule --}}
+    @if(!empty($diagnosticSalle) && ($diagnosticSalle['salle_actuelle']['est_non_confirmee'] || !empty($diagnosticSalle['candidates_compatibles'])))
+        <div class="rounded-2xl border-2 border-indigo-200 bg-indigo-50/60 p-5 text-xs text-indigo-950 shadow-xs space-y-4">
+            <div class="flex flex-wrap items-center justify-between gap-3 border-b border-indigo-200/80 pb-3">
+                <div class="flex items-center gap-2">
+                    <span class="inline-flex items-center gap-1.5 rounded-full bg-indigo-700 px-3 py-1 text-xs font-bold text-white shadow-2xs">
+                        🏛️ Diagnostic capacitaire D-04 — Propositions en lecture seule
+                    </span>
+                    <span class="inline-flex rounded-full px-2.5 py-0.5 text-[11px] font-bold {{ $diagnosticSalle['salle_actuelle']['statut_capacite'] === 'validee' ? 'bg-emerald-100 text-emerald-900 border border-emerald-300' : 'bg-rose-100 text-rose-900 border border-rose-300' }}">
+                        @if($diagnosticSalle['salle_actuelle']['statut_capacite'] === 'non_confirmee')
+                            🔴 Capacité non confirmée
+                        @elseif($diagnosticSalle['salle_actuelle']['statut_capacite'] === 'insuffisante')
+                            🔴 Capacité insuffisante
+                        @elseif($diagnosticSalle['salle_actuelle']['statut_capacite'] === 'non_affectee')
+                            🟡 Salle non affectée
+                        @else
+                            🟢 Capacité confirmée
+                        @endif
+                    </span>
+                </div>
+                <div class="flex items-center gap-2 text-[11px] text-indigo-800 font-semibold bg-white/80 px-3 py-1 rounded-xl border border-indigo-200">
+                    <span>🔒 Mode consultation stricte</span>
+                    <span class="text-indigo-400">•</span>
+                    <span>Planning inchangé</span>
+                </div>
+            </div>
+
+            {{-- État de la salle actuelle et critères vérifiés --}}
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-3">
+                <div class="rounded-xl border border-indigo-200 bg-white p-3 shadow-2xs">
+                    <span class="text-[11px] font-bold text-indigo-700 uppercase tracking-wider">Salle actuelle</span>
+                    <p class="mt-1 text-sm font-extrabold text-slate-900">{{ $diagnosticSalle['salle_actuelle']['code'] }}</p>
+                    <p class="text-[11px] text-slate-500">{{ $diagnosticSalle['salle_actuelle']['nom'] }}</p>
+                    <p class="mt-2 text-[11px] font-semibold {{ $diagnosticSalle['salle_actuelle']['est_non_confirmee'] ? 'text-rose-600' : 'text-emerald-700' }}">
+                        {{ $diagnosticSalle['salle_actuelle']['motif_statut'] }}
+                    </p>
+                </div>
+
+                <div class="rounded-xl border border-indigo-200 bg-white p-3 shadow-2xs">
+                    <span class="text-[11px] font-bold text-indigo-700 uppercase tracking-wider">Capacité actuelle</span>
+                    <div class="mt-1 flex items-baseline gap-2">
+                        <span class="text-base font-extrabold text-slate-900">{{ $diagnosticSalle['salle_actuelle']['capacite_utile_d04'] }}</span>
+                        <span class="text-[11px] text-slate-500">places utiles (nominale : {{ $diagnosticSalle['salle_actuelle']['capacite_nominale'] ?: 'Non renseignée' }})</span>
+                    </div>
+                    <p class="mt-2 text-[11px] text-slate-600">
+                        Règle D-04 : ratio 50% appliqué sur capacité nominale certifiée.
+                    </p>
+                </div>
+
+                <div class="rounded-xl border border-indigo-200 bg-white p-3 shadow-2xs">
+                    <span class="text-[11px] font-bold text-indigo-700 uppercase tracking-wider">Effectif requis</span>
+                    <p class="mt-1 text-base font-extrabold text-slate-900">{{ $diagnosticSalle['effectif_requis'] }} candidats</p>
+                    <p class="text-[11px] text-slate-500">{{ $diagnosticSalle['candidats_eligibles_count'] }} étudiant(s) éligible(s) vérifié(s)</p>
+                    <p class="mt-2 text-[11px] text-slate-600">
+                        Créneau : {{ $diagnosticSalle['epreuve']['heure_debut'] ?? '—' }} → {{ $diagnosticSalle['epreuve']['heure_fin'] ?? '—' }} ({{ $diagnosticSalle['epreuve']['date'] ?? '—' }})
+                    </p>
+                </div>
+
+                <div class="rounded-xl border border-indigo-200 bg-white p-3 shadow-2xs">
+                    <span class="text-[11px] font-bold text-indigo-700 uppercase tracking-wider">Résultat du diagnostic</span>
+                    <p class="mt-1 text-xs font-bold text-indigo-950">{{ $diagnosticSalle['motif_diagnostic'] }}</p>
+                    <div class="mt-2 flex items-center gap-2">
+                        <span class="inline-flex rounded-lg bg-indigo-100 text-indigo-900 px-2 py-0.5 text-[11px] font-bold">
+                            {{ $diagnosticSalle['nb_candidates'] }} compatible(s)
+                        </span>
+                        <span class="inline-flex rounded-lg bg-slate-100 text-slate-700 px-2 py-0.5 text-[11px] font-bold">
+                            {{ $diagnosticSalle['nb_exclues'] }} exclue(s)
+                        </span>
+                    </div>
+                </div>
+            </div>
+
+            {{-- Liste des salles candidates compatibles --}}
+            @if(!empty($diagnosticSalle['candidates_compatibles']))
+                <div class="space-y-2">
+                    <h4 class="text-xs font-bold uppercase tracking-wider text-indigo-950 flex items-center gap-1.5">
+                        <span>✅ Salles compatibles détectées (capacité confirmée suffisante & sans conflit) :</span>
+                    </h4>
+                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                        @foreach($diagnosticSalle['candidates_compatibles'] as $cand)
+                            <div class="rounded-xl border border-indigo-200 bg-white p-3 shadow-2xs hover:border-indigo-400 transition">
+                                <div class="flex items-center justify-between gap-2 border-b border-indigo-100 pb-1.5 mb-1.5">
+                                    <div class="flex items-center gap-1.5">
+                                        <span class="font-bold text-slate-900 text-sm">{{ $cand['code'] }}</span>
+                                        <span class="text-[10px] uppercase font-bold px-1.5 py-0.5 rounded {{ $cand['est_amphitheatre'] ? 'bg-purple-100 text-purple-800' : 'bg-blue-100 text-blue-800' }}">
+                                            {{ $cand['est_amphitheatre'] ? 'Amphi' : 'Salle' }}
+                                        </span>
+                                    </div>
+                                    <span class="text-[11px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
+                                        +{{ $cand['surplus_places'] }} places
+                                    </span>
+                                </div>
+                                <p class="text-[11px] text-slate-600 truncate">{{ $cand['nom'] }} • {{ $cand['batiment'] }}</p>
+                                <div class="mt-2 flex items-center justify-between text-[11px] text-slate-500">
+                                    <span>Capacité utile D-04 : <strong class="text-slate-800">{{ $cand['capacite_utile_d04'] }}</strong></span>
+                                    <span>Nominale : {{ $cand['capacite_nominale'] }}</span>
+                                </div>
+                                @can('epreuves.update')
+                                    <div class="mt-3 pt-2 border-t border-slate-100 flex items-center justify-end">
+                                        <form action="{{ route('admin.evaluation.examens.groupes.capacite.accepter') }}" method="POST" onsubmit="return confirm('Confirmez-vous l\'affectation officielle de la salle {{ $cand['code'] }} à cette épreuve ?');">
+                                            @csrf
+                                            <input type="hidden" name="epreuve_id" value="{{ $resume['epreuve_id'] }}">
+                                            <input type="hidden" name="salle_ids[]" value="{{ $cand['id'] }}">
+                                            <input type="hidden" name="type" value="affectation_salle_unique">
+                                            <input type="hidden" name="motif" value="Affectation de la salle candidate {{ $cand['code'] }} (capacité utile de {{ $cand['capacite_utile_d04'] }} places) pour lever l'anomalie D-04.">
+                                            <input type="hidden" name="empreinte" value="{{ $diagnosticSalle['empreinte'] ?? '' }}">
+                                            <button type="submit" class="inline-flex items-center gap-1 rounded-lg bg-indigo-700 hover:bg-indigo-800 px-2.5 py-1 text-[11px] font-bold text-white shadow-2xs transition cursor-pointer">
+                                                <span>Affecter cette salle</span>
+                                                <svg class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+                                                    <path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5" />
+                                                </svg>
+                                            </button>
+                                        </form>
+                                    </div>
+                                @endcan
+                            </div>
+                        @endforeach
+                    </div>
+                </div>
+            @elseif($diagnosticSalle['diagnostic_global'] === 'donnees_insuffisantes')
+                <div class="rounded-xl border border-amber-300 bg-amber-50 p-3 text-xs text-amber-950">
+                    <p class="font-bold">⚠️ Données de planification insuffisantes :</p>
+                    <p class="mt-0.5">{{ $diagnosticSalle['motif_diagnostic'] }}</p>
+                </div>
+            @else
+                <div class="rounded-xl border border-rose-300 bg-rose-50 p-3 text-xs text-rose-950">
+                    <p class="font-bold">⚠️ Aucune salle candidate compatible trouvée :</p>
+                    <p class="mt-0.5">{{ $diagnosticSalle['motif_diagnostic'] }}</p>
+                </div>
+            @endif
+
+            {{-- Accordéon des salles exclues et motifs --}}
+            @if(!empty($diagnosticSalle['salles_exclues']))
+                <details class="rounded-xl border border-indigo-200/90 bg-white/80 p-3 text-xs">
+                    <summary class="font-bold text-indigo-950 cursor-pointer select-none flex items-center justify-between">
+                        <span>🔍 Voir le détail des salles analysées et motifs d'exclusion ({{ $diagnosticSalle['nb_exclues'] }} salles)</span>
+                        <span class="text-indigo-600 text-[11px]">Déplier / Replier</span>
+                    </summary>
+                    <div class="mt-3 grid grid-cols-1 md:grid-cols-2 gap-2 pt-2 border-t border-indigo-100">
+                        @foreach($diagnosticSalle['salles_exclues'] as $exclue)
+                            <div class="rounded-lg border border-slate-200 bg-slate-50/70 p-2.5 text-[11px]">
+                                <div class="flex items-center justify-between">
+                                    <span class="font-bold text-slate-900">{{ $exclue['code'] }} ({{ $exclue['nom'] }})</span>
+                                    <span class="text-slate-500">Nominale : {{ $exclue['capacite_nominale'] ?: 'Inconnue' }}</span>
+                                </div>
+                                <ul class="mt-1 list-disc list-inside text-rose-700 font-medium space-y-0.5">
+                                    @foreach($exclue['motifs_exclusion'] as $motif)
+                                        <li>{{ $motif }}</li>
+                                    @endforeach
+                                </ul>
+                            </div>
+                        @endforeach
+                    </div>
+                </details>
+            @endif
+
+            {{-- Mention réglementaire et de sécurité lecture seule --}}
+            <div class="rounded-xl border border-indigo-300 bg-indigo-100/70 p-3 text-[11px] text-indigo-950 flex items-start gap-2.5">
+                <span class="text-base shrink-0">🛡️</span>
+                <div>
+                    <strong class="font-bold">Gouvernance officielle et intégrité du planning :</strong>
+                    <p class="mt-0.5 text-indigo-900 leading-relaxed">
+                        Ce diagnostic et ces propositions sont fournis <strong>exclusivement en lecture seule</strong> pour assister les équipes de scolarité. Conformément aux règles de gestion des examens UniRegistre, aucune réaffectation automatique n'est appliquée et l'export officiel reste suspendu tant qu'une décision formelle n'a pas été confirmée et validée par le circuit officiel.
+                    </p>
+                </div>
+            </div>
         </div>
     @endif
 
@@ -118,6 +341,28 @@
                 Même source de vérité et mêmes contrôles d'éligibilité pour l'écran, XLSX, CSV, PDF et l'impression.
             </p>
         </div>
+
+        @if(! ($fiche['export_officiel_autorise'] ?? false))
+            <div class="rounded-2xl border border-rose-200 bg-rose-50/90 p-4 text-xs text-rose-900 flex flex-wrap items-center justify-between gap-3 shadow-sm">
+                <div class="flex items-center gap-3">
+                    <div class="h-8 w-8 rounded-xl bg-rose-100 text-rose-700 flex items-center justify-center shrink-0 font-bold">
+                        ⚠️
+                    </div>
+                    <div>
+                        <p class="font-bold text-rose-800 text-sm">Génération de documents officiels verrouillée</p>
+                        <p class="text-[11px] text-rose-700 leading-relaxed">
+                            Ce groupe virtuel présente des anomalies bloquantes (incompatibilité pédagogique ou dérive de population). L'impression et l'export officiel sont strictement suspendus pour préserver l'intégrité de la session d'examen.
+                        </p>
+                    </div>
+                </div>
+                <div class="flex items-center gap-2">
+                    <a href="{{ route('admin.evaluation.examens.groupes-virtuels.anomalies') }}"
+                       class="inline-flex items-center gap-1 rounded-xl bg-rose-700 hover:bg-rose-800 px-3 py-1.5 text-xs font-bold text-white transition">
+                        🛠️ Voir dans le Centre des anomalies
+                    </a>
+                </div>
+            </div>
+        @endif
 
         <div class="flex flex-wrap items-center gap-2">
             {{-- Export de la liste des étudiants --}}

@@ -82,6 +82,7 @@ class InscriptionChecklistDocumentaireTest extends TestCase
         $this->assertTrue($piecesPremiere->contains('code', 'cin'));
         $this->assertTrue($piecesPremiere->contains('code', 'photo_identite'));
         $this->assertTrue($piecesPremiere->contains('code', 'releve_notes'));
+        $this->assertTrue($piecesPremiere->contains('code', 'recu_paiement'));
         $this->assertTrue($piecesPremiere->contains('code', 'acte_naissance'));
 
         $pieceCin = $piecesPremiere->firstWhere('code', 'cin');
@@ -117,6 +118,7 @@ class InscriptionChecklistDocumentaireTest extends TestCase
         $this->deposerPieceGed($etudiant, 'cin', 'validated');
         $this->deposerPieceGed($etudiant, 'releve_notes', 'validated');
         $this->deposerPieceGed($etudiant, 'photo_identite', 'validated');
+        $this->deposerPieceGed($etudiant, 'recu_paiement', 'validated');
         // 'acte_naissance' est facultatif et non fourni
 
         $bilan = $service->checklistDossier($etudiant, 'premiere');
@@ -139,6 +141,8 @@ class InscriptionChecklistDocumentaireTest extends TestCase
 
         // CIN validée
         $this->deposerPieceGed($etudiant, 'cin', 'validated');
+        // Reçu de paiement validé
+        $this->deposerPieceGed($etudiant, 'recu_paiement', 'validated');
         // Relevé de notes rejeté avec motif explicite
         $this->deposerPieceGed($etudiant, 'releve_notes', 'rejected', 'Document illisible, scannez l\'original en 300 DPI.');
         // Photo d'identité expirée

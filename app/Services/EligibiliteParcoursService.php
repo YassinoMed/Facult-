@@ -32,8 +32,12 @@ class EligibiliteParcoursService
      *     annee_academique?: string|null,
      *     annee_bac?: string|int|null,
      *     cin?: string|null,
-     *     derogation_administrative?: string|null
+     *     derogation_administrative?: string|null  Référence d'une décision d'autorité.
+     *         N'est prise en compte que si $derogationAutorisee vaut true.
      * }  $candidature
+     * @param  bool  $derogationAutorisee  Opt-in explicite réservé à un parcours
+     *                                     administratif authentifié et autorisé. Ne JAMAIS passer true depuis
+     *                                     une entrée HTTP publique ou non vérifiée (LOOP-146).
      * @return array{
      *     eligible: bool,
      *     statut: string,
@@ -41,10 +45,11 @@ class EligibiliteParcoursService
      *     avertissements: array<int, string>,
      *     explications: array<string, string>,
      *     referentiel_incomplet: bool,
-     *     exception_accordee: bool
+     *     exception_accordee: bool,
+     *     derogation_reference: string|null
      * }
      */
-    public function evaluer(array $candidature): array
+    public function evaluer(array $candidature, bool $derogationAutorisee = false): array
     {
         $bloquants = [];
         $avertissements = [];
@@ -59,7 +64,12 @@ class EligibiliteParcoursService
         $anneeAcademique = ! empty($candidature['annee_academique']) ? (string) $candidature['annee_academique'] : null;
         $anneeBac = ! empty($candidature['annee_bac']) ? (string) $candidature['annee_bac'] : null;
         $cin = ! empty($candidature['cin']) ? strtoupper(trim((string) $candidature['cin'])) : null;
-        $derogation = ! empty($candidature['derogation_administrative']) ? trim((string) $candidature['derogation_administrative']) : null;
+        // SÉCURITÉ (LOOP-146) : une dérogation n'est jamais déduite d'un champ
+        // libre. Elle exige un opt-in explicite du code appelant, lui-même
+        // authentifié et autorisé. Par défaut : aucun contournement possible.
+        $derogation = $derogationAutorisee && ! empty($candidature['derogation_administrative'])
+            ? trim((string) $candidature['derogation_administrative'])
+            : null;
 
         // 1. Contrôle Faculté
         if ($faculteId === null) {
@@ -189,6 +199,7 @@ class EligibiliteParcoursService
             'explications' => $explications,
             'referentiel_incomplet' => $referentielIncomplet,
             'exception_accordee' => $exceptionAccordee,
+            'derogation_reference' => $derogation,
         ];
     }
 

@@ -84,6 +84,7 @@ $classeInactif = 'text-slate-600 hover:bg-slate-100 hover:text-slate-900';
     @foreach([
         ['admin.inscriptions.file-traitement', 'admin.inscriptions.file-traitement*', 'File des inscriptions', 'M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z'],
         ['admin.etudiants.index', 'admin.etudiants.*', 'Registre des étudiants', 'M15 19.128a9.38 9.38 0 0 0 2.625.372 9.337 9.337 0 0 0 4.121-.952 4.125 4.125 0 0 0-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 0 1 8.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0 1 11.964-3.07M12 6.375a3.375 3.375 0 1 1-6.75 0 3.375 3.375 0 0 1 6.75 0Zm8.25 2.25a2.625 2.625 0 1 1-5.25 0 2.625 2.625 0 0 1 5.25 0Z'],
+        ['admin.redoublement.index', 'admin.redoublement.*', 'Acquis & Redoublement', 'M4.26 10.147a60.438 60.438 0 0 0-.491 6.347A48.62 48.62 0 0 1 12 20.904a48.62 48.62 0 0 1 8.232-4.41 60.46 60.46 0 0 0-.491-6.347m-15.482 0a50.636 50.636 0 0 0-2.658-.813A59.906 59.906 0 0 1 12 3.493a59.903 59.903 0 0 1 10.399 5.84c-.896.248-1.783.52-2.658.814m-15.482 0A50.717 50.717 0 0 1 12 13.489a50.702 50.702 0 0 1 7.74-3.342M6.75 15a.75.75 0 1 0 0-1.5.75.75 0 0 0 0 1.5Zm0 0v-3.675A55.378 55.378 0 0 1 12 8.443m-5.25 6.557c0 1.092.427 2.126 1.152 2.898M12 8.443a55.378 55.378 0 0 1 5.25 2.882M12 8.443V6.75m0 0a4.5 4.5 0 0 1 4.5 4.5v3.75'],
         ['admin.archives.index', 'admin.archives.*', 'Archives', 'M12 21v-8.25M15.75 21v-8.25M8.25 21v-8.25M3 9l9-6 9 6m-1.5 12V10.332A48.36 48.36 0 0 0 12 9.75c-2.551 0-5.056.2-7.5.582V21M3 21h18M12 6.75h.008v.008H12V6.75Z'],
         ['admin.groupes.index', 'admin.groupes.*', 'Groupes', 'M3.75 6A2.25 2.25 0 0 1 6 3.75h2.25A2.25 2.25 0 0 1 10.5 6v2.25a2.25 2.25 0 0 1-2.25 2.25H6a2.25 2.25 0 0 1-2.25-2.25V6ZM3.75 15.75A2.25 2.25 0 0 1 6 13.5h2.25a2.25 2.25 0 0 1 2.25 2.25V18a2.25 2.25 0 0 1-2.25 2.25H6A2.25 2.25 0 0 1 3.75 18v-2.25ZM13.5 6a2.25 2.25 0 0 1 2.25-2.25H18A2.25 2.25 0 0 1 20.25 6v2.25A2.25 2.25 0 0 1 18 10.5h-2.25a2.25 2.25 0 0 1-2.25-2.25V6ZM13.5 15.75a2.25 2.25 0 0 1 2.25-2.25H18a2.25 2.25 0 0 1 2.25 2.25V18A2.25 2.25 0 0 1 18 20.25h-2.25A2.25 2.25 0 0 1 13.5 18v-2.25Z'],
         ['admin.facultes.index', 'admin.facultes.*', 'Facultés', 'M12 21v-8.25M15.75 21v-8.25M8.25 21v-8.25M3 9l9-6 9 6m-1.5 12V10.332A48.36 48.36 0 0 0 12 9.75c-2.551 0-5.056.2-7.5.582V21M3 21h18M12 6.75h.008v.008H12V6.75Z'],
@@ -370,6 +371,7 @@ $classeInactif = 'text-slate-600 hover:bg-slate-100 hover:text-slate-900';
         ['etudiant.archives.show', 'etudiant.archives.*', 'Mon dossier'],
         ['etudiant.inscriptions.index', 'etudiant.inscriptions.*', 'Mes inscriptions'],
         ['etudiant.parcours', 'etudiant.parcours', 'Mon parcours LMD'],
+        ['etudiant.acquis.index', 'etudiant.acquis.*', 'Mes acquis & progression'],
         ['etudiant.notes.index', 'etudiant.notes.*', 'Mes notes'],
         ['etudiant.documents.index', 'etudiant.documents.*', 'Mes documents'],
         ['etudiant.historique.index', 'etudiant.historique.*', 'Mon historique'],

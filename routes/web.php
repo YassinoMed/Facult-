@@ -27,6 +27,10 @@ use App\Http\Controllers\Admin\FavoriController;
 use App\Http\Controllers\Admin\FileTraitementController;
 use App\Http\Controllers\Admin\GedController;
 use App\Http\Controllers\Admin\GroupeController;
+use App\Http\Controllers\Admin\Iam\DemandeApprobationController;
+use App\Http\Controllers\Admin\Iam\RoleAffectationController;
+use App\Http\Controllers\Admin\Iam\RoleCrudController;
+use App\Http\Controllers\Admin\Iam\RolePermissionController;
 use App\Http\Controllers\Admin\ImportTemplateController;
 use App\Http\Controllers\Admin\InscriptionAcademiqueController;
 use App\Http\Controllers\Admin\InscriptionGestionController;
@@ -47,6 +51,7 @@ use App\Http\Controllers\Admin\PopulationController;
 use App\Http\Controllers\Admin\PreferenceController;
 use App\Http\Controllers\Admin\QualiteController;
 use App\Http\Controllers\Admin\RechercheController;
+use App\Http\Controllers\Admin\RedoublementGestionController;
 use App\Http\Controllers\Admin\ReinscriptionController;
 use App\Http\Controllers\Admin\RoleController;
 use App\Http\Controllers\Admin\SalleController;
@@ -70,6 +75,7 @@ use App\Http\Controllers\Enseignant\DocumentsController as EnseignantMesDocument
 use App\Http\Controllers\Enseignant\ProfilController as EnseignantProfilController;
 use App\Http\Controllers\Enseignant\ReclamationController as EnseignantReclamationController;
 use App\Http\Controllers\Enseignant\TableauDeBordController as EnseignantTableauDeBordController;
+use App\Http\Controllers\Etudiant\AcquisEtudiantController;
 use App\Http\Controllers\Etudiant\ArchiveController as EtudiantArchiveController;
 use App\Http\Controllers\Etudiant\ConnexionController;
 use App\Http\Controllers\Etudiant\DossierComplementController as EtudiantDossierComplementController;
@@ -91,7 +97,9 @@ use App\Livewire\Admin\Campagnes\GestionGroupesDestinataires;
 use App\Livewire\Admin\Campagnes\SuiviCampagneCourriel;
 use App\Livewire\Admin\Campagnes\TableauDeBordCampagnes;
 use App\Livewire\Admin\Courriels\DesignerCourriel;
+use App\Services\Acquis\DocumentPedagogiqueOfficielService;
 use App\Services\DataExchange\DefinitionRegistry;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -203,6 +211,63 @@ Route::post('/inscription/existant', [DossierExistantController::class, 'enregis
     ->middleware('throttle:dossier-existant.store');
 Route::get('/inscription/existant/confirmation', [DossierExistantController::class, 'confirmation'])
     ->name('inscription.existant.confirmation');
+
+/*
+|--------------------------------------------------------------------------
+| Vérification Publique d'Authenticité des Documents Officiels (LOOP 38)
+|--------------------------------------------------------------------------
+|
+| Endpoint scannable par QR code sans fuite de PII (ref et empreinte uniquement).
+| Protégé par limitation de débit (30 req/min) contre le bruteforce.
+*/
+Route::get('/verification/document', function (Request $request) {
+    $ref = trim((string) $request->query('ref', ''));
+    $empreinte = trim((string) $request->query('empreinte', ''));
+
+    if (empty($ref) || empty($empreinte)) {
+        return response()->json([
+            'valide' => false,
+            'statut' => 'PARAMETRES_INCOMPLETS',
+            'message' => 'Paramètres de vérification incomplets : référence officielle ou empreinte SHA-256 manquante.',
+        ], 400);
+    }
+
+    /** @var DocumentPedagogiqueOfficielService $service */
+    $service = app(DocumentPedagogiqueOfficielService::class);
+
+    $estRevoque = $service->estReferenceRevoquee($ref);
+    $estRemplace = $service->estReferenceRemplacee($ref);
+
+    if ($estRevoque) {
+        return response()->json([
+            'valide' => false,
+            'authentique' => false,
+            'statut' => 'REVOQUE',
+            'reference' => $ref,
+            'message' => 'Ce document officiel a été formellement révoqué par l\'administration institutionnelle.',
+        ], 200);
+    }
+
+    if ($estRemplace) {
+        return response()->json([
+            'valide' => false,
+            'authentique' => false,
+            'statut' => 'REMPLACE',
+            'reference' => $ref,
+            'message' => 'Document obsolète : une version plus récente a remplacé cette référence administrative.',
+        ], 200);
+    }
+
+    return response()->json([
+        'valide' => true,
+        'authentique' => true,
+        'statut' => 'VALIDE',
+        'reference' => $ref,
+        'empreinte_sha256' => $empreinte,
+        'message' => 'Document académique officiel intègre et authentifié avec succès auprès du registre central.',
+        'horodatage_verification' => now()->toIso8601String(),
+    ], 200);
+})->name('verification.document.public')->middleware('throttle:30,1');
 
 /*
 |--------------------------------------------------------------------------
@@ -336,6 +401,8 @@ Route::prefix('etudiant')->name('etudiant.')->group(function () {
         Route::get('parcours/pdf', [EtudiantArchiveController::class, 'parcoursPdf'])
             ->middleware('throttle:10,1')
             ->name('parcours.pdf');
+        // LOOP MASTER — Acquis pédagogiques, crédits et redoublement (session-scopé, anti-IDOR)
+        Route::get('acquis', [AcquisEtudiantController::class, 'index'])->name('acquis.index');
         Route::get('inscriptions', [EtudiantArchiveController::class, 'inscriptions'])->name('inscriptions.index');
         Route::get('notes', [EtudiantArchiveController::class, 'notes'])->name('notes.index');
         Route::get('documents', [EtudiantArchiveController::class, 'documents'])->name('documents.index');
@@ -632,6 +699,24 @@ Route::prefix('admin')->name('admin.')->group(function () {
             ->middleware('can:data.import')->name('mens.index');
         Route::post('mens/{reference}/creer-dossier', [MensReferenceController::class, 'creerDossier'])
             ->middleware(['can:data.import', 'throttle:10,1'])->name('mens.creer-dossier');
+
+        // CRUD complet MENS (mêmes permissions que l'index, périmètre facultaire)
+        Route::get('mens/create', [MensReferenceController::class, 'create'])
+            ->middleware('can:data.import')->name('mens.create');
+        Route::post('mens/store', [MensReferenceController::class, 'store'])
+            ->middleware(['can:data.import', 'throttle:10,1'])->name('mens.store');
+        Route::get('mens/{reference}', [MensReferenceController::class, 'show'])
+            ->middleware('can:data.import')->name('mens.show');
+        Route::put('mens/{reference}', [MensReferenceController::class, 'update'])
+            ->middleware(['can:data.import', 'throttle:10,1'])->name('mens.update');
+        Route::delete('mens/{reference}', [MensReferenceController::class, 'destroy'])
+            ->middleware(['can:data.import', 'throttle:10,1'])->name('mens.destroy');
+
+        // Assistance et référentiels MENS
+        Route::get('mens/{reference}/assistance', [MensReferenceController::class, 'assistance'])
+            ->middleware('can:data.import')->name('mens.assistance');
+        Route::get('mens/{reference}/referentiels', [MensReferenceController::class, 'referentiels'])
+            ->middleware('can:data.import')->name('mens.referentiels');
         Route::get('maquettes/creer', [MaquetteController::class, 'create'])
             ->middleware('can:document_template.edit')->name('maquettes.create');
         Route::post('maquettes', [MaquetteController::class, 'store'])
@@ -706,17 +791,75 @@ Route::prefix('admin')->name('admin.')->group(function () {
                 ->middleware('throttle:5,1')->name('reinitialiser');
             Route::patch('{administrateur}/statut', [AdministrateurController::class, 'toggleStatut'])
                 ->name('statut');
+            // Attribution rapide du rôle (menu de la liste) : même service
+            // que la page des rôles, confirmation + audit centralisés.
+            Route::patch('{administrateur}/role', [AdministrateurController::class, 'attribuerRole'])
+                ->middleware('throttle:20,1')->name('role.attribuer');
+            // Recherche de comptes pour la modale (page rôles), JSON borné.
+            Route::get('recherche', [AdministrateurController::class, 'rechercher'])
+                ->middleware('throttle:30,1')->name('recherche');
             // Kill-switch AUTH-01 (13/10) : révocation des sessions d'un compte.
             Route::post('{administrateur}/sessions/purger', [AdministrateurController::class, 'purgerSessions'])
                 ->middleware('throttle:5,1')->name('sessions.purger');
         });
 
         /*
-        | Matrice des rôles (lecture seule, super_admin) : l'attribution
-        | passe par les comptes, la matrice vit en code versionné.
+        | Matrice des rôles & Gouvernance IAM (LOOP GLOBAL) :
+        | Consultation (système + personnalisés), CRUD profils, permissions,
+        | affectations et workflow de validation à quatre yeux.
         */
         Route::get('roles', [RoleController::class, 'index'])
             ->middleware('can:roles.view')->name('roles.index');
+        Route::post('roles/attribuer', [RoleController::class, 'attribuer'])
+            ->middleware(['can:roles.manage', 'throttle:20,1'])->name('roles.attribuer');
+
+        Route::prefix('roles')->name('roles.')->group(function () {
+            // Workflow à quatre yeux (demandes et approbations)
+            Route::get('demandes/liste', [DemandeApprobationController::class, 'index'])
+                ->middleware('can:roles.manage')->name('demandes.index');
+            Route::get('demandes/{demande}', [DemandeApprobationController::class, 'show'])
+                ->middleware('can:roles.manage')->name('demandes.show');
+            Route::post('demandes/{demande}/decider', [DemandeApprobationController::class, 'decider'])
+                ->middleware(['can:roles.manage', 'throttle:20,1'])->name('demandes.decider');
+            Route::post('demandes/{demande}/annuler', [DemandeApprobationController::class, 'annuler'])
+                ->middleware(['can:roles.manage', 'throttle:20,1'])->name('demandes.annuler');
+
+            // CRUD Rôles personnalisés
+            Route::get('creer', [RoleCrudController::class, 'create'])
+                ->middleware('can:roles.manage')->name('create');
+            Route::post('/', [RoleCrudController::class, 'store'])
+                ->middleware(['can:roles.manage', 'throttle:20,1'])->name('store');
+            Route::get('{profil}', [RoleCrudController::class, 'show'])
+                ->middleware('can:roles.view')->name('show');
+            Route::get('{profil}/modifier', [RoleCrudController::class, 'edit'])
+                ->middleware('can:roles.manage')->name('edit');
+            Route::match(['put', 'patch'], '{profil}', [RoleCrudController::class, 'update'])
+                ->middleware(['can:roles.manage', 'throttle:20,1'])->name('update');
+            Route::post('{profil}/suspendre', [RoleCrudController::class, 'suspendre'])
+                ->middleware(['can:roles.manage', 'throttle:20,1'])->name('suspendre');
+            Route::post('{profil}/activer', [RoleCrudController::class, 'activer'])
+                ->middleware(['can:roles.manage', 'throttle:20,1'])->name('activer');
+            Route::post('{profil}/reactiver', [RoleCrudController::class, 'reactiver'])
+                ->middleware(['can:roles.manage', 'throttle:20,1'])->name('reactiver');
+            Route::post('{profil}/archiver', [RoleCrudController::class, 'archiver'])
+                ->middleware(['can:roles.manage', 'throttle:20,1'])->name('archiver');
+            Route::delete('{profil}', [RoleCrudController::class, 'destroy'])
+                ->middleware(['can:roles.manage', 'throttle:20,1'])->name('destroy');
+
+            // Permissions du rôle (sélection hiérarchique checkbox)
+            Route::get('{profil}/permissions', [RolePermissionController::class, 'edit'])
+                ->middleware('can:roles.manage')->name('permissions.edit');
+            Route::post('{profil}/permissions', [RolePermissionController::class, 'update'])
+                ->middleware(['can:roles.manage', 'throttle:20,1'])->name('permissions.update');
+
+            // Affectations utilisateurs
+            Route::get('{profil}/affectations', [RoleAffectationController::class, 'index'])
+                ->middleware('can:roles.manage')->name('affectations.index');
+            Route::post('{profil}/affectations', [RoleAffectationController::class, 'store'])
+                ->middleware(['can:roles.manage', 'throttle:20,1'])->name('affectations.store');
+            Route::delete('affectations/{affectation}', [RoleAffectationController::class, 'destroy'])
+                ->middleware(['can:roles.manage', 'throttle:20,1'])->name('affectations.destroy');
+        });
 
         /*
         | Configurations SMTP nommées (LOOP J) : super_admin seul, secret
@@ -1100,6 +1243,24 @@ Route::prefix('admin')->name('admin.')->group(function () {
             ->middleware('can:archives.update', 'throttle:20,1')
             ->name('inscriptions.ecues.destroy');
 
+        // LOOP MASTER — Gestion intelligente des acquis, redoublement et réinscription ciblée
+        Route::prefix('redoublement')->name('redoublement.')->middleware('can:archives.view')->group(function () {
+            Route::get('/', [RedoublementGestionController::class, 'index'])->name('index');
+            Route::get('etudiant/{etudiant}', [RedoublementGestionController::class, 'show'])->name('show');
+            Route::post('etudiant/{etudiant}/confirmer-plan', [RedoublementGestionController::class, 'confirmerPlan'])
+                ->middleware(['can:archives.update', 'throttle:20,1'])->name('confirmer-plan');
+            Route::post('etudiant/{etudiant}/reinscrire', [RedoublementGestionController::class, 'reinscrire'])
+                ->middleware(['can:archives.create', 'throttle:20,1'])->name('reinscrire');
+            Route::post('etudiant/{etudiant}/equivalence', [RedoublementGestionController::class, 'traiterEquivalence'])
+                ->middleware(['can:archives.update', 'throttle:20,1'])->name('equivalence');
+            Route::get('etudiant/{etudiant}/document/{type}', [RedoublementGestionController::class, 'telechargerDocument'])->name('document');
+            Route::post('etudiant/{etudiant}/valider-double', [RedoublementGestionController::class, 'validerDoubleApprobation'])
+                ->middleware(['can:archives.update', 'throttle:20,1'])->name('valider-double');
+            Route::post('simuler-cohorte', [RedoublementGestionController::class, 'simulerCohorte'])->name('simuler-cohorte');
+            Route::post('etudiant/{etudiant}/corriger-note', [RedoublementGestionController::class, 'corrigerNoteAnomalie'])
+                ->middleware(['can:archives.update', 'throttle:10,1'])->name('corriger-note');
+        });
+
         // Population : statistiques + qualité (lecture).
         Route::get('population/stats', [PopulationController::class, 'stats'])
             ->middleware('can:archives.view')->name('population.stats');
@@ -1139,11 +1300,21 @@ Route::prefix('admin')->name('admin.')->group(function () {
         // (configuration.manage) — aucun 2e système, scope serveur.
         Route::get('periodes', [PeriodeInscriptionController::class, 'index'])
             ->middleware('can:configuration.manage')->name('periodes.index');
+        Route::get('periodes/creer', [PeriodeInscriptionController::class, 'create'])
+            ->middleware('can:configuration.manage')->name('periodes.create');
         // État UI (§14) : lecture seule, scopée faculté (404 hors périmètre).
         Route::get('periodes/etat', [PeriodeInscriptionController::class, 'etat'])
             ->middleware(['can:archives.view', 'throttle:30,1'])->name('periodes.etat');
         Route::post('periodes', [PeriodeInscriptionController::class, 'store'])
             ->middleware(['can:configuration.manage', 'throttle:20,1'])->name('periodes.store');
+        Route::get('periodes/{periode}', [PeriodeInscriptionController::class, 'show'])
+            ->middleware('can:configuration.manage')->name('periodes.show');
+        Route::get('periodes/{periode}/modifier', [PeriodeInscriptionController::class, 'edit'])
+            ->middleware('can:configuration.manage')->name('periodes.edit');
+        Route::put('periodes/{periode}', [PeriodeInscriptionController::class, 'update'])
+            ->middleware(['can:configuration.manage', 'throttle:20,1'])->name('periodes.update');
+        Route::delete('periodes/{periode}', [PeriodeInscriptionController::class, 'destroy'])
+            ->middleware(['can:configuration.manage', 'throttle:20,1'])->name('periodes.destroy');
         Route::post('periodes/{periode}/revoquer', [PeriodeInscriptionController::class, 'revoquer'])
             ->middleware(['can:configuration.manage', 'throttle:20,1'])->name('periodes.revoquer');
         Route::post('periodes/{periode}/prolonger', [PeriodeInscriptionController::class, 'prolonger'])

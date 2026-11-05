@@ -84,20 +84,82 @@ Scope : `grades:read`
 Scope : `documents:read`
 
 ### `GET /api/v1/student-dossiers`
-Dossiers administratifs permanents du module `StudentDossiers` (lecture seule).
+Dossiers administratifs permanents du module `StudentDossiers`.
 Filtres whitelistés (`search`, `status`, `niveau`, `faculty`), pagination bornée
 (100 max). Un token `admin_faculte` ne voit que sa faculté — un `faculty` contraire
 est ignoré. Scope : `archives:read` · module `student-dossiers` requis (404 sinon).
+
+### `POST /api/v1/student-dossiers`
+Création **idempotente** du dossier unique d'un étudiant : corps
+`{ "etudiant_id": 42 }`. Réponse `201` à la création, `200` si le dossier
+existait déjà — `meta.created` distingue les deux cas. La référence et le
+statut (`open`) sont calculés côté serveur ; tout autre champ envoyé par le
+client est ignoré. Permission `student_dossiers.create` requise. Étudiant
+inconnu **ou** hors périmètre faculté → **404** (même réponse, aucune
+confirmation d'existence). Création réelle auditée (`creation_dossier`,
+source `api`). Scope : `archives:write` · module `student-dossiers` requis.
 
 ### `GET /api/v1/student-dossiers/{dossier}`
 Détail d'un dossier (`documents_count`, identité minimale). Aucun document n'est
 inclus : leur consultation exige le scope dédié. Hors périmètre faculté → **404**
 (jamais 403, pour ne pas confirmer l'existence). Scope : `archives:read`
 
+### `PATCH /api/v1/student-dossiers/{dossier}`
+Mise à jour du seul statut : `{ "status": "open" | "complete" | "archived" }`.
+`etudiant_id` et `reference` ne sont jamais modifiables. Permission
+`student_dossiers.update` requise. Statut inchangé → `200` sans écriture ni
+audit ; changement réel audité (`modification_dossier`, source `api`).
+Hors périmètre faculté → **404** avant tout contrôle de permission. Scope :
+`archives:write` · module `student-dossiers` requis.
+
 ### `GET /api/v1/student-dossiers/{dossier}/documents`
 Métadonnées paginées des documents (`status`, `category`, `document_type`,
 `search`). `storage_path`, le contenu binaire et les versions ne sont jamais
 exposés. Scope : `documents:read`
+
+---
+
+## 3-bis. Acquis pédagogiques et redoublement (LOOP 32)
+
+Documenté depuis le code réel (`AcquisRedoublementApiController`) ; aucun middleware
+`module:` sur ces routes, isolation faculté assurée côté serveur.
+
+| Méthode | URI | Scope | Écrit |
+|---|---|---|---|
+| `GET` | `/api/v1/acquis/students/{student}` | `archives:read` | non |
+| `GET` | `/api/v1/acquis/students/{student}/plan` | `archives:read` | non |
+| `POST` | `/api/v1/acquis/students/{student}/simulation` | `archives:read` | **non** |
+| `POST` | `/api/v1/acquis/campagne/lancer` | `archives:write` + permission `acquis.campagne.lancer` | oui si `dry_run=false` |
+| `GET` | `/api/v1/acquis/campagnes/{reference}` | `archives:read` | non |
+
+- `GET .../{student}` : synthèse des acquis (`decision_globale`, crédits capitalisés /
+  non acquis, unités, éléments à reprendre ou conservés, anomalies). Paramètre optionnel
+  `annee_universitaire_id`.
+- `GET .../{student}/plan` : dernier `ParcoursPlan` enregistré — `404` s'il n'existe aucun
+  plan (même statut que hors périmètre).
+- `POST .../{student}/simulation` : calcul prévisionnel **sans persistance**. Le verbe POST
+  n'implique aucune écriture ; aucun corps n'est lu.
+- `POST .../campagne/lancer` : corps `{ annee_universitaire_id, programme_id?, formation_id?,
+  groupe_id?, dry_run?, ignorer_alertes_mineures? }`.
+  - `programme_id` est le nom canonique ; `formation_id` reste accepté comme alias
+    historique et les deux sont refusés (`422`) s'ils divergent.
+  - `annee_universitaire_id` est obligatoire et `min:1` : `0` est refusé, jamais
+    interprété comme « dernière année ».
+  - `groupe_id` filtre réellement la cohorte ; un groupe hors périmètre faculté renvoie
+    `404`, identique à un groupe inexistant.
+  - `dry_run` vaut **`true`** par défaut → `200`, `mode: simulation_preparatoire`.
+    `dry_run=false` → **`202`**, `mode: execution_reelle`, campagne `statut: en_file`,
+    exécution déléguée à un job queued.
+  - Le scope `archives:write` ne suffit pas : la permission RBAC `acquis.campagne.lancer`
+    est exigée (`403` sinon).
+- `GET .../campagnes/{reference}` : suivi d'une campagne persistée (`statut`, `mode`,
+  critères, compteurs, bilan agrégé). Aucun nom, CIN ni détail nominatif. Une campagne
+  hors périmètre faculté renvoie `404`, identique à une référence inconnue.
+
+> **Traçabilité** : chaque appel crée une campagne `CAMP-AAAAMMJJ-HHMMSS-xxxxxx`
+> persistée (`campagnes_redoublement`), avec ses critères sans PII et son bilan agrégé.
+> Les constats A1–A4 sont levés ; le détail de l'audit reste dans
+> `docs/engineering/examens-advanced/19-rapport-cloture-loop-global.md` §13.
 
 ---
 

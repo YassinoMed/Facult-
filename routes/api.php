@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Api\V1\AcquisRedoublementApiController;
 use App\Http\Controllers\Api\V1\AssignmentApiController;
 use App\Http\Controllers\Api\V1\DataExchangeApiController;
 use App\Http\Controllers\Api\V1\ExportApiController;
@@ -82,15 +83,23 @@ Route::prefix('v1')->name('api.v1.')->group(function () {
             ->middleware('scope:documents:read', 'throttle:api')
             ->name('students.documents');
 
-        // ── Dossiers administratifs permanents (module StudentDossiers,
-        // lecture seule : métadonnées + documents, jamais storage_path) ──
+        // ── Dossiers administratifs permanents (module StudentDossiers :
+        // métadonnées + documents, jamais storage_path ; écritures limitées
+        // au statut, création idempotente) ──
         Route::get('student-dossiers', [StudentDossierApiController::class, 'index'])
             ->middleware('module:student-dossiers', 'scope:archives:read', 'throttle:api')
             ->name('student-dossiers.index');
+        Route::post('student-dossiers', [StudentDossierApiController::class, 'store'])
+            ->middleware('module:student-dossiers', 'scope:archives:write', 'throttle:api')
+            ->name('student-dossiers.store');
         Route::get('student-dossiers/{dossier}', [StudentDossierApiController::class, 'show'])
             ->whereNumber('dossier')
             ->middleware('module:student-dossiers', 'scope:archives:read', 'throttle:api')
             ->name('student-dossiers.show');
+        Route::patch('student-dossiers/{dossier}', [StudentDossierApiController::class, 'update'])
+            ->whereNumber('dossier')
+            ->middleware('module:student-dossiers', 'scope:archives:write', 'throttle:api')
+            ->name('student-dossiers.update');
         Route::get('student-dossiers/{dossier}/documents', [StudentDossierApiController::class, 'documents'])
             ->whereNumber('dossier')
             ->middleware('module:student-dossiers', 'scope:documents:read', 'throttle:api')
@@ -271,6 +280,31 @@ Route::prefix('v1')->name('api.v1.')->group(function () {
             ->whereNumber('report')
             ->middleware('scope:exports:create', 'throttle:api-exports')
             ->name('exports.download');
+
+        // ── Acquis pédagogiques et Redoublement (LOOP 32) ──
+        Route::get('acquis/students/{student}', [AcquisRedoublementApiController::class, 'synthese'])
+            ->whereNumber('student')
+            ->middleware('scope:archives:read', 'throttle:api')
+            ->name('acquis.synthese');
+
+        Route::get('acquis/students/{student}/plan', [AcquisRedoublementApiController::class, 'plan'])
+            ->whereNumber('student')
+            ->middleware('scope:archives:read', 'throttle:api')
+            ->name('acquis.plan');
+
+        Route::post('acquis/students/{student}/simulation', [AcquisRedoublementApiController::class, 'simulation'])
+            ->whereNumber('student')
+            ->middleware('scope:archives:read', 'throttle:api')
+            ->name('acquis.simulation');
+
+        Route::post('acquis/campagne/lancer', [AcquisRedoublementApiController::class, 'lancerCampagne'])
+            ->middleware('scope:archives:write', 'throttle:api-imports')
+            ->name('acquis.campagne.lancer');
+
+        Route::get('acquis/campagnes/{reference}', [AcquisRedoublementApiController::class, 'suiviCampagne'])
+            ->where('reference', '[A-Za-z0-9\-]+')
+            ->middleware('scope:archives:read', 'throttle:api')
+            ->name('acquis.campagnes.suivi');
 
         // ── Versioning interne (§49) ──
         Route::get('version/status', [VersioningApiController::class, 'status'])

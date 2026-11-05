@@ -429,6 +429,89 @@ final class PeriodeInscriptionService
         });
     }
 
+    /**
+     * Met à jour une période d'inscription existante.
+     *
+     * @param  array<string, mixed>  $donnees
+     *
+     * @throws DomainException
+     */
+    public function mettreAJour(RegistrationPeriod $periode, array $donnees, ?int $auteurId): RegistrationPeriod
+    {
+        if ($periode->statut === 'utilisee') {
+            throw new DomainException('Une période déjà utilisée ne peut pas être modifiée.');
+        }
+
+        $typePeriode = $donnees['type_periode'] ?? $periode->type_periode;
+
+        if ($typePeriode === 'exception' && trim((string) ($donnees['motif'] ?? '')) === '') {
+            throw new DomainException('Ouverture exceptionnelle refusée : motif obligatoire.');
+        }
+
+        $donnees['opened_at'] = $this->convertirSaisie($donnees['opened_at'], false);
+        $donnees['closed_at'] = $this->convertirSaisie($donnees['closed_at'], true);
+        $this->verifierFenetre($donnees);
+
+        $conflits = $this->chevauchementsIncompatibles($donnees, $typePeriode, $periode->id);
+        if ($conflits !== []) {
+            $ids = implode(', ', array_map(fn (RegistrationPeriod $p) => "#{$p->id}", $conflits));
+            throw new DomainException("Modification refusée : la période chevauche une période existante ({$ids}) sur le même périmètre.");
+        }
+
+        return DB::transaction(function () use ($periode, $donnees, $typePeriode, $auteurId) {
+            $verrouillee = RegistrationPeriod::whereKey($periode->id)->lockForUpdate()->firstOrFail();
+
+            $verrouillee->update([
+                'nom' => $donnees['nom'] ?? null,
+                'annee_universitaire_id' => $donnees['annee_universitaire_id'] ?? $verrouillee->annee_universitaire_id,
+                'type_periode' => $typePeriode,
+                'faculte_id' => $donnees['faculte_id'] ?? null,
+                'programme_id' => $donnees['programme_id'] ?? null,
+                'niveau' => $donnees['niveau'] ?? null,
+                'type_inscription' => $donnees['type_inscription'] ?? null,
+                'etudiant_id' => $donnees['etudiant_id'] ?? null,
+                'opened_at' => $donnees['opened_at'],
+                'closed_at' => $donnees['closed_at'],
+                'motif' => $donnees['motif'] ?? $verrouillee->motif,
+            ]);
+
+            self::oublierMemo();
+            PopulationChanged::dispatch('periodes-inscription', 'periode_updated', $verrouillee->id, $auteurId, [
+                'annee_id' => $verrouillee->annee_universitaire_id,
+                'faculte_id' => $verrouillee->faculte_id,
+            ]);
+
+            return $verrouillee->fresh();
+        });
+    }
+
+    /**
+     * Supprime une période d'inscription si les règles métier l'autorisent.
+     *
+     * @throws DomainException
+     */
+    public function supprimer(RegistrationPeriod $periode, ?int $auteurId): bool
+    {
+        if ($periode->statut === 'utilisee') {
+            throw new DomainException('Impossible de supprimer une période déjà utilisée par des inscriptions.');
+        }
+
+        return DB::transaction(function () use ($periode, $auteurId) {
+            $verrouillee = RegistrationPeriod::whereKey($periode->id)->lockForUpdate()->firstOrFail();
+            $id = $verrouillee->id;
+            $anneeId = $verrouillee->annee_universitaire_id;
+
+            $supprime = (bool) $verrouillee->delete();
+
+            self::oublierMemo();
+            PopulationChanged::dispatch('periodes-inscription', 'periode_deleted', $id, $auteurId, [
+                'annee_id' => $anneeId,
+            ]);
+
+            return $supprime;
+        });
+    }
+
     public function prolonger(RegistrationPeriod $periode, mixed $nouvelleFermeture, ?int $auteurId, string $motif): RegistrationPeriod
     {
         if (trim($motif) === '') {

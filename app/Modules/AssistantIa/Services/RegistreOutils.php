@@ -3,6 +3,7 @@
 namespace App\Modules\AssistantIa\Services;
 
 use App\Models\User;
+use App\Modules\AssistantIa\Contracts\OutilIaDonneesAcademiquesInterface;
 use App\Modules\AssistantIa\Contracts\OutilIaInterface;
 use App\Modules\AssistantIa\DTO\ResultatOutil;
 use App\Modules\AssistantIa\Exceptions\OutilNonAutoriseException;
@@ -95,6 +96,11 @@ class RegistreOutils
                 if ($outil->estSensible() || str_contains($outil->nom(), 'preparer_action')) {
                     continue;
                 }
+
+                // Les données académiques individuelles ne quittent jamais l'infrastructure locale.
+                if ($outil instanceof OutilIaDonneesAcademiquesInterface) {
+                    continue;
+                }
             }
 
             $definitions[] = [
@@ -126,6 +132,11 @@ class RegistreOutils
         // Interdiction d'exécuter un outil d'écriture si la demande provient d'un fournisseur distant
         if ($fournisseur === 'distant' && ($outil->estSensible() || str_contains($outil->nom(), 'preparer_action'))) {
             throw new OutilNonAutoriseException($nom, "L'action '{$nom}' est une opération sensible ou d'écriture. Son exécution par un fournisseur d'IA externe est strictement interdite.");
+        }
+
+        // Les données académiques individuelles restent strictement locales.
+        if ($fournisseur === 'distant' && $outil instanceof OutilIaDonneesAcademiquesInterface) {
+            throw new OutilNonAutoriseException($nom, "L'outil '{$nom}' restitue des données académiques individuelles : son exécution par un fournisseur d'IA externe est strictement interdite.");
         }
 
         if ($mode !== null && $outil->mode() !== 'commun' && $outil->mode() !== $mode) {

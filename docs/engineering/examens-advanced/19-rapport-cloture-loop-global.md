@@ -18,7 +18,7 @@ autorisation d'infrastructure absente, conformément au §0.1 du LOOP.
 
 | # | Action résiduelle | État | Preuve |
 |---|---|---|---|
-| 1 | API v1 `student-dossiers` (lecture seule) | **IMPLÉMENTÉE** | 3 routes, contrôleur dédié, 8 tests PASS / 47 assertions |
+| 1 | API v1 `student-dossiers` | **IMPLÉMENTÉE (lecture 28/10) + ÉTENDUE (écritures 01/11)** | 5 routes ; 8 tests lecture (47 assertions) + 12 tests écriture (72 assertions) ; voir §12 |
 | 2 | Balayage `expires_at → expired` | **DÉJÀ IMPLÉMENTÉ + RENFORCÉ** | commande existante + nouveau test d'idempotence (1 test / 8 assertions) |
 | 3 | Suite complète des tests | **EXÉCUTÉE — 1 passage vert, 2 passages impactés par l'arbre mouvant** | 5 462 tests / 5 428 PASS / 34 ignorés / 0 échec (passage 1) ; échecs des passages 2-3 hors périmètre, tous PASS isolément (§5.1) |
 | 4 | Concurrence réelle MySQL | **BLOCKED_ENVIRONMENT** | base dédiée non autorisée ; test existant volontairement non exécuté |
@@ -108,7 +108,9 @@ Ordre des middlewares : `module` **avant** `scope`, afin qu'un module désactiv�
 - **Recherche littérale** : `App\Support\Recherche::contient()` neutralise les jokers SQL.
 - **Aucune donnée sensible** : `storage_path` est `hidden` sur le modèle et absent des
   Resources ; aucune version binaire ni contenu de fichier n'est exposé.
-- **Lecture seule** : aucune route `POST/PATCH/DELETE`, aucun audit d'écriture implicite.
+- **Lecture seule (état du 28/10/2026)** : aucune route `POST/PATCH/DELETE`, aucun audit
+  d'écriture implicite. **Évolution du 01/11/2026** : `POST`/`PATCH` ajoutés, limités au
+  statut et auditée — voir §12.
 
 ### 3.4 Documentation
 
@@ -352,8 +354,8 @@ bloqué, sans substitution par SQLite.
 | R2 | Arbre Git très sale (955 entrées, dont 401 fichiers suivis modifiés et 554 non suivis/ajoutés) | Moyenne | Risque de confusion baseline/commit | Revue et commits atomiques par lot, hors LOOP |
 | R3 | Branche en retard de 3 commits sur `origin` | Faible | Divergence possible | Synchronisation contrôlée par l'équipe (interdite ici) |
 | R4 | `QaExamensRenderTest` / `BackupRoundtripTest` non exécutés | Faible | Preuves d'export/restauration absentes | Fournir `QA_OUT` / `BACKUP_ROUNDTRIP=1` + base dédiée |
-| R5 | API en lecture seule uniquement | Faible | Pas d'écriture externe des dossiers | Décision produit ; l'écriture reste volontairement dans l'interface admin auditée |
-| R6 | Suite complète non reproductible à l'identique pendant la session | Moyenne | Un seul passage intégralement vert ; passages 2-3 pollués par des ajouts concurrents | Rejouer `php artisan test --compact` sur un arbre figé (aucun fichier créé/modifié pendant le run) |
+| R5 | API en lecture seule uniquement (état au 28/10/2026) | Faible | Pas d'écriture externe des dossiers à cette date | **Levée le 01/11/2026** : `POST`/`PATCH` limités au statut, protégés par scope + permission + périmètre + audit (§12) |
+| R6 | Suite complète non reproductible à l'identique pendant la session | Moyenne | **Requalifiée le 01/11/2026** : exécution intégrale sur arbre au périmètre figé — 5 960 PASS / 126 non passés, tous reproduits **en isolation** et hors périmètre dossiers (§14) | Suite reproductiblement rouge sur des causes préexistantes/parallèles ; reste à traiter par les flux propriétaires |
 | R7 | Saut d'horloge machine pendant un run | Faible | Deux benchmarks ont produit des durées aberrantes (973 468 ms / 1 049 448 ms pour un run de 457 s) | Rejouer les benchmarks isolément (fait : 3/3 et 1/1 PASS) et surveiller la synchronisation NTP |
 
 ---
@@ -401,10 +403,200 @@ bloqué, sans substitution par SQLite.
    export et backup roundtrip (`NOT_EXECUTED`).
 9. **Verdict global :** `PASS_WITH_RESERVATIONS`, justifié par les preuves ci-dessus.
 10. **Prochaines actions strictement nécessaires :**
-    1. Rejouer `php artisan test --compact` sur un arbre **figé** (aucun fichier créé ou
-       modifié pendant l'exécution) pour obtenir une référence reproductible — lève R6.
+    1. ~~Rejouer `php artisan test --compact` sur un arbre **figé**~~ — **fait le
+       01/11/2026** (§14) : R6 requalifiée, reste à traiter la dette identifiée.
     2. Autoriser une base MySQL de test dédiée, implémenter puis exécuter le scénario de
        concurrence (`lockForUpdate`) — lève R1.
     3. Traiter l'arbre Git préexistant par commits atomiques — lève R2.
     4. Fournir `QA_OUT` et `BACKUP_ROUNDTRIP=1` pour compléter les preuves
        d'export/restauration.
+
+---
+
+## 12. Addendum — extension « écritures API dossiers » (01/11/2026)
+
+> Cette section complète le rapport **sans réécrire** les constats datés du 28/10/2026.
+> Elle lève la réserve R5 (API en lecture seule) ; R1–R4 et R7 restent inchangées.
+> R6 est requalifiée au §14 (exécution intégrale du 01/11/2026).
+
+### 12.1 Décision et périmètre
+
+- Scope `archives:write` ajouté ; `archives:read` conservé pour la lecture.
+- `POST /api/v1/student-dossiers` : création **idempotente** via
+  `StudentDossierService::obtenirOuCreer` — `201` si créé, `200` si le dossier existait,
+  `meta.created` distingue les deux cas. Seul `etudiant_id` est lu ; `reference` et
+  `status` sont calculés côté serveur et tout autre champ client est ignoré.
+- `PATCH /api/v1/student-dossiers/{dossier}` : `status` limité à
+  `StudentDossier::STATUTS` (`open`, `complete`, `archived`) ; `etudiant_id` et
+  `reference` ne sont jamais modifiables. Statut inchangé = **aucune écriture ni audit**.
+- Permissions existantes réutilisées via `StudentDossierPolicy` :
+  `student_dossiers.create` / `student_dossiers.update`. Aucun nouveau service,
+  aucune migration, aucun `DELETE` API (la suppression PII reste dans l'interface admin).
+- Audit : `AuditService::tracer(..., source_systeme='api')` uniquement sur création
+  réelle ou changement réel (`creation_dossier`, `modification_dossier`).
+- Anti-BOLA : pour `POST`, permission vérifiée **avant** la recherche puis `404`
+  identique pour étudiant inconnu **ou** hors périmètre (aucune fuite d'existence) ;
+  pour `PATCH`, `404` hors périmètre **avant** `Gate::authorize` (le `403` ne révèle
+  donc jamais l'existence d'un dossier d'une autre faculté).
+
+### 12.2 Routes (5 au total)
+
+| Méthode | URI | Scope | Permission | Réponse |
+|---|---|---|---|---|
+| `GET` | `/api/v1/student-dossiers` | `archives:read` | `student_dossiers.view` | collection paginée |
+| `POST` | `/api/v1/student-dossiers` | `archives:write` | `student_dossiers.create` | `201` créé / `200` existant + `meta.created` |
+| `GET` | `/api/v1/student-dossiers/{dossier}` | `archives:read` | `student_dossiers.view` | `StudentDossierResource` |
+| `PATCH` | `/api/v1/student-dossiers/{dossier}` | `archives:write` | `student_dossiers.update` | `StudentDossierResource` |
+| `GET` | `/api/v1/student-dossiers/{dossier}/documents` | `documents:read` | `student_dossiers.view` | collection paginée |
+
+Ordre des middlewares inchangé : `module` → `scope` → `throttle` (`api`, 60 req/min).
+Les deux routes d'écriture sont soumises à `throttle:api`, comme la lecture.
+
+### 12.3 Preuves exécutées
+
+| Suite | Tests | Assertions | Résultat |
+|---|---:|---:|---|
+| `ApiStudentDossiersWriteTest` (nouveau) | 12 | 72 | **PASS** |
+| `ApiStudentDossiersTest`, `ApiAuthenticationTest`, `ApiStudentsTest`, `SensitiveApiTest` (non-régression) | 25 | 100 | **PASS** |
+| **Total ciblé** | **37** | **172** | **PASS** |
+
+Pint ciblé sur les 5 fichiers PHP touchés : `{"result":"passed"}`.
+Tests exécutés sur SQLite `:memory:` uniquement ; **0 migration** créée ou appliquée ;
+aucune écriture MySQL locale ou de production.
+
+Couverture des écritures : création 201 puis rejeu 200 sans doublon ni second audit ;
+champs forgés ignorés ; `403` sans permission métier malgré le scope ; `404` identique
+étudiant inconnu / hors périmètre ; mise à jour auditée (ancienne/nouvelle valeur) ;
+statut inchangé sans écriture ni audit ; `422` statut hors liste blanche et `status`
+obligatoire ; `403` scope lecture seul ; `404` module désactivé ; `401` sans token.
+
+> **Constat hors périmètre, résolu le 01/11/2026** : `QualiteApiSupervisionTest::test_openapi_couvre_routes`
+> signalait 4 routes `api/v1/acquis/*` (flux parallèle) absentes d'`docs/openapi.yaml`.
+> Elles ont depuis été documentées **depuis le code réel**, sans toucher au contrôleur ni
+> aux routes du flux concurrent — voir §12.6. `QualiteApiSupervisionTest` passe 14/14.
+
+### 12.4 Documentation mise à jour
+
+- `docs/openapi.yaml` : `POST /student-dossiers` et `PATCH /student-dossiers/{dossier}`
+  (corps, idempotence, champs non modifiables, réponses 401/403/404/422/429).
+- `docs/API.md` : sections `POST` et `PATCH` (idempotence, audit, périmètre 404).
+- `docs/engineering/INVENTAIRE_TACHES_ET_URLS.md` : les 2 routes ajoutées.
+
+### 12.5 Verdict de l'extension
+
+**PASS** sur le périmètre des écritures `student-dossiers`. La réserve R5 est levée ;
+R6 est requalifiée au §14 ; les réserves R1 (concurrence MySQL), R2 (arbre Git), R3, R4
+et R7 restent inchangées et continuent de justifier le verdict global
+`PASS_WITH_RESERVATIONS` du §10.
+
+---
+
+## 13. Documentation OpenAPI des routes `api/v1/acquis/*` — constats d'audit
+
+**Mode :** documentation seule, aucune modification du contrôleur, des routes ou des
+services du flux concurrent. **Objectif :** rendre `QualiteApiSupervisionTest` vert sans
+masquer de comportement.
+
+### 13.1 Ce qui a été documenté (`docs/openapi.yaml`, 59 chemins au total)
+
+| Route | Scope | Nature réelle |
+|---|---|---|
+| `GET /acquis/students/{student}` | `archives:read` | Lecture — `MoteurDecisionAcademiqueService::determinerDecision` |
+| `GET /acquis/students/{student}/plan` | `archives:read` | Lecture du dernier `ParcoursPlan` (aucun calcul) |
+| `POST /acquis/students/{student}/simulation` | `archives:read` | Calcul **sans persistance** (`simulerPlan` retourne un tableau) |
+| `POST /acquis/campagne/lancer` | `archives:write` | Préparation (`dry_run=true`) ou exécution réelle par lots |
+
+Les quatre routes portent `throttle:api` sauf la campagne (`throttle:api-imports`) et
+n'ont **aucun middleware `module:`**.
+
+### 13.2 Anomalies constatées — non corrigées ici (hors périmètre)
+
+| ID | Constat | Preuve | Gravité | Traitement recommandé |
+|---|---|---|---|---|
+| A1 | `groupe_id` est **validé puis ignoré** : extrait dans `$groupeId`, jamais transmis aux critères ni lu par `preparerCampagne` | `AcquisRedoublementApiController.php:129,136` ; aucune occurrence dans `CampagneRedoublementMasseService` hors docblock | **Élevée** avec `dry_run=false` : la campagne s'exécute sur une cohorte plus large que demandée, silencieusement | Rejeter `groupe_id` (`422` explicite) **ou** l'implémenter dans les critères ; tant que non tranché, le retirer du contrat OpenAPI serait plus sûr |
+| A2 | Aucun contrôle RBAC : le scope Sanctum `archives:write` suffit pour lancer une **exécution réelle** de masse | Contrôleur : seule `verifierPerimetreFaculte` est appelée, aucun `Gate::authorize` | **Élevée** | Policy/permission dédiée (ex. `acquis.campagne.lancer`) avant toute exécution |
+| A3 | `campagne_id` généré en mémoire, **non persisté** : deux appels produisent deux identifiants, aucune corrélation ni idempotence par clé | `CampagneRedoublementMasseService.php:47` | Moyenne | Persister la campagne (table dédiée) ou accepter une `Idempotency-Key` |
+| A4 | Exécution **synchrone** dans la requête HTTP, aucune mise en file | Aucun `dispatch`/`Queue` dans le service ; `executerCampagne` → `executerCampagneParLots` | Moyenne | Job en file avec suivi d'avancement pour les grosses cohortes |
+| A5 | `formation_id` est renommé `programme_id` en interne (filtre sur les inscriptions) | `AcquisRedoublementApiController.php:144` | Informatif | Aligner le vocabulaire du contrat |
+| A6 | `annee_universitaire_id` n'accepte que la forme entière ; `0`/chaîne vide retombent sur « dernière année » sans le signaler | `AcquisRedoublementApiController.php:33` | Faible | Rendre l'année explicite ou la documenter comme optionnelle |
+
+> Ces six points sont des **constats d'audit**, pas des correctifs. A1 et A2 touchent une
+> opération d'écriture de masse : ils devraient être traités avant toute activation en
+> production, indépendamment du présent addendum.
+
+### 13.3 Preuve
+
+```bash
+php artisan test --compact tests/Feature/QualiteApiSupervisionTest.php
+# 14 tests, 14 passed, 59 assertions
+```
+
+---
+
+## 14. Exécution intégrale du 01/11/2026 — requalification de R6
+
+### 14.1 Conditions d'exécution
+
+- Commande : `php artisan test --compact` (SQLite `:memory:`, aucune base réelle).
+- Empreinte `git status --porcelain | sort | sha256` **identique avant et après** :
+  `87a3adf71eb5122e15ee76c55c3b2ead9a8691606a50a5e2d7ba7454476fc40d` (237 entrées).
+  Aucun fichier ajouté, supprimé ou renommé pendant le run.
+- Aucun fichier **PHP** modifié pendant l'exécution (seules des pages de documentation
+  ont été éditées après le lancement). Le code applicatif est donc resté figé.
+- Durée mesurée : 379,7 s.
+
+### 14.2 Chiffres réels
+
+| Tests | Passés | Échecs | Erreurs | Ignorés | Assertions | Résultat |
+|---:|---:|---:|---:|---:|---:|---|
+| 6 123 | 5 960 | 31 | 95 | 37 | 30 404 | **failed** |
+
+`5 960 + 31 + 95 + 37 = 6 123` — aucun test compté deux fois, aucun incomplet masqué.
+
+### 14.3 Répartition des 126 non passés (par classe)
+
+| Classe | Cas | Nature |
+|---|---:|---|
+| `LoopCampagneAcquisExamenTest` | 36 | Fixture obsolète : `programmes.faculte_id` NOT NULL |
+| `MensCrudTest` | 16 | Routes `admin.mens.*` absentes |
+| `AdminDerogationGestionHttpTest` | 11 | Routes `admin.derogations.*` absentes |
+| `Acquis\PiloteAcademiqueLoop42Test` | 10 | Flux acquis parallèle (comparateur de référence) |
+| `Q132/Q133/Q137/Q141/Q142` (dérogations) | 25 | Routes et notifications du flux parallèle |
+| Performance / N+1 (12 classes) | 21 | Seuils de requêtes dépassés |
+| `MensReferenceTest`, `DataMeshObservabiliteTest`, `Loop146…` | 7 | 500 / N+1 / flux parallèle |
+
+### 14.4 Preuve d'isolation — ces échecs ne sont pas un effet d'ordre
+
+Cinq classes rejouées **seules** reproduisent le même résultat :
+
+| Classe | Seule | Message dominant |
+|---|---|---|
+| `LoopCampagneAcquisExamenTest` | **0 / 36** | `NOT NULL constraint failed: programmes.faculte_id` |
+| `MensCrudTest` | **0 / 16** | `Route [admin.mens.*] not defined` |
+| `AdminDerogationGestionHttpTest` | **0 / 11** | `Route [admin.derogations.*] not defined` |
+| `Acquis\PiloteAcademiqueLoop42Test` | **10 / 20** | `Undefined array key 0` (références absentes) |
+| `RecuPaiementInscriptionAnnuelleTest` | **4 / 5** | `CHECK constraint failed: status` — le flux parallèle écrit `active` alors que la contrainte n'autorise que `open`/`complete`/`archived` |
+
+Aucun de ces échecs n'est provoqué par la suite complète, par l'ordre des tests ou par
+les écritures `student-dossiers`.
+
+### 14.5 Périmètre dossiers — aucune régression
+
+| Périmètre exécuté | Tests | Passés | Non passés | Détail |
+|---|---:|---:|---:|---|
+| `--filter=Dossier` | 333 | 329 | 3 | 1 seuil N+1 (`PaiementsInscriptionsTest`), 2 routes parallèles absentes |
+| `--filter=Archive` | 163 | 157 | 2 (+4 ignorés) | 2 seuils N+1 (`ArchivesFicheLoop3`, `ArchivesDurcissementLoop11`) |
+| API ciblée (`Write`, lecture, auth, students, sensitive) | 37 | **37** | 0 | — |
+| `QualiteApiSupervisionTest` | 14 | **14** | 0 | — |
+
+### 14.6 Verdict R6
+
+R6 n'est plus « suite non reproductible ». La suite est **reproductiblement rouge** sur
+126 cas **préexistants ou appartenant à des flux parallèles**, chacun confirmé hors
+contexte de suite. Sur le périmètre `student-dossiers` (écritures comprises) :
+**aucun échec**.
+
+Statut : `PASS_WITH_RESERVATIONS` inchangé pour le global ; la réserve R6 se transforme en
+dette de nettoyage identifiée, à traiter par les flux propriétaires (fixtures `programmes`,
+routes `admin.mens.*` / `admin.derogations.*`, seuils N+1, statut `active` interdit par la
+contrainte `student_dossiers`).

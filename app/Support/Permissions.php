@@ -220,6 +220,19 @@ final class Permissions
         'statistiques.view',
         'statistiques.export',
 
+        // LOOP GLOBAL ULTRA ST-11 (P0-1) : permissions dédiées du module
+        // Simulation temporelle — la permission de consultation
+        // `statistiques.view` n'autorise plus aucune écriture ni décision.
+        // Attribution aux rôles : décision institutionnelle (aucun rôle
+        // existant élargi automatiquement ; super_admin = TOUTES).
+        'simulation.view',
+        'simulation.gerer',
+        'simulation.executer',
+        'simulation.export',
+        'simulation.explication',
+        'simulation.gouvernance.proposer',
+        'simulation.gouvernance.decider',
+
         'settings.view',
         'settings.manage',
         'settings.history.view',
@@ -323,6 +336,21 @@ final class Permissions
         // Module Parcours académique avancé LMD : même mécanisme.
         'parcours.view', 'parcours.simuler', 'parcours.gerer',
         'parcours.comparer', 'parcours.regles',
+        // Acquis pédagogiques et redoublement (LOOP 32) : lancer une campagne
+        // de masse est une action distincte de la simple lecture des acquis.
+        // Elle n'est jamais déduite du scope Sanctum seul.
+        'acquis.campagne.lancer',
+
+        // LOOP 44 — gouvernance des règles académiques : rédaction,
+        // approbation, publication et retrait sont des pouvoirs distincts.
+        'regles.consulter', 'regles.rediger', 'regles.soumettre',
+        'regles.approuver', 'regles.publier', 'regles.retirer', 'regles.auditer',
+
+        // LOOP 45 — recours académiques : dépôt, recevabilité, instruction,
+        // décision, application et clôture sont des actes séparés.
+        'recours.consulter', 'recours.deposer', 'recours.recevoir',
+        'recours.instruire', 'recours.decider', 'recours.appliquer',
+        'recours.annuler', 'recours.auditer',
 
         // Module Versioning : gestion interne des versions & releases
         'versioning.view',
@@ -358,6 +386,23 @@ final class Permissions
         // gouvernance (accès sensibles unifiés, journal des permissions,
         // conformité de rétention, journal des accès aux journaux).
         'gouvernance.audit',
+
+        // LOOP 43-BIS — gouvernance IAM. Ces permissions administrent le
+        // moteur RBAC existant ; elles ne créent aucune capacité métier
+        // parallèle. Accordées au super_admin seul dans la matrice livrée :
+        // toute ouverture à un autre rôle exige une décision explicite.
+        // Les mutations IAM sont en outre protégées par MFA active.
+        'iam.consulter',
+        'iam.roles.gerer',
+        'iam.affectations.gerer',
+        'iam.affectations.approuver',
+        'iam.delegations.gerer',
+        'iam.audit.consulter',
+        'iam.cockpit.consulter',
+        'iam.recertifier',
+        'iam.urgence.declencher',
+        'iam.urgence.approuver',
+        'iam.parametres.gerer',
     ];
 
     /**
@@ -388,6 +433,9 @@ final class Permissions
             'student_documents.replace', 'student_documents.audit',
             'demandes.view', 'demandes.create', 'demandes.submit', 'demandes.cancel',
             'demandes.process', 'demandes.assign', 'demandes.approve', 'demandes.reject',
+            'regles.consulter', 'regles.rediger', 'regles.soumettre',
+            'recours.consulter', 'recours.deposer', 'recours.recevoir',
+            'recours.instruire', 'recours.appliquer', 'recours.annuler',
             'demandes.request_documents', 'demandes.documents.view', 'demandes.documents.upload',
             'demandes.documents.download', 'demandes.pdf', 'demandes.audit',
             'schedules.view', 'schedules.manage',
@@ -436,6 +484,7 @@ final class Permissions
             'search.admin', 'search.history.manage',
             'parcours.view', 'parcours.simuler', 'parcours.gerer',
             'parcours.comparer', 'parcours.regles',
+            'acquis.campagne.lancer',
             'versioning.view', 'versioning.create',
             'sentinel.view', 'sentinel.manage',
             'assistant_ia.view', 'assistant_ia.mode_metier', 'assistant_ia.recherche_doc',
@@ -448,6 +497,8 @@ final class Permissions
         ],
 
         'agent_scolarite' => [
+            'regles.consulter',
+            'recours.consulter', 'recours.deposer', 'recours.recevoir', 'recours.instruire',
             'archives.view', 'archives.create', 'archives.update',
             'documents.view', 'documents.upload', 'documents.download',
             'notes.view', 'notes.create', 'notes.update',
@@ -491,7 +542,7 @@ final class Permissions
             'assistant_ia.view', 'assistant_ia.mode_metier', 'assistant_ia.recherche_doc',
             'decrochage.view',
         ],
-        'consultation' => ['archives.view',
+        'consultation' => ['regles.consulter', 'recours.consulter', 'archives.view',
             'documents.view', 'documents.download',
             'notes.view',
             'history.view',
@@ -584,6 +635,7 @@ final class Permissions
             'campagnes.view', 'campagnes.manage',
             'qualite.view',
             'sentinel.view',
+            'acquis.campagne.lancer',
             'finances.view',
             'finances.receipts.verify',
             'document.view', 'document.generate', 'document.issue', 'document.download', 'document.print',
@@ -609,6 +661,8 @@ final class Permissions
          | permissions d'écriture des autres étapes.
          */
         'certificateur_qualite' => [
+            'regles.consulter', 'regles.auditer',
+            'recours.consulter', 'recours.auditer',
             'evaluations.view', 'evaluations.certify',
             'sessions_examen.view', 'epreuves.view', 'surveillances.view',
             'notes_eval.view', 'resultats.view', 'deliberations.view',
@@ -616,6 +670,8 @@ final class Permissions
         ],
 
         'direction_etudes' => [
+            'regles.consulter', 'regles.approuver', 'regles.auditer',
+            'recours.consulter', 'recours.decider', 'recours.auditer',
             'evaluations.view', 'evaluations.approve',
             'sessions_examen.view', 'epreuves.view', 'surveillances.view',
             'notes_eval.view', 'resultats.view', 'deliberations.view',
@@ -623,6 +679,8 @@ final class Permissions
         ],
 
         'autorite_publication' => [
+            'regles.consulter', 'regles.publier', 'regles.retirer', 'regles.auditer',
+            'recours.consulter', 'recours.auditer',
             'evaluations.view', 'evaluations.publish',
             'sessions_examen.view', 'epreuves.view', 'surveillances.view',
             'notes_eval.view', 'resultats.view', 'deliberations.view',
@@ -636,6 +694,8 @@ final class Permissions
          | l'auditeur observe, il ne modifie jamais.
          */
         'auditeur' => [
+            'regles.consulter', 'regles.auditer',
+            'recours.consulter', 'recours.auditer',
             'gouvernance.audit',
             'sentinel.view',
             'it.view',

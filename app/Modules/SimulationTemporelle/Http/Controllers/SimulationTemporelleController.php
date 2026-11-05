@@ -12,6 +12,7 @@ use App\Modules\SimulationTemporelle\Models\ExecutionTemporelle;
 use App\Modules\SimulationTemporelle\Models\ScenarioTemporel;
 use App\Modules\SimulationTemporelle\Services\ServiceSimulationTemporelle;
 use App\Modules\SimulationTemporelle\Support\AuditeurQualiteDonnees;
+use App\Modules\SimulationTemporelle\Support\CatalogueScenarios;
 use App\Modules\SimulationTemporelle\Support\ExplicateurIaSimulation;
 use App\Modules\SimulationTemporelle\Support\ExporteurSimulation;
 use App\Modules\SimulationTemporelle\Support\GouvernancePlanificationService;
@@ -43,7 +44,7 @@ final class SimulationTemporelleController extends Controller
      */
     public function index(Request $requete)
     {
-        Gate::authorize('statistiques.view');
+        Gate::authorize('simulation.view');
 
         $user = $requete->user();
         $restreinte = FacultePerimetre::resoudre($user, null);
@@ -84,7 +85,7 @@ final class SimulationTemporelleController extends Controller
 
     public function scenariosIndex(Request $requete): JsonResponse
     {
-        Gate::authorize('statistiques.view');
+        Gate::authorize('simulation.view');
         $restreinte = FacultePerimetre::resoudre($requete->user(), null);
 
         return response()->json([
@@ -95,9 +96,26 @@ final class SimulationTemporelleController extends Controller
         ]);
     }
 
+    /**
+     * ST-14.00 — catalogue commun des scénarios avancés (métadonnées
+     * uniquement). Aucune donnée métier, aucune exécution, aucune écriture.
+     */
+    public function catalogue(): JsonResponse
+    {
+        Gate::authorize('simulation.view');
+
+        return response()->json([
+            'contrat_version' => CatalogueScenarios::VERSION_CONTRAT,
+            'version_moteur' => ServiceSimulationTemporelle::VERSION_MOTEUR,
+            'empreinte' => CatalogueScenarios::empreinteCatalogue(),
+            'categories' => CatalogueScenarios::CATEGORIES,
+            'scenarios' => array_values(CatalogueScenarios::tout()),
+        ]);
+    }
+
     public function scenarioCreer(Request $requete): JsonResponse
     {
-        Gate::authorize('statistiques.view');
+        Gate::authorize('simulation.gerer');
 
         $donnees = $requete->validate([
             'code' => ['required', 'string', 'max:40', 'unique:scenarios_temporels,code'],
@@ -123,7 +141,7 @@ final class SimulationTemporelleController extends Controller
 
     public function executer(Request $requete, int $id): JsonResponse
     {
-        Gate::authorize('statistiques.view');
+        Gate::authorize('simulation.executer');
 
         $scenario = ScenarioTemporel::query()->findOrFail($id);
 
@@ -168,7 +186,7 @@ final class SimulationTemporelleController extends Controller
      */
     public function optionsNiveaux(Request $requete): JsonResponse
     {
-        Gate::authorize('statistiques.view');
+        Gate::authorize('simulation.view');
         $demandee = $requete->has('faculte_id') && $requete->query('faculte_id') !== '' ? (int) $requete->query('faculte_id') : null;
         $restreinte = FacultePerimetre::resoudre($requete->user(), $demandee);
 
@@ -184,7 +202,7 @@ final class SimulationTemporelleController extends Controller
 
     public function optionsGroupes(Request $requete, int $niveauId): JsonResponse
     {
-        Gate::authorize('statistiques.view');
+        Gate::authorize('simulation.view');
         $demandee = $requete->has('faculte_id') && $requete->query('faculte_id') !== '' ? (int) $requete->query('faculte_id') : null;
         $restreinte = FacultePerimetre::resoudre($requete->user(), $demandee);
 
@@ -212,7 +230,7 @@ final class SimulationTemporelleController extends Controller
 
     public function executionsIndex(Request $requete): JsonResponse
     {
-        Gate::authorize('statistiques.view');
+        Gate::authorize('simulation.view');
         $restreinte = FacultePerimetre::resoudre($requete->user(), null);
 
         return response()->json([
@@ -230,7 +248,7 @@ final class SimulationTemporelleController extends Controller
 
     public function executionDetail(Request $requete, int $id): JsonResponse
     {
-        Gate::authorize('statistiques.view');
+        Gate::authorize('simulation.view');
 
         $execution = ExecutionTemporelle::query()->with(['scenario:id,code,libelle,faculte_id', 'snapshots'])->findOrFail($id);
         $faculte = $execution->scenario?->faculte_id;
@@ -247,7 +265,7 @@ final class SimulationTemporelleController extends Controller
      */
     public function auditQualite(Request $requete): JsonResponse
     {
-        Gate::authorize('statistiques.view');
+        Gate::authorize('simulation.view');
 
         $faculteId = $requete->has('faculte_id') && $requete->query('faculte_id') !== '' ? (int) $requete->query('faculte_id') : null;
         $restreinte = FacultePerimetre::resoudre($requete->user(), $faculteId);
@@ -264,7 +282,7 @@ final class SimulationTemporelleController extends Controller
      */
     public function scenarioDupliquer(Request $requete, int $id): JsonResponse
     {
-        Gate::authorize('statistiques.view');
+        Gate::authorize('simulation.gerer');
         $source = ScenarioTemporel::findOrFail($id);
 
         if ($source->faculte_id !== null && ! $requete->user()->peutAccederFaculte((int) $source->faculte_id)) {
@@ -285,7 +303,7 @@ final class SimulationTemporelleController extends Controller
      */
     public function scenarioNouvelleVersion(Request $requete, int $id): JsonResponse
     {
-        Gate::authorize('statistiques.view');
+        Gate::authorize('simulation.gerer');
         $source = ScenarioTemporel::findOrFail($id);
 
         if ($source->faculte_id !== null && ! $requete->user()->peutAccederFaculte((int) $source->faculte_id)) {
@@ -310,7 +328,7 @@ final class SimulationTemporelleController extends Controller
      */
     public function exportCsv(Request $requete, int $id)
     {
-        Gate::authorize('statistiques.view');
+        Gate::authorize('simulation.export');
         $execution = ExecutionTemporelle::with('scenario')->findOrFail($id);
 
         if ($execution->scenario?->faculte_id !== null && ! $requete->user()->peutAccederFaculte((int) $execution->scenario->faculte_id)) {
@@ -325,7 +343,7 @@ final class SimulationTemporelleController extends Controller
      */
     public function exportPdf(Request $requete, int $id): Response
     {
-        Gate::authorize('statistiques.view');
+        Gate::authorize('simulation.export');
         $execution = ExecutionTemporelle::with('scenario')->findOrFail($id);
 
         if ($execution->scenario?->faculte_id !== null && ! $requete->user()->peutAccederFaculte((int) $execution->scenario->faculte_id)) {
@@ -346,7 +364,7 @@ final class SimulationTemporelleController extends Controller
      */
     public function expliquerIa(Request $requete, int $id): JsonResponse
     {
-        Gate::authorize('statistiques.view');
+        Gate::authorize('simulation.explication');
         $execution = ExecutionTemporelle::with('scenario')->findOrFail($id);
 
         $donnees = $requete->validate([
@@ -367,7 +385,7 @@ final class SimulationTemporelleController extends Controller
      */
     public function gouvernanceProposer(Request $requete, int $id): JsonResponse
     {
-        Gate::authorize('statistiques.view');
+        Gate::authorize('simulation.gouvernance.proposer');
         $execution = ExecutionTemporelle::with('scenario')->findOrFail($id);
 
         $donnees = $requete->validate([
@@ -389,7 +407,7 @@ final class SimulationTemporelleController extends Controller
      */
     public function gouvernanceDecider(Request $requete, int $id): JsonResponse
     {
-        Gate::authorize('statistiques.view');
+        Gate::authorize('simulation.gouvernance.decider');
         $execution = ExecutionTemporelle::with('scenario')->findOrFail($id);
 
         $donnees = $requete->validate([

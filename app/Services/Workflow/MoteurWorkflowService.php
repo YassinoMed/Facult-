@@ -136,7 +136,10 @@ class MoteurWorkflowService
                 throw new DomainException("Conditions non remplies pour la transition vers « {$cible} ».");
             }
 
-            // 6. Application de la mutation
+            // 6. Application de la mutation. `forceFill` est requis : le champ
+            // d'état est volontairement non mass-assignable sur plusieurs
+            // modèles (dont `online_requests`), et le moteur est l'autorité
+            // serveur qui applique la transition après tous les contrôles.
             $champEtat = $this->determinerChampEtat($verrouillee);
             $donneesUpdate = [$champEtat => $cible];
 
@@ -150,7 +153,7 @@ class MoteurWorkflowService
                 $donneesUpdate['motif_decision'] = $motif;
             }
 
-            $verrouillee->update($donneesUpdate);
+            $verrouillee->forceFill($donneesUpdate)->save();
 
             // 7. Auditabilité et traçabilité
             $etudiant = $this->extraireEtudiant($verrouillee);

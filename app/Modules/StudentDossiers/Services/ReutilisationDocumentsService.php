@@ -29,6 +29,14 @@ use Illuminate\Support\Facades\DB;
  */
 final class ReutilisationDocumentsService
 {
+    /**
+     * Pièces spécifiques à chaque année universitaire ne pouvant jamais
+     * être réutilisées automatiquement d'une année antérieure.
+     */
+    public const PIECES_ANNUELLES_NON_REUTILISABLES = [
+        'recu_paiement',
+    ];
+
     public function __construct(
         private readonly DocumentStorageService $stockage,
         private readonly StudentDossierService $dossiers,
@@ -323,6 +331,17 @@ final class ReutilisationDocumentsService
                 'Document validé rattaché à cette inscription.',
                 $version,
                 $snapshot,
+            );
+        }
+
+        // Pièce annuelle : le reçu de paiement ne peut JAMAIS être réutilisé d'une année antérieure
+        $code = (string) ($piece['code'] ?? '');
+        if (in_array($code, self::PIECES_ANNUELLES_NON_REUTILISABLES, true)) {
+            return $this->resultat(
+                'manquant',
+                'Le reçu de paiement des droits d’inscription doit obligatoirement être renouvelé pour chaque année universitaire.',
+                null,
+                null,
             );
         }
 

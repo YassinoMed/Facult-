@@ -5,15 +5,23 @@ namespace Tests\Feature;
 use App\Models\AnneeUniversitaire;
 use App\Models\Etudiant;
 use App\Models\Faculte;
+use App\Models\Iam\HabilitationIam;
 use App\Models\InscriptionAcademique;
+use App\Models\InscriptionPedagogique;
+use App\Models\Matiere;
+use App\Models\Note;
 use App\Models\User;
+use App\Modules\Evaluation\Models\DecisionDeliberation;
 use App\Modules\Referentiel\Models\Niveau;
 use App\Modules\Referentiel\Models\Programme;
+use App\Modules\Referentiel\Models\UniteEnseignement;
 use App\Modules\Schedule\Models\Group;
 use App\Modules\SimulationTemporelle\Models\ExecutionTemporelle;
 use App\Modules\SimulationTemporelle\Models\ScenarioTemporel;
 use App\Modules\SimulationTemporelle\Models\SnapshotExecution;
+use App\Support\Iam\MoteurAutorisation;
 use App\Support\Modules\ModuleRegistry;
+use App\Support\Permissions;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Config;
 use Illuminate\Testing\TestResponse;
@@ -58,6 +66,14 @@ class SimulationTemporelleTest extends TestCase
             'faculte_id' => $this->faculteB->id,
         ], 'admin_faculte');
 
+        // LOOP GLOBAL ULTRA ST-11 (P0-1) : les acteurs de test reçoivent
+        // les permissions dédiées du module via des HABILITATIONS IAM
+        // directes (moteur LOOP 43-BIS) — aucun rôle existant n'est
+        // élargi : l'attribution institutionnelle est une décision métier.
+        foreach ([$this->admin, $this->adminB] as $acteur) {
+            $this->habiliter($acteur);
+        }
+
         // Effectifs synthétiques : 2 programmes, niveaux L1/L2/L3.
         foreach ([$this->faculteA, $this->faculteB] as $faculte) {
             $programme = Programme::create([
@@ -87,6 +103,23 @@ class SimulationTemporelleTest extends TestCase
                 }
             }
         }
+    }
+
+    /** Habilitation IAM directe (LOOP 43-BIS) des 7 permissions du module. */
+    private function habiliter(User $u): void
+    {
+        foreach (['simulation.view', 'simulation.gerer', 'simulation.executer',
+            'simulation.export', 'simulation.explication', 'simulation.gouvernance.proposer',
+            'simulation.gouvernance.decider'] as $permission) {
+            HabilitationIam::create([
+                'user_id' => $u->id,
+                'permission_code' => $permission,
+                'statut' => HabilitationIam::STATUT_ACTIVE,
+                'debut_le' => now(),
+            ]);
+        }
+
+        MoteurAutorisation::invalider(null);
     }
 
     private function appelPost(User $u, string $route, array $params, array $data): TestResponse
@@ -226,6 +259,7 @@ class SimulationTemporelleTest extends TestCase
             'name' => 'AFB', 'email' => 'afb-'.uniqid().'@u.test', 'password' => 'Motdepasse@123',
             'faculte_id' => Faculte::where('code', 'FDEG')->first()->id,
         ], 'admin_faculte');
+        $this->habiliter($adminFacB);
 
         $this->appelPost($adminFacB, 'admin.simulation-temporelle.executer', ['id' => $scenario->id], [
             'annee_universitaire_id' => $this->annee->id, 'graine' => 'g', 'nb_variantes' => 2,
@@ -396,6 +430,7 @@ class SimulationTemporelleTest extends TestCase
             'name' => 'AFB', 'email' => 'hgb-'.uniqid().'@u.test', 'password' => 'Motdepasse@123',
             'faculte_id' => $niveauB->programme->faculte_id,
         ], 'admin_faculte');
+        $this->habiliter($adminFacB);
 
         $this->appelGet($this->admin, 'admin.simulation-temporelle.options.groupes', ['niveauId' => $niveauB->id])
             ->assertOk()->assertJsonPath('groupes.0.code', 'G-DROIT');
@@ -446,6 +481,7 @@ class SimulationTemporelleTest extends TestCase
         $autre = User::creerCompteBackOffice([
             'name' => 'Sco2', 'email' => 's2-'.uniqid().'@u.test', 'password' => 'Motdepasse@123',
         ], 'admin_scolarite');
+        $this->habiliter($autre);
         $rep2 = $this->appelPost($autre, 'admin.simulation-temporelle.executer', ['id' => $scenario->id], $payload)->assertOk();
         $this->assertStringContainsString('existante', (string) $rep2->json('idempotente'));
 
@@ -514,6 +550,7 @@ class SimulationTemporelleTest extends TestCase
             'name' => 'AFA', 'email' => 'afa-'.uniqid().'@u.test', 'password' => 'Motdepasse@123',
             'faculte_id' => $this->faculteA->id,
         ], 'admin_faculte');
+        $this->habiliter($adminFacA);
 
         // Admin faculté A demande sa faculté -> 200
         $this->appelGet($adminFacA, 'admin.simulation-temporelle.options.niveaux', ['faculte_id' => $this->faculteA->id])
@@ -644,10 +681,18 @@ class SimulationTemporelleTest extends TestCase
     public function test_preuve_absolue_absence_ecriture_tables_metier(): void
     {
         // Snapshot initial de référence de toutes les tables métier
+        // (registre C2 élargi : inscriptions, étudiants, référentiel,
+        // groupes pédagogiques, matières, UE, décisions/délibérations).
         $inscriptionsAvant = InscriptionAcademique::query()->orderBy('id')->get()->toArray();
         $etudiantsAvant = Etudiant::query()->orderBy('id')->get()->toArray();
         $programmesAvant = Programme::query()->orderBy('id')->get()->toArray();
         $niveauxAvant = Niveau::query()->orderBy('id')->get()->toArray();
+        $matieresAvant = Matiere::query()->orderBy('id')->get()->toArray();
+        $uesAvant = UniteEnseignement::query()->orderBy('id')->get()->toArray();
+        $groupesAvant = Group::query()->orderBy('id')->get()->toArray();
+        $notesAvant = Note::query()->orderBy('id')->get()->toArray();
+        $decisionsAvant = DecisionDeliberation::query()->orderBy('id')->get()->toArray();
+        $inscriptionsPedAvant = InscriptionPedagogique::query()->orderBy('id')->get()->toArray();
 
         $scenario = $this->creerScenario();
 
@@ -661,11 +706,22 @@ class SimulationTemporelleTest extends TestCase
             'annee_universitaire_id' => $this->annee->id, 'graine' => 'preuve-metier-1', 'nb_variantes' => 10,
         ])->assertOk();
 
+        // Monte-Carlo + sensibilité + Pareto + budget : autres chemins d'analyse.
+        $executionPremiere = ExecutionTemporelle::where('scenario_temporel_id', $scenario->id)->firstOrFail();
+        $this->appelGet($this->admin, 'admin.simulation-temporelle.executions.export.csv', ['id' => $executionPremiere->id])
+            ->assertOk();
+
         // Vérification stricte : aucune ligne modifiée, insérée ou supprimée dans les tables métier
         $this->assertSame($inscriptionsAvant, InscriptionAcademique::query()->orderBy('id')->get()->toArray());
         $this->assertSame($etudiantsAvant, Etudiant::query()->orderBy('id')->get()->toArray());
         $this->assertSame($programmesAvant, Programme::query()->orderBy('id')->get()->toArray());
         $this->assertSame($niveauxAvant, Niveau::query()->orderBy('id')->get()->toArray());
+        $this->assertSame($matieresAvant, Matiere::query()->orderBy('id')->get()->toArray());
+        $this->assertSame($uesAvant, UniteEnseignement::query()->orderBy('id')->get()->toArray());
+        $this->assertSame($groupesAvant, Group::query()->orderBy('id')->get()->toArray());
+        $this->assertSame($notesAvant, Note::query()->orderBy('id')->get()->toArray());
+        $this->assertSame($decisionsAvant, DecisionDeliberation::query()->orderBy('id')->get()->toArray());
+        $this->assertSame($inscriptionsPedAvant, InscriptionPedagogique::query()->orderBy('id')->get()->toArray());
 
         // Seules les tables de simulation ont été écrites
         $this->assertSame(1, ExecutionTemporelle::where('scenario_temporel_id', $scenario->id)->count());
@@ -911,6 +967,7 @@ class SimulationTemporelleTest extends TestCase
             'name' => 'Admin2', 'email' => 'adm2-'.uniqid().'@u.test', 'password' => 'Motdepasse@123',
             'faculte_id' => $this->faculteA->id,
         ], 'admin_scolarite');
+        $this->habiliter($admin2);
         $approbation = $this->appelPost($admin2, 'admin.simulation-temporelle.executions.gouvernance.decider', ['id' => $exec['id']], [
             'decision' => 'approuvee',
             'motif' => 'Validation revue par le second responsable',
@@ -1032,6 +1089,7 @@ class SimulationTemporelleTest extends TestCase
             'name' => 'Valideur', 'email' => 'val-'.uniqid().'@u.test', 'password' => 'Motdepasse@123',
             'faculte_id' => $this->faculteA->id,
         ], 'admin_scolarite');
+        $this->habiliter($valideur);
         $this->appelPost($valideur, 'admin.simulation-temporelle.executions.gouvernance.decider', ['id' => $exec['id']], [
             'decision' => 'approuvee', 'motif' => 'Revue conforme',
         ])->assertOk();
@@ -1087,5 +1145,195 @@ class SimulationTemporelleTest extends TestCase
         $budget = $execution['resultat']['budget'];
         $this->assertFalse($budget['parametres_configures']);
         $this->assertStringContainsString('aucun impact réel', $budget['avertissement']);
+    }
+
+    /* ── ST-11 (P0-1) — permissions dédiées : la consultation n'autorise plus rien ── */
+
+    /**
+     * ST11-SEC-011 : un compte de CONSULTATION (qui possède
+     * `statistiques.view` mais aucune permission `simulation.*`) est
+     * refusé sur TOUTES les opérations — y compris les écritures qu'il
+     * pouvait effectuer avant la correction.
+     */
+    public function test_st11_sec_011_consultation_refuse_partout(): void
+    {
+        $consultant = User::creerCompteBackOffice([
+            'name' => 'Consult', 'email' => 'cst-'.uniqid().'@u.test', 'password' => 'Motdepasse@123',
+        ], 'consultation');
+        $this->assertTrue($consultant->hasPermission('statistiques.view'),
+            'Précondition : le rôle consultation détient statistiques.view.');
+        $this->assertFalse($consultant->hasPermission('simulation.view'),
+            'Aucune permission simulation.* attribuée automatiquement.');
+
+        $scenario = $this->creerScenario();
+
+        // Consultation → 403 sur consultation du module.
+        $this->appelGet($consultant, 'admin.simulation-temporelle.index')->assertStatus(403);
+        $this->appelGet($consultant, 'admin.simulation-temporelle.scenarios.index')->assertStatus(403);
+
+        // Consultation → 403 sur les écritures (comportement d'AVANT la correction).
+        $this->appelPost($consultant, 'admin.simulation-temporelle.scenarios.creer', [], $this->criteres())->assertStatus(403);
+        $this->appelPost($consultant, 'admin.simulation-temporelle.executer', ['id' => $scenario->id], [
+            'annee_universitaire_id' => $this->annee->id, 'graine' => 'x', 'nb_variantes' => 1,
+        ])->assertStatus(403);
+
+        $this->assertSame(0, ExecutionTemporelle::count(),
+            'Aucune exécution n\'a pu être créée par un compte de consultation.');
+    }
+
+    /**
+     * ST11-SEC-012 : un agent de scolarité (saisie) non habilité ne peut
+     * pas décider une proposition de gouvernance — même hors circuit.
+     */
+    public function test_st11_sec_012_agent_sans_habilitation_ne_decide_pas(): void
+    {
+        $agent = User::creerCompteBackOffice([
+            'name' => 'Agent', 'email' => 'agt-'.uniqid().'@u.test', 'password' => 'Motdepasse@123',
+        ], 'agent_scolarite');
+        $this->assertTrue($agent->hasPermission('statistiques.view'));
+
+        $scenario = $this->creerScenario();
+        $exec = $this->appelPost($this->admin, 'admin.simulation-temporelle.executer', ['id' => $scenario->id], [
+            'annee_universitaire_id' => $this->annee->id, 'graine' => 'sec-012', 'nb_variantes' => 1,
+        ])->assertOk()->json('execution');
+
+        $this->appelPost($this->admin, 'admin.simulation-temporelle.executions.gouvernance.proposer', ['id' => $exec['id']], [
+            'titre' => 'Proposition', 'justification' => 'Revue',
+        ])->assertStatus(201);
+
+        // L'agent détient statistiques.view mais PAS simulation.gouvernance.decider → 403.
+        $this->appelPost($agent, 'admin.simulation-temporelle.executions.gouvernance.decider', ['id' => $exec['id']], [
+            'decision' => 'approuvee', 'motif' => 'Tentative de décision sans habilitation',
+        ])->assertStatus(403);
+
+        $proposition = ExecutionTemporelle::find($exec['id'])->resultat['gouvernance_proposition'] ?? [];
+        $this->assertSame('soumise', $proposition['statut'] ?? null,
+            'La proposition reste soumise : aucune décision non autorisée.');
+    }
+
+    /**
+     * ST11-SEC-013 : les permissions dédiées existent dans le catalogue
+     * et ne sont attribuées à AUCUN rôle existant (décision métier).
+     */
+    public function test_st11_sec_013_permissions_dediees_non_attribuees_aux_anciens_roles(): void
+    {
+        $permissions = ['simulation.view', 'simulation.gerer', 'simulation.executer',
+            'simulation.export', 'simulation.explication', 'simulation.gouvernance.proposer',
+            'simulation.gouvernance.decider'];
+
+        foreach ($permissions as $permission) {
+            $this->assertTrue(in_array($permission, Permissions::TOUTES, true),
+                "{$permission} doit exister dans le catalogue canonique.");
+        }
+
+        foreach (['admin_scolarite', 'agent_scolarite', 'consultation', 'admin_faculte',
+            'certificateur_qualite', 'direction_etudes', 'autorite_publication'] as $role) {
+            foreach ($permissions as $permission) {
+                $this->assertNotContains($permission, Permissions::pourRole($role),
+                    "{$permission} ne doit pas être accordé automatiquement au rôle {$role}.");
+            }
+        }
+
+        // Seul le super_admin (TOUTES) les détient par défaut.
+        $super = User::creerCompteBackOffice([
+            'name' => 'Super', 'email' => 'sup-'.uniqid().'@u.test', 'password' => 'Motdepasse@123',
+        ], 'super_admin');
+        $this->assertTrue($super->hasPermission('simulation.gouvernance.decider'));
+    }
+
+    /* ── ST-11 — exactitude mathématique ── */
+
+    /**
+     * ST12-UX-014 (P6/P8) : l'interface masque les boutons de décision à
+     * l'auteur de la proposition et affiche la mention budgétaire
+     * obligatoire « sans valeur comptable ».
+     */
+    public function test_st12_ux_014_vue_masque_decision_auteur_et_mention_budget(): void
+    {
+        $reponse = $this->appelGet($this->admin, 'admin.simulation-temporelle.index')->assertOk();
+
+        $html = $reponse->getContent();
+
+        // P6 : l'ID de l'utilisateur courant est injecté pour le masquage Alpine.
+        $this->assertStringContainsString('utilisateurId:', $html);
+
+        // P6 : la condition de masquage compare l'auteur à l'utilisateur courant.
+        $this->assertStringContainsString('propose_par_id !== utilisateurId', $html);
+        $this->assertStringContainsString("attend l'examen d'un second acteur habilité", $html);
+
+        // P8 : la mention budgétaire obligatoire est présente et visible (bandeau).
+        $this->assertStringContainsString('sans valeur comptable', $html);
+        $this->assertStringContainsString('Estimation indicative', $html);
+
+        // La bannière institutionnelle permanente est toujours là.
+        $this->assertStringContainsString('Simulation uniquement', $html);
+    }
+
+    /**
+     * ST11-MATH-014 (P1-1) : conservation aux frontières d'arrondi.
+     * Effectif = 1, passage = 0.5, redoublement = 0.5 : sans garde, les
+     * arrondis produiraient 2 flux (1 partant + 1 redoublant) depuis UNE
+     * seule personne. La garde plafonne le redoublement : aucune
+     * population n'est créée.
+     */
+    public function test_st11_math_014_conservation_effectifs_frontieres_arrondi(): void
+    {
+        // Micro-cohorte : programme L1 avec UN seul étudiant inscrit.
+        $programme = Programme::create([
+            'faculte_id' => $this->faculteA->id, 'code' => 'PMICRO', 'nom' => 'Micro',
+            'statut' => 'actif', 'actif' => true, 'duree_annees' => 2,
+        ]);
+        $niveauL1 = Niveau::create([
+            'programme_id' => $programme->id, 'code' => 'L1', 'nom' => 'L1', 'ordre' => 1, 'actif' => true,
+        ]);
+        $niveauL2 = Niveau::create([
+            'programme_id' => $programme->id, 'code' => 'L2', 'nom' => 'L2', 'ordre' => 2, 'actif' => true,
+        ]);
+        $etudiant = Etudiant::create([
+            'cin' => 'CIN-MICRO-'.uniqid(), 'nom' => 'Micro', 'prenom' => 'Un',
+            'email' => 'micro-'.uniqid().'@u.test', 'sexe' => 'M',
+            'faculte_id' => $this->faculteA->id, 'niveau' => 'L1', 'annee_academique' => '2026-2027',
+            'adresse' => 'Rue', 'ville' => 'Dakar', 'code_postal' => '10000', 'annee_bac' => '2024',
+        ]);
+        InscriptionAcademique::create([
+            'etudiant_id' => $etudiant->id, 'programme_id' => $programme->id,
+            'niveau' => 'L1', 'niveau_id' => $niveauL1->id,
+            'annee_universitaire_id' => $this->annee->id, 'statut' => 'valide',
+        ]);
+
+        $criteres = [
+            'delta_admissions' => 0.0,
+            'bornes' => ['min' => 0.0, 'max' => 0.0],
+            'horizon_annees' => 1,
+            'taux' => ['passage' => 0.5, 'redoublement' => 0.5, 'abandon' => 0.0],
+        ];
+        $scenario = ScenarioTemporel::create([
+            'code' => 'SIM-MICRO-'.uniqid(), 'libelle' => 'Frontière arrondi',
+            'faculte_id' => $this->faculteA->id,
+            'criteres' => $criteres, 'contraintes' => [],
+            'objectifs' => [['type' => 'cible_total', 'cible' => 5, 'poids' => 1.0]],
+            'version' => 1, 'cree_par' => $this->admin->id,
+        ]);
+
+        $execution = $this->appelPost($this->admin, 'admin.simulation-temporelle.executer', ['id' => $scenario->id], [
+            'annee_universitaire_id' => $this->annee->id, 'graine' => 'micro', 'nb_variantes' => 1,
+        ])->assertOk()->json('execution');
+
+        $pas1 = SnapshotExecution::where('execution_temporelle_id', $execution['id'])
+            ->where('pas', 1)->firstOrFail()->etat;
+
+        // Périmètre faculté A : L1 = 11 (10 setup + 1 micro), L2 = 20, L3 = 30.
+        // Arithmétique de frontière (round(5.5) = 6 en PHP) :
+        //   L1 : partent = 6, redoublants = 6 → 6+6 = 12 > 11 → GARDE : redoublants = 5.
+        //   Sans garde : L1 = 6 + 11 admissions = 17 (population créée) ;
+        //   avec garde  : L1 = 5 + 11 admissions = 16.
+        $this->assertSame(16, $pas1['cohortes']['L1'],
+            'Garde de conservation : partent(6) + redoublants plafonnés(5) ≤ effectif(11).');
+        $this->assertSame(16, $pas1['cohortes']['L2'], 'L2 = 10 redoublants + 6 passages.');
+        $this->assertSame(25, $pas1['cohortes']['L3'], 'L3 = 15 redoublants + 10 passages.');
+
+        // Conservation exacte : 61 initial + 11 admissions − 15 diplômés (L3) = 57.
+        $this->assertSame(57, $pas1['total'],
+            'Aucune population créée ni perdue : les flux arrondis sont plafonnés par l\'effectif.');
     }
 }

@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Modules\Referentiel\Models\Programme;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
@@ -38,6 +39,11 @@ class RegistrationPeriod extends Model
     public function faculte(): BelongsTo
     {
         return $this->belongsTo(Faculte::class);
+    }
+
+    public function programme(): BelongsTo
+    {
+        return $this->belongsTo(Programme::class);
     }
 
     public function etudiant(): BelongsTo

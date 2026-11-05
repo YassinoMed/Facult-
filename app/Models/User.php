@@ -4,6 +4,7 @@ namespace App\Models;
 
 // use Illuminate\Contracts\Auth\MustVerifyEmail;
 use App\Modules\Schedule\Models\Teacher;
+use App\Support\Iam\MoteurAutorisation;
 use App\Support\Permissions;
 use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
@@ -85,7 +86,77 @@ class User extends Authenticatable
 
     public function hasPermission(string $permission): bool
     {
+        // Vérification immédiate via le moteur d'autorisation si disponible,
+        // sinon fallback sur la matrice de rôle existante.
+        if (class_exists(MoteurAutorisation::class)) {
+            try {
+                $moteur = new MoteurAutorisation;
+
+                return $moteur->autorise($this, $permission);
+            } catch (Throwable) {
+                // Fallback silencieux si le moteur n'est pas encore initialisable.
+            }
+        }
+
+        // Fallback : matrice de rôle existante.
         return in_array($permission, Permissions::pourRole($this->role ?? ''), true);
+    }
+
+    /**
+     * Permissions effectives du compte : matrice + profils + affectations
+     * + délégations + urgences actives. Utilisée pour l'affichage (ex:
+     * récapitulatif avant enregistrement), mais l'autorisation réelle doit
+     * passer par `hasPermission()` ou `MoteurAutorisation::autorise()`.
+     *
+     * @return array<int, string>
+     */
+    public function permissionsEffectives(): array
+    {
+        if (class_exists(MoteurAutorisation::class)) {
+            try {
+                $moteur = new MoteurAutorisation;
+
+                return $moteur->permissionsEffectives($this);
+            } catch (Throwable) {
+                // Fallback silencieux.
+            }
+        }
+
+        // Fallback : matrice seule.
+        return array_values(Permissions::pourRole((string) ($this->role ?? '')));
+    }
+
+    /**
+     * Origine d'une permission pour un compte (affichage et audit).
+     * Retourne l'une des valeurs suivantes : 'role', 'profil',
+     * 'habilitation', 'delegation', 'urgence', ou null si inconnue.
+     */
+    public function originePermission(string $permission): ?string
+    {
+        if (class_exists(MoteurAutorisation::class)) {
+            try {
+                $moteur = new MoteurAutorisation;
+
+                return $moteur->origine($this, $permission);
+            } catch (Throwable) {
+                // Fallback silencieux.
+            }
+        }
+
+        // Fallback simple : si la permission vient du rôle, on le signale.
+        if (in_array($permission, Permissions::pourRole($this->role ?? ''), true)) {
+            return 'role';
+        }
+
+        return null;
+    }
+
+    /** @deprecated Use `MoteurAutorisation::autorise()` à la place. */
+    public function peutAccéder(int $faculteId, string $permission): bool
+    {
+        $restreinte = $this->faculteRestreinteId();
+
+        return $restreinte === null || $restreinte === $faculteId;
     }
 
     public function estSuperAdmin(): bool

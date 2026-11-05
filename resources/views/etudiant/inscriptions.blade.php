@@ -212,18 +212,41 @@
                 </div>
 
                 @if(config('modules.finances.active') && config('inscriptions-paiements.actif'))
-                    {{-- LOOP-UNIREGISTRE-INSCRIPTIONS-PAIEMENTS-01 : dossier de
-                         paiement propre à CETTE inscription annuelle. --}}
+                    {{-- Dossier de paiement propre à CETTE inscription annuelle --}}
+                    @php
+                        $statutPaiement = $inscription->dossierPaiement?->statut ?? \App\Modules\Finances\Models\DossierPaiement::NON_PAYE;
+                    @endphp
                     <div class="px-6 pb-5 sm:px-8 lg:px-12">
-                        <div class="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
-                            <div class="flex items-center gap-2">
-                                <span class="text-[11px] font-bold uppercase tracking-wider text-slate-500">Paiement</span>
-                                <x-status-badge :statut="$inscription->dossierPaiement?->statut ?? 'NON_PAYE'" />
+                        <div class="rounded-2xl border p-4 transition-all
+                            {{ $statutPaiement === \App\Modules\Finances\Models\DossierPaiement::VALIDE ? 'border-emerald-200 bg-emerald-50/40' : ($statutPaiement === \App\Modules\Finances\Models\DossierPaiement::REFUSE ? 'border-rose-200 bg-rose-50/40' : (in_array($statutPaiement, [\App\Modules\Finances\Models\DossierPaiement::RECU_DEPOSE, \App\Modules\Finances\Models\DossierPaiement::EN_VERIFICATION], true) ? 'border-amber-200 bg-amber-50/40' : 'border-slate-200 bg-slate-50/80')) }}">
+                            <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                                <div>
+                                    <div class="flex items-center gap-2">
+                                        <span class="text-xs font-black uppercase tracking-wider text-slate-700">Reçu de paiement annuel</span>
+                                        <x-status-badge :statut="$statutPaiement" />
+                                    </div>
+                                    <p class="mt-1 text-xs text-slate-600">
+                                        @if($statutPaiement === \App\Modules\Finances\Models\DossierPaiement::VALIDE)
+                                            ✓ Règlement des droits d’inscription validé par la scolarité.
+                                        @elseif($statutPaiement === \App\Modules\Finances\Models\DossierPaiement::REFUSE)
+                                            ⚠ Le reçu a été refusé par l'administration. Déposez un nouveau reçu conforme (PNG, PDF, JPG, JPEG, WebP).
+                                        @elseif(in_array($statutPaiement, [\App\Modules\Finances\Models\DossierPaiement::RECU_DEPOSE, \App\Modules\Finances\Models\DossierPaiement::EN_VERIFICATION], true))
+                                            ⏳ Reçu transmis — vérification du montant et de la référence en cours par la scolarité.
+                                        @else
+                                            Obligatoire pour finaliser l’inscription de cette année : déposez votre reçu bancaire ou postal (formats acceptés : PNG, PDF, JPG, JPEG, WebP — max 10 Mo).
+                                        @endif
+                                    </p>
+                                </div>
+                                <div class="shrink-0">
+                                    <a href="{{ route('etudiant.paiements.inscription', $inscription) }}"
+                                       class="inline-flex items-center gap-1.5 rounded-xl px-4 py-2 text-xs font-bold transition shadow-xs
+                                           {{ in_array($statutPaiement, [\App\Modules\Finances\Models\DossierPaiement::NON_PAYE, \App\Modules\Finances\Models\DossierPaiement::REFUSE], true)
+                                               ? 'bg-primary-700 text-white hover:bg-primary-800'
+                                               : 'bg-white border border-slate-300 text-slate-700 hover:bg-slate-50' }}">
+                                        {{ in_array($statutPaiement, [\App\Modules\Finances\Models\DossierPaiement::NON_PAYE, \App\Modules\Finances\Models\DossierPaiement::REFUSE], true) ? 'Déposer mon reçu →' : 'Consulter le dossier →' }}
+                                    </a>
+                                </div>
                             </div>
-                            <a href="{{ route('etudiant.paiements.inscription', $inscription) }}"
-                               class="text-xs font-bold text-primary-800 underline underline-offset-2">
-                                Voir le dossier de paiement →
-                            </a>
                         </div>
                     </div>
                 @endif

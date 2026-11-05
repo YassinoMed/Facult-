@@ -337,25 +337,92 @@ class InscriptionEligibiliteOrientationTest extends TestCase
         $this->assertStringContainsString('capacité d\'accueil', $bilan['bloquants']['programme_id']);
     }
 
-    public function test_exception_administrative_derogation_permet_inscription_et_est_tracee(): void
+    public function test_derogation_administrative_auto_declaree_est_refusee(): void
     {
         $this->creerMens('08123456', '2005-04-12');
 
-        // Première inscription en M1 autorisée grâce à une dérogation administrative
+        // Tentative de contournement : le candidat déclare lui-même une dérogation
+        // pour accéder directement au M1 sans admission préalable.
         $reponse = $this->post(route('inscription.store'), $this->donneesInscription([
             'programme_id' => $this->programmeMasterData->id,
             'niveau' => 'M1',
             'derogation_administrative' => 'Décision Rectorale 2026/D-88',
         ]));
 
-        $reponse->assertRedirect(route('inscription.success'));
-        $etudiant = Etudiant::where('cin', '08123456')->firstOrFail();
-
-        // Vérification de la trace d'audit sur l'exception accordée
-        $this->assertDatabaseHas('historique_academique', [
-            'etudiant_id' => $etudiant->id,
+        $reponse->assertSessionHasErrors('derogation_administrative');
+        $this->assertSame(0, Etudiant::count());
+        $this->assertDatabaseMissing('historique_academique', [
             'action' => 'qualite.derogation_eligibilite',
         ]);
+    }
+
+    public function test_service_ignore_une_derogation_sans_opt_in_explicite(): void
+    {
+        $bilan = app(EligibiliteParcoursService::class)->evaluer([
+            'faculte_id' => $this->faculteSciences->id,
+            'programme_id' => $this->programmeMasterData->id,
+            'niveau' => 'M1',
+            'annee_academique' => '2025-2026',
+            'type_inscription' => 'premiere',
+            'derogation_administrative' => 'Décision Rectorale 2026/D-88',
+        ]);
+
+        $this->assertFalse($bilan['eligible']);
+        $this->assertFalse($bilan['exception_accordee']);
+        $this->assertNull($bilan['derogation_reference']);
+        $this->assertArrayHasKey('niveau', $bilan['bloquants']);
+    }
+
+    public function test_service_honore_une_derogation_uniquement_sur_opt_in_explicite(): void
+    {
+        $bilan = app(EligibiliteParcoursService::class)->evaluer([
+            'faculte_id' => $this->faculteSciences->id,
+            'programme_id' => $this->programmeMasterData->id,
+            'niveau' => 'M1',
+            'annee_academique' => '2025-2026',
+            'type_inscription' => 'premiere',
+            'derogation_administrative' => 'Décision Rectorale 2026/D-88',
+        ], true);
+
+        $this->assertTrue($bilan['eligible']);
+        $this->assertTrue($bilan['exception_accordee']);
+        $this->assertSame('Décision Rectorale 2026/D-88', $bilan['derogation_reference']);
+    }
+
+    public function test_derogation_sans_opt_in_ne_contourne_pas_la_capacite_atteinte(): void
+    {
+        // Capacité du master data = 2 places, déjà saturée.
+        for ($i = 1; $i <= 2; $i++) {
+            Etudiant::create([
+                'cin' => sprintf('080000%02d', $i),
+                'nom' => "Etudiant{$i}",
+                'prenom' => 'Test',
+                'email' => "etud{$i}@test.ma",
+                'sexe' => 'M',
+                'faculte_id' => $this->faculteSciences->id,
+                'programme_id' => $this->programmeMasterData->id,
+                'niveau' => 'M1',
+                'annee_academique' => '2025-2026',
+                'adresse' => 'Rabat',
+                'ville' => 'Rabat',
+                'code_postal' => '10000',
+                'annee_bac' => '2022',
+                'password' => bcrypt('Secret123!'),
+            ]);
+        }
+
+        $bilan = app(EligibiliteParcoursService::class)->evaluer([
+            'faculte_id' => $this->faculteSciences->id,
+            'programme_id' => $this->programmeMasterData->id,
+            'niveau' => 'M1',
+            'annee_academique' => '2025-2026',
+            'type_inscription' => 'transfert',
+            'derogation_administrative' => 'Décision Rectorale 2026/D-88',
+        ]);
+
+        $this->assertFalse($bilan['eligible']);
+        $this->assertArrayHasKey('programme_id', $bilan['bloquants']);
+        $this->assertStringContainsString("capacité d'accueil", $bilan['bloquants']['programme_id']);
     }
 
     public function test_changement_configuration_apres_affichage_intercepte_a_la_soumission(): void

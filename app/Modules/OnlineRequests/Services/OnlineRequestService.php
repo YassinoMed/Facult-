@@ -169,6 +169,19 @@ class OnlineRequestService
             // jamais diverger la même demande (transition perdue).
             $verrouillee = OnlineRequest::whereKey($demande->id)->lockForUpdate()->firstOrFail();
 
+            // LOOP 45 : un recours académique relève de son propre circuit
+            // (domaine `recours`, permissions dédiées, quatre yeux sur toute
+            // décision). Le transitionneur générique ne doit jamais le faire
+            // évoluer, sinon l'instruction et la séparation des fonctions
+            // seraient contournables. Le garde reste actif même si le circuit
+            // est désactivé : un recours existant ne redevient pas une demande
+            // ordinaire.
+            if ($this->estRecoursAcademique($verrouillee)) {
+                throw ValidationException::withMessages([
+                    'status' => 'Cette demande relève du circuit des recours académiques : seul RecoursAcademiqueService peut la faire évoluer.',
+                ]);
+            }
+
             // Résolution de la définition ÉPINGLÉE (version_workflow).
             $definition = $this->workflows->resoudreDefinition('demande', $verrouillee);
 
@@ -250,6 +263,23 @@ class OnlineRequestService
     private function genererReference(): string
     {
         return sprintf('REQ-%s-%06d', date('Y'), random_int(0, 999999));
+    }
+
+    /**
+     * LOOP 45 : détecte le support des recours académiques par le code du
+     * type de demande configuré (jamais par une heuristique sur le contenu).
+     */
+    private function estRecoursAcademique(OnlineRequest $demande): bool
+    {
+        $code = trim((string) config('recours_academiques.type_code', ''));
+
+        if ($code === '') {
+            return false;
+        }
+
+        $demande->loadMissing('type');
+
+        return $demande->type !== null && (string) $demande->type->code === $code;
     }
 
     /**

@@ -911,6 +911,11 @@ Nombre total de routes recensées : 952
 
 | Méthode | URL | Tâche | Nom de route | Contrôleur / Action |
 |---------|-----|-------|----------------|-------------------|
+| POST | `api/v1/acquis/campagne/lancer` | Créer / Lancer | `api.v1.acquis.campagne.lancer` | `App\Http\Controllers\Api\V1\AcquisRedoublementApiController@lancerCampagne` |
+| GET | `api/v1/acquis/campagnes/{reference}` | Suivi | `api.v1.acquis.campagnes.suivi` | `App\Http\Controllers\Api\V1\AcquisRedoublementApiController@suiviCampagne` |
+| GET | `api/v1/acquis/students/{student}` | {student} | `api.v1.acquis.synthese` | `App\Http\Controllers\Api\V1\AcquisRedoublementApiController@synthese` |
+| GET | `api/v1/acquis/students/{student}/plan` | Plan | `api.v1.acquis.plan` | `App\Http\Controllers\Api\V1\AcquisRedoublementApiController@plan` |
+| POST | `api/v1/acquis/students/{student}/simulation` | Créer / Simulation | `api.v1.acquis.simulation` | `App\Http\Controllers\Api\V1\AcquisRedoublementApiController@simulation` |
 | POST | `api/v1/assignments/simulate` | Créer / Simulate | `api.v1.assignments.simulate` | `App\Http\Controllers\Api\V1\AssignmentApiController@simuler` |
 | GET | `api/v1/assignments/simulations` | Simulations | `api.v1.assignments.index` | `App\Http\Controllers\Api\V1\AssignmentApiController@index` |
 | GET | `api/v1/assignments/simulations/{simulation}` | {simulation} | `api.v1.assignments.show` | `App\Http\Controllers\Api\V1\AssignmentApiController@show` |
@@ -941,8 +946,10 @@ Nombre total de routes recensées : 952
 | GET | `api/v1/registrations/{registration}` | {registration} | `api.v1.registrations.show` | `App\Http\Controllers\Api\V1\RegistrationApiController@show` |
 | POST | `api/v1/schedules/import/confirm` | Créer / Confirm | `api.v1.schedules.import.confirm` | `App\Http\Controllers\Api\V1\ScheduleImportApiController@confirmer` |
 | POST | `api/v1/schedules/import/preview` | Créer / Preview | `api.v1.schedules.import.preview` | `App\Http\Controllers\Api\V1\ScheduleImportApiController@preview` |
+| POST | `api/v1/student-dossiers` | Créer / Student dossiers | `api.v1.student-dossiers.store` | `App\Modules\StudentDossiers\Controllers\Api\StudentDossierApiController@store` |
 | GET | `api/v1/student-dossiers` | Student dossiers | `api.v1.student-dossiers.index` | `App\Modules\StudentDossiers\Controllers\Api\StudentDossierApiController@index` |
 | GET | `api/v1/student-dossiers/{dossier}` | {dossier} | `api.v1.student-dossiers.show` | `App\Modules\StudentDossiers\Controllers\Api\StudentDossierApiController@show` |
+| PATCH | `api/v1/student-dossiers/{dossier}` | Modifier / {dossier} | `api.v1.student-dossiers.update` | `App\Modules\StudentDossiers\Controllers\Api\StudentDossierApiController@update` |
 | GET | `api/v1/student-dossiers/{dossier}/documents` | Documents | `api.v1.student-dossiers.documents` | `App\Modules\StudentDossiers\Controllers\Api\StudentDossierApiController@documents` |
 | GET | `api/v1/students` | Students | `api.v1.students.index` | `App\Http\Controllers\Api\V1\StudentApiController@index` |
 | GET | `api/v1/students/{student}` | {student} | `api.v1.students.show` | `App\Http\Controllers\Api\V1\StudentApiController@show` |

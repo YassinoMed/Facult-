@@ -7,6 +7,7 @@ use App\Services\Workflow\Definitions\WorkflowCorrectionQuatreYeuxDefinition;
 use App\Services\Workflow\Definitions\WorkflowDemandeEtudianteDefinition;
 use App\Services\Workflow\Definitions\WorkflowInscriptionDefinitionV1;
 use App\Services\Workflow\Definitions\WorkflowInscriptionDefinitionV2;
+use App\Services\Workflow\Definitions\WorkflowRecoursAcademiqueDefinition;
 use DomainException;
 
 /**
@@ -27,6 +28,7 @@ class RegistreWorkflow
         $this->enregistrer(new WorkflowInscriptionDefinitionV2);
         $this->enregistrer(new WorkflowCorrectionQuatreYeuxDefinition);
         $this->enregistrer(new WorkflowDemandeEtudianteDefinition);
+        $this->enregistrer(new WorkflowRecoursAcademiqueDefinition);
     }
 
     /**

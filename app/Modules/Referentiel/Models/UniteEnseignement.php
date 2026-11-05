@@ -45,4 +45,14 @@ class UniteEnseignement extends Model
     {
         return $this->hasMany(Matiere::class, 'ue_id')->orderBy('code');
     }
+
+    /**
+     * Alias compatible pour les matières / ECUEs.
+     *
+     * @return HasMany<Matiere, $this>
+     */
+    public function matieres(): HasMany
+    {
+        return $this->ecues();
+    }
 }

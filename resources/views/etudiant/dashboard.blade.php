@@ -58,6 +58,16 @@
                 @if($derniereInscription !== null)
                     <p class="mt-2 text-sm font-bold text-slate-900">{{ $derniereInscription->programmeRef?->nom ?? $derniereInscription->filiere ?? '—' }}</p>
                     <p class="mt-1 text-xs text-slate-500">{{ $derniereInscription->niveauRef?->code ?? $derniereInscription->niveau }} · {{ $derniereInscription->anneeUniversitaire?->libelle }} · <x-status-badge :statut="$derniereInscription->statut" /></p>
+                    @if(config('modules.finances.active') && config('inscriptions-paiements.actif'))
+                        @php $statutPaiement = $derniereInscription->dossierPaiement?->statut ?? \App\Modules\Finances\Models\DossierPaiement::NON_PAYE; @endphp
+                        <div class="mt-2 pt-2 border-t border-slate-100 flex items-center justify-between text-xs">
+                            <span class="text-slate-500 font-medium">Reçu paiement annuel :</span>
+                            <a href="{{ route('etudiant.paiements.inscription', $derniereInscription) }}" class="font-bold flex items-center gap-1 hover:underline">
+                                <x-status-badge :statut="$statutPaiement" />
+                                <span class="text-[11px] text-primary-700">→</span>
+                            </a>
+                        </div>
+                    @endif
                 @else
                     <div class="mt-2 space-y-1">
                         <p class="text-xs font-bold text-slate-700">Dossier d'admission : <span class="font-mono text-slate-900">{{ $etudiant->num_inscription }}</span></p>

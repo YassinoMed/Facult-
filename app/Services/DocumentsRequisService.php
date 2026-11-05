@@ -92,20 +92,29 @@ final class DocumentsRequisService
             'category' => 'identity',
             'consignes' => 'Extrait d’état civil datant de moins de 3 mois.',
         ],
+        'recu_paiement' => [
+            'code' => 'recu_paiement',
+            'libelle' => 'Reçu de paiement des droits d’inscription',
+            'description' => 'Reçu de versement bancaire/postal ou quittance officielle attestant du règlement des frais de scolarité pour l’année universitaire.',
+            'formats' => ['pdf', 'jpg', 'jpeg', 'png', 'webp'],
+            'taille_max_mo' => 10,
+            'category' => 'financial',
+            'consignes' => 'Document original lisible (quittance ou avis d’opération bancaire/postale) indiquant la date, le montant et le matricule ou nom de l’étudiant.',
+        ],
     ];
 
     /** Matrice par défaut des pièces selon le parcours. */
     public const MATRICE_DEFAUT = [
         'premiere' => [
-            'obligatoires' => ['cin', 'releve_notes', 'photo_identite'],
+            'obligatoires' => ['cin', 'releve_notes', 'photo_identite', 'recu_paiement'],
             'facultatives' => ['acte_naissance'],
         ],
         'reinscription' => [
-            'obligatoires' => ['cin', 'quitus_scolarite'],
+            'obligatoires' => ['cin', 'quitus_scolarite', 'recu_paiement'],
             'facultatives' => ['photo_identite'],
         ],
         'transfert' => [
-            'obligatoires' => ['cin', 'attestation_transfert', 'releves_anterieurs', 'photo_identite'],
+            'obligatoires' => ['cin', 'attestation_transfert', 'releves_anterieurs', 'photo_identite', 'recu_paiement'],
             'facultatives' => ['acte_naissance'],
         ],
     ];

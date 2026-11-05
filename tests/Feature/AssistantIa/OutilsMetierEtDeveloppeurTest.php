@@ -51,12 +51,18 @@ class OutilsMetierEtDeveloppeurTest extends TestCase
         $this->assertTrue($this->registre->existe('preparer_action_scolarite'));
         $this->assertTrue($this->registre->existe('consulter_documentation_web'));
         $this->assertTrue($this->registre->existe('expliquer_referentiel_lmd'));
+        $this->assertTrue($this->registre->existe('expliquer_acquis_redoublement'));
+        $this->assertTrue($this->registre->existe('expliquer_decision_academique'));
         $this->assertTrue($this->registre->existe('verifier_regles_evaluation'));
         $this->assertTrue($this->registre->existe('consulter_eligibilite_examen'));
         $this->assertTrue($this->registre->existe('consulter_produit_data_mesh'));
         $this->assertTrue($this->registre->existe('consulter_actions_disponibles'));
+        $this->assertTrue($this->registre->existe('consulter_derives_session'));
+        $this->assertTrue($this->registre->existe('expliquer_exclusions_epreuve'));
+        $this->assertTrue($this->registre->existe('comparer_scenarios_d04'));
+        $this->assertTrue($this->registre->existe('resumer_anomalies_publication'));
 
-        $this->assertCount(14, $this->registre->tous());
+        $this->assertCount(20, $this->registre->tous());
     }
 
     public function test_outil_web_consulte_page_autorisee_et_rejette_url_invalide(): void

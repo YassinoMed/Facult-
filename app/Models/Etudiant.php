@@ -2,7 +2,10 @@
 
 namespace App\Models;
 
+use App\Modules\Evaluation\Models\DecisionDeliberation;
 use App\Modules\Evaluation\Models\EvaluationCompostage;
+use App\Modules\ParcoursAcademique\Models\ParcoursEquivalence;
+use App\Modules\ParcoursAcademique\Models\ParcoursPlan;
 use App\Modules\Referentiel\Models\Niveau;
 use App\Modules\Referentiel\Models\Programme;
 use App\Modules\Schedule\Models\Group;
@@ -225,6 +228,21 @@ class Etudiant extends Model
     public function verifications(): HasMany
     {
         return $this->hasMany(DossierVerification::class);
+    }
+
+    public function decisionsDeliberation(): HasMany
+    {
+        return $this->hasMany(DecisionDeliberation::class);
+    }
+
+    public function parcoursPlans(): HasMany
+    {
+        return $this->hasMany(ParcoursPlan::class);
+    }
+
+    public function parcoursEquivalences(): HasMany
+    {
+        return $this->hasMany(ParcoursEquivalence::class);
     }
 
     /**

@@ -55,4 +55,9 @@ class Note extends Model
     {
         return $this->locked_at !== null;
     }
+
+    public function getValeurAttribute(): ?float
+    {
+        return $this->note !== null ? (float) $this->note : null;
+    }
 }

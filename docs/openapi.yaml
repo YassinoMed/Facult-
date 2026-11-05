@@ -146,6 +146,125 @@ paths:
         '200': { description: 'status, is_open, starts_at, ends_at, exception' }
         '404': { description: 'Étudiant inconnu ou hors périmètre' }
 
+  /acquis/students/{student}:
+    get:
+      summary: 'Synthèse des acquis pédagogiques (scope archives:read)'
+      description: |
+        Décision académique calculée par `MoteurDecisionAcademiqueService::determinerDecision`.
+        Lecture seule : aucune écriture officielle n'est produite.
+        Isolation faculté : un étudiant hors du périmètre du token renvoie 404
+        (message identique à un étudiant inconnu, anti-BOLA).
+        Aucun contrôle RBAC supplémentaire n'est appliqué au-delà du scope Sanctum.
+      parameters:
+        - { name: student, in: path, required: true, schema: { type: integer } }
+        - { name: annee_universitaire_id, in: query, schema: { type: integer }, description: 'année ciblée ; absente ou nulle = dernière année applicable' }
+      responses:
+        '200': { description: 'succes, donnees{etudiant{id,matricule,nom,prenom,statut}, decision_globale, credits_capitalises, credits_non_acquis, unites_statuts, elements_a_reprendre, elements_conserves, anomalies}, horodatage ISO-8601' }
+        '401': { description: 'Token absent/invalide' }
+        '403': { description: 'Scope archives:read requis' }
+        '404': { description: 'Étudiant inconnu ou hors périmètre faculté' }
+        '429': { description: 'Rate limit dépassé (60/min)' }
+
+  /acquis/students/{student}/plan:
+    get:
+      summary: 'Plan de redoublement officiel enregistré (scope archives:read)'
+      description: |
+        Retourne le dernier `ParcoursPlan` de l'étudiant (le plus récent par id).
+        Aucun plan n'est calculé ici : la simulation est l'endpoint `POST .../simulation`.
+        Isolation faculté : 404 hors périmètre.
+      parameters:
+        - { name: student, in: path, required: true, schema: { type: integer } }
+      responses:
+        '200': { description: 'succes, donnees{plan_id, statut, objectif, version, credits_acquis_conserves, credits_restants, elements_a_reprendre, elements_conserves, prerequis_bloquants, anomalies, auteur_id}, horodatage' }
+        '401': { description: 'Token absent/invalide' }
+        '403': { description: 'Scope archives:read requis' }
+        '404': { description: 'succes=false — aucun plan enregistré, étudiant inconnu ou hors périmètre' }
+        '429': { description: 'Rate limit dépassé (60/min)' }
+
+  /acquis/students/{student}/simulation:
+    post:
+      summary: 'Simulation du plan de réinscription — sans écriture (scope archives:read)'
+      description: |
+        Calcule un plan prévisionnel via `PlanRedoublementService::simulerPlan` :
+        crédits conservés/restants, éléments à reprendre ou conservés, prérequis
+        bloquants, anomalies, `est_validable`.
+
+        **Aucune persistance** : la simulation ne crée ni ne modifie aucun
+        `ParcoursPlan` ; seule la confirmation (interface dédiée) écrit un plan.
+        Le verbe est POST car le calcul est coûteux et non cachable, mais le scope
+        requis reste `archives:read` — aucun corps de requête n'est lu.
+      parameters:
+        - { name: student, in: path, required: true, schema: { type: integer } }
+      responses:
+        '200': { description: 'succes, donnees{credits_acquis_conserves, credits_restants, elements_a_reprendre, elements_conserves, prerequis_bloquants, anomalies, est_validable}, horodatage' }
+        '401': { description: 'Token absent/invalide' }
+        '403': { description: 'Scope archives:read requis' }
+        '404': { description: 'Étudiant inconnu ou hors périmètre faculté' }
+        '429': { description: 'Rate limit dépassé (60/min)' }
+
+  /acquis/campagne/lancer:
+    post:
+      summary: 'Campagne de redoublement de masse par cohorte (scope archives:write + permission acquis.campagne.lancer)'
+      description: |
+        Qualifie une cohorte puis, si `dry_run=false`, délègue l'exécution à un job.
+        La cohorte est restreinte au périmètre faculté du token : `faculte_id` est
+        imposé côté serveur et n'est pas un paramètre client.
+
+        Sécurité : le scope Sanctum `archives:write` ne suffit pas. La permission
+        RBAC `acquis.campagne.lancer` est exigée (403 sinon), et un `groupe_id`
+        hors périmètre faculté renvoie 404 — indistinguable d'un groupe inexistant.
+
+        - `dry_run` par défaut **`true`** → `200`, `mode: simulation_preparatoire`.
+          La préparation est synchrone et retourne le détail nominatif à l'appelant
+          autorisé ; la campagne persistée ne conserve que des agrégats.
+        - `dry_run=false` → **`202`**, `mode: execution_reelle`, campagne
+          `statut: en_file`, plus l'URL `suivi`. L'exécution part en job queued ;
+          l'avancement se consulte via `GET /acquis/campagnes/{reference}`.
+
+        Persistance (A3) : chaque appel crée une campagne `CAMP-AAAAMMJJ-HHMMSS-xxxxxx`
+        référençable, avec ses critères (sans PII), son statut et ses compteurs.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [annee_universitaire_id]
+              properties:
+                annee_universitaire_id: { type: integer, minimum: 1, description: 'année ciblée ; 0 est refusé (422), jamais interprété comme « dernière année »' }
+                programme_id: { type: integer, minimum: 1, nullable: true, description: 'filtre programme (nom canonique)' }
+                formation_id: { type: integer, minimum: 1, nullable: true, description: 'alias historique de programme_id ; refusé s''il diverge' }
+                groupe_id: { type: integer, minimum: 1, nullable: true, description: 'filtre groupe réellement appliqué à la cohorte' }
+                dry_run: { type: boolean, default: true }
+                ignorer_alertes_mineures: { type: boolean, default: false }
+      responses:
+        '200': { description: 'mode=simulation_preparatoire — campagne{reference,statut,bilan agrégé}, donnees (bilan nominatif autorisé), horodatage' }
+        '202': { description: 'mode=execution_reelle — campagne{reference,statut=en_file}, suivi (URL), horodatage' }
+        '401': { description: 'Token absent/invalide' }
+        '403': { description: 'Scope archives:write ou permission acquis.campagne.lancer manquant' }
+        '404': { description: 'groupe_id inexistant ou hors du périmètre faculté (message identique)' }
+        '422': { description: 'annee_universitaire_id manquant/0, ou programme_id et formation_id divergents' }
+        '429': { description: 'Rate limit dépassé (throttle api-imports)' }
+
+  /acquis/campagnes/{reference}:
+    get:
+      summary: 'Suivi d''une campagne de redoublement (scope archives:read)'
+      description: |
+        Retourne l'état d'une campagne persistée : `statut` (`preparee`, `en_file`,
+        `en_cours`, `terminee`, `echec`), `mode`, critères, compteurs et bilan agrégé.
+        Aucun nom, CIN ni détail nominatif n'est exposé.
+
+        Anti-BOLA : une campagne hors du périmètre faculté du token renvoie le même
+        `404` qu'une référence inexistante.
+      parameters:
+        - { name: reference, in: path, required: true, schema: { type: string, pattern: '^[A-Za-z0-9-]+$' }, example: 'CAMP-20261101-120000-ab12cd' }
+      responses:
+        '200': { description: 'succes, donnees{reference,statut,mode,annee_universitaire_id,programme_id,groupe_id,dossiers_total,dossiers_traites,bilan,erreur,creee_a,demarree_a,terminee_a}, horodatage' }
+        '401': { description: 'Token absent/invalide' }
+        '403': { description: 'Scope archives:read requis' }
+        '404': { description: 'Référence inconnue ou campagne hors périmètre faculté' }
+        '429': { description: 'Rate limit dépassé (60/min)' }
+
   /registrations/reenroll/{student}:
     post:
       summary: 'Réinscription (scope registrations:write, Idempotency-Key, throttle)'
@@ -210,7 +329,7 @@ paths:
 
   /student-dossiers:
     get:
-      summary: Dossiers administratifs permanents — lecture seule
+      summary: Dossiers administratifs permanents — liste
       description: 'Scope archives:read. Module student-dossiers requis. Périmètre faculté du token (404 hors périmètre).'
       parameters:
         - { name: search, in: query, schema: { type: string }, description: 'référence, CIN, nom, prénom, email, num_inscription' }
@@ -224,6 +343,26 @@ paths:
         '403': { description: 'Scope archives:read requis' }
         '404': { description: 'Module désactivé' }
         '429': { description: 'Rate limit dépassé' }
+    post:
+      summary: Créer le dossier permanent d'un étudiant (idempotent)
+      description: 'Scope archives:write. Permission student_dossiers.create. Un seul dossier par étudiant : 201 à la création, 200 si le dossier existait (meta.created). Référence et statut calculés côté serveur, tout autre champ client ignoré. Étudiant inconnu ou hors périmètre faculté → 404.'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [etudiant_id]
+              properties:
+                etudiant_id: { type: integer, minimum: 1 }
+      responses:
+        '201': { description: 'Dossier créé (StudentDossierResource, meta.created=true)' }
+        '200': { description: 'Dossier déjà existant (StudentDossierResource, meta.created=false)' }
+        '401': { description: 'Token absent/invalide' }
+        '403': { description: 'Scope archives:write ou permission student_dossiers.create requis' }
+        '404': { description: 'Étudiant inconnu, hors périmètre ou module désactivé' }
+        '422': { description: 'etudiant_id manquant ou invalide' }
+        '429': { description: 'Rate limit dépassé' }
 
   /student-dossiers/{dossier}:
     get:
@@ -234,6 +373,27 @@ paths:
       responses:
         '200': { description: 'StudentDossierResource (documents_count, sans storage_path)' }
         '404': { description: 'Dossier inconnu, hors périmètre ou module désactivé' }
+    patch:
+      summary: Mettre à jour le statut d'un dossier
+      description: 'Scope archives:write. Permission student_dossiers.update. status limité à open|complete|archived ; etudiant_id et reference ne sont jamais modifiables. Statut inchangé = aucune écriture ni audit. Hors périmètre faculté → 404 (jamais 403).'
+      parameters:
+        - { name: dossier, in: path, required: true, schema: { type: integer } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status: { type: string, enum: [open, complete, archived] }
+      responses:
+        '200': { description: 'Dossier mis à jour (StudentDossierResource)' }
+        '401': { description: 'Token absent/invalide' }
+        '403': { description: 'Scope archives:write ou permission student_dossiers.update requis' }
+        '404': { description: 'Dossier inconnu, hors périmètre ou module désactivé' }
+        '422': { description: 'status manquant ou hors liste blanche' }
+        '429': { description: 'Rate limit dépassé' }
 
   /student-dossiers/{dossier}/documents:
     get:

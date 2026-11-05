@@ -54,6 +54,11 @@
                     Détecter & Générer automatiquement
                 </button>
             </form>
+            <a href="{{ route('admin.evaluation.examens.groupes-virtuels.anomalies', request()->query()) }}"
+               class="inline-flex items-center gap-1.5 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-900 hover:bg-rose-100 transition"
+               title="Consulter le centre centralisé des anomalies et des dérives">
+                🚨 Centre des anomalies ({{ $kpis['alertes_count'] ?? 0 }})
+            </a>
             <a href="{{ route('admin.evaluation.examens.groupes', ['mode' => 'B']) }}"
                class="inline-flex items-center gap-1.5 rounded-xl border border-purple-200 bg-purple-50 px-3 py-2 text-xs font-semibold text-purple-900 hover:bg-purple-100 transition"
                title="Accéder directement au module de décision capacitaire et permutation de salles">
@@ -71,7 +76,15 @@
         $statutActif = $f['statut'] ?? 'tous';
         $paramsBase = request()->except(['page', 'statut']);
     @endphp
-    <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+
+    @if($kpis['plafond_atteint'] ?? false)
+        <div class="rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-xs font-semibold text-amber-900">
+            Le scan d’anomalies a atteint le plafond de sécurité de {{ number_format(\App\Modules\Evaluation\Services\ConsultationExportGroupeVirtuelService::KPI_SCAN_LIMIT, 0, ',', ' ') }} groupes.
+            Les indicateurs d’anomalies sont partiels ; affinez les filtres (année, session, faculté) pour obtenir une valeur exacte.
+        </div>
+    @endif
+
+    <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
         <a href="{{ route('admin.evaluation.examens.groupes-virtuels.index', array_merge($paramsBase, ['statut' => 'tous'])) }}"
            title="Afficher tous les groupes virtuels"
            class="group rounded-2xl border p-4 shadow-2xs transition-all cursor-pointer block {{ $statutActif === 'tous' || empty($statutActif) ? 'border-slate-400 bg-slate-50/90 ring-2 ring-slate-400/50 shadow-xs' : 'border-slate-200/80 bg-white hover:border-slate-300 hover:shadow-xs' }}">
@@ -104,18 +117,56 @@
             <p class="mt-0.5 text-[11px] text-indigo-700">Publication officielle</p>
         </a>
 
-        <div class="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-2xs">
-            <span class="text-[11px] font-bold uppercase tracking-wider text-slate-500">Étudiants éligibles</span>
-            <div class="mt-1 text-2xl font-black text-slate-900">{{ $kpis['total_eligibles'] ?? 0 }}</div>
-            <p class="mt-0.5 text-[11px] text-slate-400">Cumul sélection</p>
-        </div>
-
         <a href="{{ route('admin.evaluation.examens.groupes-virtuels.index', array_merge($paramsBase, ['statut' => 'derive'])) }}"
            title="Filtrer sur les groupes présentant une dérive ou une alerte"
            class="group rounded-2xl border p-4 shadow-2xs transition-all cursor-pointer block {{ $statutActif === 'derive' ? 'border-rose-500 bg-rose-50/90 ring-2 ring-rose-500/50 shadow-xs' : (($kpis['alertes_count'] ?? 0) > 0 ? 'border-rose-300 bg-rose-50/60 hover:border-rose-400 hover:shadow-xs' : 'border-slate-200/80 bg-white hover:border-slate-300 hover:shadow-xs') }}">
             <span class="text-[11px] font-bold uppercase tracking-wider {{ ($kpis['alertes_count'] ?? 0) > 0 ? 'text-rose-800' : 'text-slate-500' }} group-hover:text-rose-900">Alertes / Dérives</span>
             <div class="mt-1 text-2xl font-black {{ ($kpis['alertes_count'] ?? 0) > 0 ? 'text-rose-900' : 'text-slate-900' }}">{{ $kpis['alertes_count'] ?? 0 }}</div>
-            <p class="mt-0.5 text-[11px] {{ ($kpis['alertes_count'] ?? 0) > 0 ? 'text-rose-700' : 'text-slate-400' }}">Contrôle correspondance</p>
+            <p class="mt-0.5 text-[11px] {{ ($kpis['alertes_count'] ?? 0) > 0 ? 'text-rose-700' : 'text-slate-400' }}">{{ $kpis['groupes_en_derive'] ?? 0 }} dérive(s) de population</p>
+        </a>
+
+        <div class="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-2xs">
+            <span class="text-[11px] font-bold uppercase tracking-wider text-slate-500">Étudiants éligibles uniques</span>
+            <div class="mt-1 text-2xl font-black text-slate-900">{{ $kpis['etudiants_eligibles_uniques'] ?? 0 }}</div>
+            <p class="mt-0.5 text-[11px] text-slate-400">Sans double comptage</p>
+        </div>
+
+        <div class="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-2xs">
+            <span class="text-[11px] font-bold uppercase tracking-wider text-slate-500">Étudiants exclus</span>
+            <div class="mt-1 text-2xl font-black text-slate-900">{{ $kpis['total_exclus'] ?? 0 }}</div>
+            <p class="mt-0.5 text-[11px] text-slate-400">Motifs métier traçés</p>
+        </div>
+
+        <a href="{{ route('admin.evaluation.examens.groupes-virtuels.index', array_merge($paramsBase, ['statut' => 'bloquant'])) }}"
+           title="Filtrer sur les groupes présentant une anomalie bloquante"
+           class="group rounded-2xl border p-4 shadow-2xs transition-all cursor-pointer block {{ $statutActif === 'bloquant' ? 'border-rose-500 bg-rose-50/90 ring-2 ring-rose-500/50 shadow-xs' : (($kpis['anomalies_bloquantes'] ?? 0) > 0 ? 'border-rose-200 bg-rose-50/40 hover:border-rose-300' : 'border-slate-200/80 bg-white hover:border-slate-300') }}">
+            <span class="text-[11px] font-bold uppercase tracking-wider {{ ($kpis['anomalies_bloquantes'] ?? 0) > 0 ? 'text-rose-800' : 'text-slate-500' }}">Anomalies bloquantes</span>
+            <div class="mt-1 text-2xl font-black {{ ($kpis['anomalies_bloquantes'] ?? 0) > 0 ? 'text-rose-900' : 'text-slate-900' }}">{{ $kpis['anomalies_bloquantes'] ?? 0 }}</div>
+            <p class="mt-0.5 text-[11px] text-slate-400">Export officiel bloqué</p>
+        </a>
+
+        <a href="{{ route('admin.evaluation.examens.groupes-virtuels.index', array_merge($paramsBase, ['statut' => 'sans_salle'])) }}"
+           title="Filtrer sur les groupes sans salle"
+           class="group rounded-2xl border p-4 shadow-2xs transition-all cursor-pointer block {{ $statutActif === 'sans_salle' ? 'border-amber-500 bg-amber-50/80 ring-2 ring-amber-500/50 shadow-xs' : 'border-amber-200/80 bg-amber-50/40 hover:border-amber-300' }}">
+            <span class="text-[11px] font-bold uppercase tracking-wider text-amber-800">Groupes sans salle</span>
+            <div class="mt-1 text-2xl font-black text-amber-950">{{ $kpis['groupes_sans_salle'] ?? 0 }}</div>
+            <p class="mt-0.5 text-[11px] text-amber-700">À planifier</p>
+        </a>
+
+        <a href="{{ route('admin.evaluation.examens.groupes-virtuels.index', array_merge($paramsBase, ['statut' => 'depassement'])) }}"
+           title="Filtrer sur les dépassements de capacité nominale"
+           class="group rounded-2xl border p-4 shadow-2xs transition-all cursor-pointer block {{ $statutActif === 'depassement' ? 'border-orange-500 bg-orange-50/80 ring-2 ring-orange-500/50 shadow-xs' : (($kpis['groupes_depassement'] ?? 0) > 0 ? 'border-orange-200 bg-orange-50/40 hover:border-orange-300' : 'border-slate-200/80 bg-white hover:border-slate-300') }}">
+            <span class="text-[11px] font-bold uppercase tracking-wider {{ ($kpis['groupes_depassement'] ?? 0) > 0 ? 'text-orange-800' : 'text-slate-500' }}">Dépassements</span>
+            <div class="mt-1 text-2xl font-black {{ ($kpis['groupes_depassement'] ?? 0) > 0 ? 'text-orange-900' : 'text-slate-900' }}">{{ $kpis['groupes_depassement'] ?? 0 }}</div>
+            <p class="mt-0.5 text-[11px] text-slate-400">Capacité nominale</p>
+        </a>
+
+        <a href="{{ route('admin.evaluation.examens.groupes-virtuels.index', array_merge($paramsBase, ['statut' => 'sans_eligible'])) }}"
+           title="Filtrer sur les groupes sans étudiant éligible"
+           class="group rounded-2xl border p-4 shadow-2xs transition-all cursor-pointer block {{ $statutActif === 'sans_eligible' ? 'border-slate-500 bg-slate-50/80 ring-2 ring-slate-500/50 shadow-xs' : 'border-slate-200/80 bg-white hover:border-slate-300' }}">
+            <span class="text-[11px] font-bold uppercase tracking-wider text-slate-600">Sans étudiant éligible</span>
+            <div class="mt-1 text-2xl font-black text-slate-900">{{ $kpis['groupes_sans_eligible'] ?? 0 }}</div>
+            <p class="mt-0.5 text-[11px] text-slate-400">Regroupement vide</p>
         </a>
     </div>
 
@@ -193,8 +244,31 @@
                     <option value="non_valide" @selected(($f['statut'] ?? null) === 'non_valide')>Proposition non validée</option>
                     <option value="publie" @selected(($f['statut'] ?? null) === 'publie')>Examen publié</option>
                     <option value="derive" @selected(($f['statut'] ?? null) === 'derive')>En dérive / Anomalie</option>
+                    <option value="bloquant" @selected(($f['statut'] ?? null) === 'bloquant')>Anomalie bloquante</option>
+                    <option value="sans_salle" @selected(($f['statut'] ?? null) === 'sans_salle')>Sans salle</option>
+                    <option value="depassement" @selected(($f['statut'] ?? null) === 'depassement')>Dépassement de capacité</option>
+                    <option value="sans_eligible" @selected(($f['statut'] ?? null) === 'sans_eligible')>Sans étudiant éligible</option>
                     <option value="remplace" @selected(($f['statut'] ?? null) === 'remplace')>Remplacé (historique)</option>
                     <option value="annule" @selected(($f['statut'] ?? null) === 'annule')>Annulé</option>
+                </select>
+            </div>
+
+            <div>
+                <label class="block text-[11px] font-bold uppercase tracking-wider text-slate-600 mb-1">Tri</label>
+                <select name="tri" class="w-full rounded-xl border border-slate-200 bg-slate-50/50 px-3 py-2 text-xs font-medium text-slate-800">
+                    <option value="recent" @selected(($f['tri'] ?? 'recent') === 'recent')>Plus récents</option>
+                    <option value="ancien" @selected(($f['tri'] ?? null) === 'ancien')>Plus anciens</option>
+                    <option value="libelle" @selected(($f['tri'] ?? null) === 'libelle')>Libellé (A → Z)</option>
+                    <option value="effectif" @selected(($f['tri'] ?? null) === 'effectif')>Effectif éligible (décroissant)</option>
+                </select>
+            </div>
+
+            <div>
+                <label class="block text-[11px] font-bold uppercase tracking-wider text-slate-600 mb-1">Lignes par page</label>
+                <select name="par_page" class="w-full rounded-xl border border-slate-200 bg-slate-50/50 px-3 py-2 text-xs font-medium text-slate-800">
+                    @foreach([15, 25, 50, 100] as $taille)
+                        <option value="{{ $taille }}" @selected((int) ($f['par_page'] ?? 15) === $taille)>{{ $taille }} par page</option>
+                    @endforeach
                 </select>
             </div>
 
@@ -213,6 +287,20 @@
                         Réinitialiser
                     </a>
                 @endif
+            </div>
+
+            <div class="sm:col-span-2 lg:col-span-4 flex flex-wrap items-center gap-3 rounded-xl border border-slate-200 bg-slate-50/60 px-3 py-2">
+                <label class="inline-flex items-center gap-2 text-xs font-semibold text-slate-700">
+                    <input type="checkbox" name="memoriser" value="1" class="rounded border-slate-300" @checked(request()->boolean('memoriser'))>
+                    Mémoriser ces filtres pour mes prochaines visites
+                </label>
+                @if(session('groupes_virtuels.filtres'))
+                    <a href="{{ route('admin.evaluation.examens.groupes-virtuels.index', ['restaurer' => 1]) }}"
+                       class="text-xs font-semibold text-primary-700 underline hover:text-primary-900">
+                        Restaurer mes filtres mémorisés
+                    </a>
+                @endif
+                <span class="text-[11px] text-slate-500">La restauration ne contourne jamais l’isolation facultaire.</span>
             </div>
         </form>
 
@@ -282,10 +370,61 @@
             </span>
         </div>
 
+        @php($controleGroupe = session('groupes_virtuels.controle'))
+        @if(is_array($controleGroupe))
+            <div class="mb-4 rounded-xl border border-slate-200 bg-slate-50/70 p-4">
+                <div class="flex flex-wrap items-center justify-between gap-2">
+                    <h4 class="text-xs font-bold uppercase tracking-wider text-slate-700">Dernier contrôle groupé — {{ $controleGroupe['execute_le'] ?? '—' }}</h4>
+                    <div class="flex flex-wrap gap-2 text-[11px] font-bold">
+                        <span class="rounded-md bg-emerald-50 px-2 py-1 text-emerald-800 ring-1 ring-emerald-200">{{ $controleGroupe['compteurs']['conformes'] ?? 0 }} conforme(s)</span>
+                        <span class="rounded-md bg-amber-50 px-2 py-1 text-amber-800 ring-1 ring-amber-200">{{ $controleGroupe['compteurs']['derives'] ?? 0 }} dérive(s)</span>
+                        <span class="rounded-md bg-rose-50 px-2 py-1 text-rose-800 ring-1 ring-rose-200">{{ $controleGroupe['compteurs']['bloques'] ?? 0 }} bloqué(s)</span>
+                        <span class="rounded-md bg-slate-100 px-2 py-1 text-slate-700 ring-1 ring-slate-200">{{ $controleGroupe['compteurs']['inaccessibles'] ?? 0 }} inaccessible(s)</span>
+                    </div>
+                </div>
+                <ul class="mt-3 space-y-1 text-xs text-slate-700">
+                    @foreach(array_slice($controleGroupe['resultats'] ?? [], 0, 10) as $resultat)
+                        <li class="flex items-start gap-2">
+                            <span class="mt-0.5 inline-block h-2 w-2 flex-none rounded-full {{ ($resultat['statut'] ?? '') === 'conforme' ? 'bg-emerald-500' : (($resultat['statut'] ?? '') === 'derive' ? 'bg-amber-500' : 'bg-rose-500') }}"></span>
+                            <span><strong>#{{ $resultat['id'] ?? '—' }}</strong> {{ $resultat['libelle'] ?? '' }} — {{ $resultat['message'] ?? '' }}</span>
+                        </li>
+                    @endforeach
+                </ul>
+                <p class="mt-2 text-[11px] text-slate-500">Contrôle en lecture seule : aucune génération, validation ou publication n’a été déclenchée.</p>
+            </div>
+        @endif
+
+        <form id="bulk-controle-form" method="POST" action="{{ route('admin.evaluation.examens.groupes-virtuels.controler-selection') }}">
+            @csrf
+        </form>
+        <form id="bulk-resync-form" method="POST" action="{{ route('admin.evaluation.examens.groupes-virtuels.resynchroniser-selection') }}">
+            @csrf
+        </form>
+        <div class="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-200 bg-slate-50/60 px-3 py-2">
+            <label class="inline-flex items-center gap-2 text-xs font-semibold text-slate-700">
+                <input type="checkbox" id="bulk-select-all" class="rounded border-slate-300">
+                Tout sélectionner (page courante)
+            </label>
+            <div class="flex items-center gap-2">
+                <button type="submit" form="bulk-controle-form"
+                        class="rounded-lg bg-slate-800 px-3 py-1.5 text-xs font-bold text-white hover:bg-slate-900 transition">
+                    Contrôler la sélection (lecture seule)
+                </button>
+                <button type="submit" form="bulk-resync-form"
+                        onclick="return confirm('Resynchroniser l\'ensemble des groupes sélectionnés ? Les versions actuelles seront archivées.')"
+                        class="rounded-lg bg-amber-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-amber-700 transition">
+                    Resynchroniser les propositions sélectionnées
+                </button>
+            </div>
+        </div>
+
         <div class="overflow-x-auto">
             <table class="w-full text-left text-sm">
                 <thead>
                     <tr class="border-b border-slate-200 text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                        <th class="pb-3 pl-1 w-8">
+                            <span class="sr-only">Sélection</span>
+                        </th>
                         <th class="pb-3 pl-1">Groupe virtuel</th>
                         <th class="pb-3">Année & Session</th>
                         <th class="pb-3">Faculté / Programme / Niveau</th>
@@ -301,6 +440,10 @@
                 <tbody class="divide-y divide-slate-100">
                     @forelse($lignes as $r)
                         <tr class="hover:bg-slate-50/70 transition align-top">
+                            <td class="py-3.5 pl-1">
+                                <input type="checkbox" form="bulk-controle-form" name="ids[]" value="{{ $r['id'] }}"
+                                       class="bulk-row-checkbox rounded border-slate-300" aria-label="Sélectionner le groupe {{ $r['libelle'] }}">
+                            </td>
                             <td class="py-3.5 pl-1 text-xs">
                                 <div class="flex items-center gap-1.5">
                                     <span class="font-mono font-bold text-indigo-900 bg-indigo-50 px-2 py-0.5 rounded-md ring-1 ring-indigo-200">
@@ -454,25 +597,34 @@
                                            class="rounded border border-rose-200 bg-rose-50 px-1.5 py-0.5 text-[10px] font-bold text-rose-800 hover:bg-rose-100">
                                             PDF
                                         </a>
-                                        <a href="{{ route('admin.evaluation.examens.groupes-virtuels.groupe.imprimer', [$r['id'], 'fiche']) }}"
-                                           target="_blank"
-                                           title="Imprimer la fiche du groupe virtuel"
-                                           class="rounded border border-indigo-200 bg-indigo-50 px-1.5 py-0.5 text-[10px] font-bold text-indigo-800 hover:bg-indigo-100">
-                                            Imprimer fiche
-                                        </a>
-                                        <a href="{{ route('admin.evaluation.examens.groupes-virtuels.groupe.imprimer', [$r['id'], 'etudiants']) }}"
-                                           target="_blank"
-                                           title="Imprimer la liste nominative des étudiants"
-                                           class="rounded border border-slate-300 bg-white px-1.5 py-0.5 text-[10px] font-semibold text-slate-700 hover:bg-slate-50">
-                                            Imprimer étudiants
-                                        </a>
+                                        @if($r['export_officiel_autorise'])
+                                            <a href="{{ route('admin.evaluation.examens.groupes-virtuels.groupe.imprimer', [$r['id'], 'fiche']) }}"
+                                               target="_blank"
+                                               title="Imprimer la fiche du groupe virtuel"
+                                               class="rounded border border-indigo-200 bg-indigo-50 px-1.5 py-0.5 text-[10px] font-bold text-indigo-800 hover:bg-indigo-100">
+                                                Imprimer fiche
+                                            </a>
+                                            <a href="{{ route('admin.evaluation.examens.groupes-virtuels.groupe.imprimer', [$r['id'], 'etudiants']) }}"
+                                               target="_blank"
+                                               title="Imprimer la liste nominative des étudiants"
+                                               class="rounded border border-slate-300 bg-white px-1.5 py-0.5 text-[10px] font-semibold text-slate-700 hover:bg-slate-50">
+                                                Imprimer étudiants
+                                            </a>
+                                        @else
+                                            <a href="{{ route('admin.evaluation.examens.groupes-virtuels.groupe.imprimer', [$r['id'], 'fiche']) }}"
+                                               target="_blank"
+                                               title="Impression bloquée : anomalies actives détectées (cliquer pour voir le détail)"
+                                               class="rounded border border-rose-300 bg-rose-50 px-1.5 py-0.5 text-[10px] font-bold text-rose-800 hover:bg-rose-100 inline-flex items-center gap-0.5">
+                                                <span>🔒</span> Bloqué
+                                            </a>
+                                        @endif
                                     </div>
                                 </div>
                             </td>
                         </tr>
                     @empty
                         <tr>
-                            <td colspan="10" class="py-12 text-center text-sm text-slate-500">
+                            <td colspan="11" class="py-12 text-center text-sm text-slate-500">
                                 <div class="max-w-md mx-auto text-center space-y-3">
                                     <div class="inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-indigo-50 text-indigo-500">
                                         <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
@@ -504,5 +656,47 @@
         @endif
     </div>
 </div>
+
+@push('scripts')
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        const selectAll = document.getElementById('bulk-select-all');
+        const checkboxes = document.querySelectorAll('.bulk-row-checkbox');
+        const resyncForm = document.getElementById('bulk-resync-form');
+
+        if (selectAll) {
+            selectAll.addEventListener('change', function () {
+                checkboxes.forEach(function (checkbox) {
+                    checkbox.checked = selectAll.checked;
+                });
+            });
+        }
+
+        if (resyncForm) {
+            resyncForm.addEventListener('submit', function (e) {
+                // Supprimer les anciens inputs cachés
+                resyncForm.querySelectorAll('input[name="ids[]"]').forEach(el => el.remove());
+
+                let checkedCount = 0;
+                checkboxes.forEach(function (checkbox) {
+                    if (checkbox.checked) {
+                        checkedCount++;
+                        const hidden = document.createElement('input');
+                        hidden.type = 'hidden';
+                        hidden.name = 'ids[]';
+                        hidden.value = checkbox.value;
+                        resyncForm.appendChild(hidden);
+                    }
+                });
+
+                if (checkedCount === 0) {
+                    e.preventDefault();
+                    alert('Veuillez sélectionner au moins un groupe virtuel.');
+                }
+            });
+        }
+    });
+</script>
+@endpush
 @endsection
 

@@ -47,6 +47,22 @@ trait ActAsApiClient
     }
 
     /**
+     * Requête POST JSON authentifiée par Bearer token.
+     */
+    protected function postJsonApi(string $uri, array $data, string $token, array $headers = [])
+    {
+        return $this->postJson($uri, $data, array_merge($headers, ['Authorization' => 'Bearer '.$token]));
+    }
+
+    /**
+     * Requête PATCH JSON authentifiée par Bearer token.
+     */
+    protected function patchJsonApi(string $uri, array $data, string $token, array $headers = [])
+    {
+        return $this->patchJson($uri, $data, array_merge($headers, ['Authorization' => 'Bearer '.$token]));
+    }
+
+    /**
      * Purge les guards résolus : simule une requête HTTP fraîche (en
      * production chaque requête a sa propre instance d'application).
      * Indispensable pour tester révocation / changement de token dans

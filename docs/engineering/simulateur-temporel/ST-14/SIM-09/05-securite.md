@@ -1,0 +1,120 @@
+# SIM-09 — 05 · Sécurité, permissions et lecture seule
+
+**Date :** 2026-11-05  
+**Périmètre :** variation mono-axe générique (hausse du redoublement)
+
+---
+
+## F.1 Permissions
+
+Aucune permission nouvelle. Réutilisation stricte :
+
+| Permission | Usage |
+|---|---|
+| `simulation.view` | Catalogue (lecture du contrat SIM-09) |
+| `simulation.gerer` | Définition de scénario |
+| `simulation.executer` | Exécution et snapshots |
+| `simulation.export` | Export des résultats |
+| `simulation.explication` | Explication des variantes |
+| `simulation.gouvernance.proposer` / `.decider` | Circuit de gouvernance |
+
+Le test de sécurité prouve : **403** sans permission et **403** pour un
+admin de faculté B sur un scénario de faculté A, avec **zéro exécution**
+créée par ces appels refusés.
+
+---
+
+## F.2 Isolation facultaire
+
+| Contrôle | Implémentation |
+|---|---|
+| Catalogue | Contrat global, sans donnée métier |
+| Définition | `faculte_id` du scénario |
+| Exécution | Périmètre vérifié avant lecture des effectifs |
+| Export / consultation | Périmètre existant, inchangé |
+
+Le jeu modifié est un paramètre de scénario : aucune donnée supplémentaire
+accessible.
+
+---
+
+## F.3 Données personnelles
+
+- Agrégats d'effectifs uniquement (adaptateur en lecture seule).
+- Restitutions SIM-09 : entiers agrégés (totaux, écarts, sortants).
+- Trajectoire témoin **en mémoire** : aucun snapshot supplémentaire.
+- Aucune identité, aucun CIN, aucune PII.
+
+---
+
+## F.4 Zéro écriture métier
+
+| Table | Écriture |
+|---|---|
+| `executions_temporelles` | 1 ligne par jeu d'entrées non idempotent |
+| `snapshots_executions` | `H + 1` lignes (pas 0 → H) — trajectoire principale uniquement |
+| `scenarios_temporels` | 1 ligne par scénario créé explicitement |
+
+Compteurs métier et empreinte étudiant témoin comparés **avant / après** :
+aucune écriture sur `etudiants`, `inscriptions_academiques`, `notes`,
+`groups`, `facultes`, `niveaux`.
+
+---
+
+## F.5 Garde d'exécution et exclusion mutuelle
+
+| Niveau | Contrôle |
+|---|---|
+| **Définition** (`validerCriteres`) | Trio indissociable, bornes [0,1], somme ≤ 1, axe/sens ∈ vocabulaire, référence complète, direction stricte, incompatibilités gel/choc/cible/creux, exclusion mutuelle des alias (blocs SIM-07/08 en premier) |
+| **Exécution** (gardes dans `executer`) | Mêmes contrôles de forme et d'exclusion avant toute simulation |
+
+L'ordre des blocs (SIM-07 → SIM-08 → générique) rend toute combinaison
+ambiguë impossible à atteindre.
+
+---
+
+## F.6 Traçabilité et déterminisme
+
+| Mécanisme | Effet |
+|---|---|
+| `hash_entrees` | Inclut `taux_modifie`, `axe_variation`, `sens_variation`, la graine, l'année, les variantes, la version moteur `1.8` |
+| `hash_resultat` | Empreinte SHA-256 du résultat complet |
+| Idempotence | Mêmes entrées → exécution existante, aucun doublon |
+| Version moteur | Tracée ; exécutions v1.7 et antérieures lisibles |
+
+---
+
+## F.7 Contraintes et refus explicites
+
+| Situation | Réponse |
+|---|---|
+| Trio incomplet | `DomainException` « indissociables » |
+| Jeu modifié incomplet | `DomainException` « doit fournir passage, redoublement et abandon » |
+| Axe invalide | `DomainException` « axe_variation doit être passage, redoublement ou abandon » |
+| Sens invalide | `DomainException` « sens_variation doit être hausse ou baisse » |
+| Direction non stricte | `DomainException` « strictement supérieur / inférieur » |
+| Somme modifiée > 1 | `DomainException` « > 1 » |
+| Taux hors [0,1] | `DomainException` « hors [0,1] » |
+| Référence absente | `DomainException` « taux de référence requis » |
+| Variation + gel / choc / cible / creux | `DomainException` « SIM-03 / 04 / 05 / 06 » |
+| Alias passage simultané | `DomainException` « SIM-07 » ou « SIM-08 » |
+
+Aucun refus silencieux, aucun résultat partiel.
+
+---
+
+## F.8 Réserves de sécurité
+
+| ID | Réserve | Traitement |
+|---|---|---|
+| `SIM09-SEC-1` | La création HTTP n'appelle pas le catalogue ; la protection repose sur la validation moteur | Héritée ; le descripteur est détecté dès la présence d'une des trois clés, à la définition **et** à l'exécution |
+| `SIM09-SEC-2` | Le moteur accepte tout axe du vocabulaire ; le scénario (SIM-09) épingle son axe au schéma catalogue | Reclassement assumé : la contrainte d'axe est portée par le contrat du scénario, pas par le moteur partagé |
+| `SIM09-SEC-3` | Pas de throttling spécifique | Throttling existant du contrôleur ; hors périmètre |
+
+---
+
+## F.9 Verdict sécurité
+
+✅ **PASS_WITH_RESERVATIONS** — permissions, isolation, zéro écriture métier
+et absence de PII prouvées ; exclusion mutuelle des trois formes prouvée.
+Les réserves sont architecturales et héritées, jamais masquées.

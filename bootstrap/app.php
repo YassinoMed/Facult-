@@ -4,6 +4,7 @@ use App\Http\Middleware\ApiExchangeLogger;
 use App\Http\Middleware\CheckApiScope;
 use App\Http\Middleware\EnsureBackOffice;
 use App\Http\Middleware\EnsureFacultyAdmin;
+use App\Http\Middleware\EnsureFeatureEnabled;
 use App\Http\Middleware\EnsureMfa;
 use App\Http\Middleware\EnsureModuleEnabled;
 use App\Http\Middleware\EnsureStudent;
@@ -52,6 +53,9 @@ return Application::configure(basePath: dirname(__DIR__))
             'idempotency' => IdempotencyKey::class,
             // Modules (§11) : `module:nom` → 404 si le module est désactivé.
             'module' => EnsureModuleEnabled::class,
+            // Déploiement progressif (LOOP 43) : `feature:nom` → 404 si
+            // l'indicateur est inactif pour le contexte de la requête.
+            'feature' => EnsureFeatureEnabled::class,
             // Verrouillage secondaire après inactivité (LOOP N) : le
             // serveur impose l'état, l'overlay client n'autorise rien.
             'secondaire.verrou' => SecondaireVerrou::class,

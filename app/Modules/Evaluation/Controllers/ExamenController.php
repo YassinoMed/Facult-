@@ -88,11 +88,15 @@ class ExamenController
             'responsable_id' => $request->user()->id,
         ]);
 
+        // LOOP EX-LIFECYCLE : la création est historisée comme toute
+        // transition (append-only) — état initial `draft` forcé serveur.
+        app(ExamenService::class)->historiserCreation($examen, $request->user()->id);
+
         return redirect()->route('admin.evaluations.examens.index')
             ->with('succes', "Examen « {$examen->libelle} » créé.");
     }
 
-    public function transiter(Examen $examen, string $cible): RedirectResponse
+    public function transiter(Request $request, Examen $examen, string $cible): RedirectResponse
     {
         Gate::authorize('update', $examen);
 
@@ -107,12 +111,46 @@ class ExamenController
         }
 
         try {
-            app(ExamenService::class)->transiter($examen, $cible);
+            // LOOP EX-LIFECYCLE : l'acteur et le motif éventuel alimentent
+            // l'historisation append-only. Le motif reste facultatif
+            // (décision institutionnelle D-02 ouverte, voir
+            // docs/loop/examens-cycle-vie/01-decisions-metier.md).
+            app(ExamenService::class)->transiter(
+                $examen,
+                $cible,
+                (int) $request->user()->id,
+                $request->input('motif')
+            );
         } catch (DomainException $e) {
             return back()->withErrors(['examen' => $e->getMessage()]);
         }
 
         return back()->with('succes', "Examen passé à « {$cible} ».");
+    }
+
+    /**
+     * Prévisualisation des transitions (LOOP EX-LIFECYCLE, D7/G3) :
+     * transitions disponibles + conditions/bloquages, calculés par le
+     * service central. Lecture pure — la décision définitive reste
+     * recalculée côté serveur au moment de l'application.
+     */
+    public function transitions(Request $request, Examen $examen, ExamenService $service): JsonResponse
+    {
+        Gate::authorize('view', $examen);
+
+        $faculteId = $examen->faculteId();
+        abort_unless($faculteId === null || $request->user()->peutAccederFaculte($faculteId), 404);
+
+        $cible = $request->query('cible');
+
+        return response()->json([
+            'examen_id' => $examen->id,
+            'statut_courant' => $examen->statut,
+            'disponibles' => $service->transitionsDisponibles($examen),
+            'previsualisation' => $cible !== null
+                ? $service->previsualiserTransition($examen, (string) $cible)->toArray()
+                : null,
+        ]);
     }
 
     public function genererScenarios(Request $request, Examen $examen, ExamScheduleEngineService $engine): JsonResponse|RedirectResponse

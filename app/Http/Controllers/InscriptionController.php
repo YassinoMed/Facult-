@@ -9,6 +9,8 @@ use App\Http\Requests\VerifierCinRequest;
 use App\Models\Etudiant;
 use App\Models\MensReference;
 use App\Modules\Referentiel\Models\Niveau;
+use App\Modules\StudentDossiers\Services\StudentDocumentService;
+use App\Modules\StudentDossiers\Services\StudentDossierService;
 use App\Services\AssistantFaqService;
 use App\Services\AuditService;
 use App\Services\DocumentsRequisService;
@@ -192,8 +194,11 @@ class InscriptionController extends Controller
             return back()->withErrors(['identification' => $this->messageIdentification()])->withInput();
         }
 
-        // LOOP 08 : Revalidation stricte côté serveur de l'éligibilité au parcours et orientation
-        $bilanEligibilite = app(EligibiliteParcoursService::class)->evaluer($request->all());
+        // LOOP 08 : Revalidation stricte côté serveur de l'éligibilité au parcours et orientation.
+        // SÉCURITÉ (LOOP-146) : on ne transmet QUE les données validées. `$request->all()`
+        // laissait passer des champs hors contrat — dont `derogation_administrative`, qui
+        // permettait de contourner la capacité d'accueil et l'admission préalable.
+        $bilanEligibilite = app(EligibiliteParcoursService::class)->evaluer($request->validated());
 
         if (! $bilanEligibilite['eligible']) {
             if ($request->wantsJson()) {
@@ -225,7 +230,10 @@ class InscriptionController extends Controller
                     }
                 }
 
-                // Traçabilité des exceptions administratives
+                // Traçabilité des exceptions administratives. Sur la route publique,
+                // aucune dérogation ne peut être accordée : ce bloc n'est atteignable
+                // que si un appel serveur de confiance a explicitement opté pour une
+                // dérogation (cf. EligibiliteParcoursService::evaluer()).
                 if ($bilanEligibilite['exception_accordee'] ?? false) {
                     app(AuditService::class)->tracer(
                         $etudiant,
@@ -236,7 +244,7 @@ class InscriptionController extends Controller
                         [
                             'programme_id' => $etudiant->programme_id,
                             'niveau' => $etudiant->niveau,
-                            'derogation' => $request->input('derogation_administrative') ?: 'Dérogation accordée',
+                            'derogation' => $bilanEligibilite['derogation_reference'] ?? 'Dérogation accordée',
                         ]
                     );
                 }
@@ -288,6 +296,30 @@ class InscriptionController extends Controller
         }
         if ($idempotencyToken !== '') {
             session()->put("idempotency_token_{$idempotencyToken}", $etudiant->num_inscription);
+        }
+
+        // Dépôt immédiat du reçu de paiement si téléversé lors de la soumission initiale
+        if ($request->hasFile('recu_paiement') && $request->file('recu_paiement')->isValid()) {
+            try {
+                if (class_exists(StudentDossierService::class)
+                    && class_exists(StudentDocumentService::class)
+                ) {
+                    $dossierGed = app(StudentDossierService::class)->obtenirOuCreer($etudiant);
+                    app(StudentDocumentService::class)->upload(
+                        $dossierGed,
+                        [
+                            'category' => 'financial',
+                            'document_type' => 'recu_paiement',
+                            'title' => 'Reçu de paiement d’inscription',
+                            'description' => 'Reçu officiel téléversé lors du formulaire d’inscription initiale.',
+                        ],
+                        $request->file('recu_paiement'),
+                        null
+                    );
+                }
+            } catch (\Throwable $e) {
+                report($e);
+            }
         }
 
         // Point d'extension (§6) : les modules réagissent sans que le

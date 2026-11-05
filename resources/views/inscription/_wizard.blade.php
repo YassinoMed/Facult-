@@ -13,6 +13,7 @@
      uniquement dans ce contexte ; la page canonique garde sa ligne. --}}
 @php($dansModale = ! empty($embarque))
             <form action="{{ route('inscription.store') }}" method="POST"
+                  enctype="multipart/form-data"
                   x-data="inscriptionForm(@js(old('sexe', '')), @js($checklistsDocuments ?? []), {{ ! empty($embarque) ? 'true' : 'false' }}, @js($prefixe ?? ''))"
                   x-init="etape = {{ $etapeErreur }}; if (etape === 6) preparerRecap(); @if($errors->any()) $nextTick(() => { document.getElementById('erreurs-globales')?.scrollIntoView({ behavior: 'smooth', block: 'center' }); }); @else if (!periode.interactif && etape < 4) etape = 4; @endif"
                   @identification-verifiee.window="if (etape === 1) allerEtape(2)"
@@ -726,6 +727,67 @@
                                     @endforeach
                                 </div>
                             </noscript>
+                        </div>
+
+                        {{-- Dépôt direct du reçu de paiement des droits d'inscription --}}
+                        <div class="mt-6 rounded-2xl border border-primary-200 bg-primary-50/40 p-5 shadow-xs"
+                             x-data="{ nomFichier: '', tailleFichier: '', formatValide: true }">
+                            <div class="flex items-start gap-3">
+                                <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary-600 text-white shadow-xs">
+                                    <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+                                        <path stroke-linecap="round" stroke-linejoin="round" d="M2.25 18.75a60.07 60.07 0 0 1 15.797 2.101c.727.198 1.453-.342 1.453-1.096V18.75M3.75 4.5v.75A.75.75 0 0 1 3 6H2.25m0 0v8.25m0-8.25a2.25 2.25 0 0 1 2.25-2.25h13.5A2.25 2.25 0 0 1 20.25 6m0 0v12m0 0a2.25 2.25 0 0 1-2.25 2.25H6.75A2.25 2.25 0 0 1 4.5 18V6" />
+                                    </svg>
+                                </div>
+                                <div class="flex-1">
+                                    <div class="flex flex-wrap items-center gap-2">
+                                        <h4 class="text-sm font-black text-slate-900">Reçu de paiement des droits d’inscription</h4>
+                                        <span class="inline-flex items-center rounded-md bg-amber-100 px-2 py-0.5 text-[11px] font-bold text-amber-800 border border-amber-200">
+                                            Requis pour chaque année
+                                        </span>
+                                    </div>
+                                    <p class="mt-1 text-xs text-slate-600 leading-relaxed">
+                                        Pour l’inscription de chaque année universitaire, l’étudiant doit déposer son reçu de paiement (quittance ou avis d’opération bancaire ou postale).
+                                        Vous pouvez le joindre dès maintenant ci-dessous (PNG, PDF, JPG, JPEG, WebP — max 10 Mo) ou le téléverser ultérieurement depuis votre espace étudiant.
+                                    </p>
+                                    <div class="mt-1 text-[11px] text-slate-500">
+                                        Formats autorisés : <strong class="text-slate-700">PNG, PDF, JPG, JPEG, WebP</strong> · Taille max : <strong>10 Mo</strong>
+                                    </div>
+
+                                    <div class="mt-3">
+                                        <label for="recu_paiement" class="block">
+                                            <span class="sr-only">Choisir le reçu de paiement</span>
+                                            <input type="file"
+                                                   id="recu_paiement"
+                                                   name="recu_paiement"
+                                                   accept=".png,.pdf,.jpg,.jpeg,.webp"
+                                                   @change="
+                                                       if ($event.target.files && $event.target.files[0]) {
+                                                           const f = $event.target.files[0];
+                                                           nomFichier = f.name;
+                                                           tailleFichier = (f.size / (1024 * 1024)).toFixed(2) + ' Mo';
+                                                           const ext = f.name.split('.').pop().toLowerCase();
+                                                           formatValide = ['png', 'pdf', 'jpg', 'jpeg', 'webp'].includes(ext);
+                                                       } else {
+                                                           nomFichier = '';
+                                                           tailleFichier = '';
+                                                       }
+                                                   "
+                                                   class="block w-full text-xs text-slate-600 file:mr-4 file:py-2.5 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-primary-700 file:text-white hover:file:bg-primary-800 file:cursor-pointer file:transition cursor-pointer rounded-xl border border-slate-300 bg-white p-2 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20">
+                                        </label>
+                                        <template x-if="nomFichier">
+                                            <div class="mt-2 flex items-center gap-2 text-xs font-semibold"
+                                                 :class="formatValide ? 'text-emerald-700' : 'text-rose-700'">
+                                                <span x-text="formatValide ? '✓' : '⚠'"></span>
+                                                <span x-text="nomFichier"></span>
+                                                <span class="text-slate-400 font-normal" x-text="'(' + tailleFichier + ')'"></span>
+                                            </div>
+                                        </template>
+                                        @error('recu_paiement')
+                                            <p class="mt-1.5 text-xs font-bold text-rose-600">⚠ {{ $message }}</p>
+                                        @enderror
+                                    </div>
+                                </div>
+                            </div>
                         </div>
 
                         <div class="mt-5 rounded-lg bg-amber-50 border border-amber-200 p-3.5 text-xs text-amber-900">

@@ -25,6 +25,13 @@ Schedule::command('datamesh:outbox-publier --retenter')->everyFiveMinutes();
 // Phases 7-9 — Génération quotidienne des tâches (idempotente)
 Schedule::command('taches:generer')->dailyAt('06:30');
 
+// Examens — audit quotidien en LECTURE SEULE des groupes virtuels :
+// dérives, blocages, absence de salle ou d'étudiant éligible. Verrou
+// anti-concurrence et empreinte d'idempotence ; aucune publication.
+Schedule::command('examens:auditer-groupes-virtuels')
+    ->dailyAt('05:10')
+    ->when(fn () => (bool) config('modules.evaluation.active', false));
+
 // Phase 15 — Campagnes + publication planifiée des annonces
 Schedule::command('campagnes:envoyer')->everyFifteenMinutes();
 Schedule::command('annonces:publier')->everyFifteenMinutes();

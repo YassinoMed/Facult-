@@ -333,6 +333,7 @@
                                      class="absolute right-0 mt-2 w-52 rounded-2xl bg-white p-2 shadow-lg" role="menu"><!-- taste-skill-ignore : ombre de menu -->
                                     <a href="{{ route('etudiant.profil.show') }}" role="menuitem" class="block rounded-xl px-3 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-100">Mon profil</a>
                                     <a href="{{ route('etudiant.archives.show') }}" role="menuitem" class="block rounded-xl px-3 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-100">Mon dossier</a>
+                                    <a href="{{ route('etudiant.acquis.index') }}" role="menuitem" class="block rounded-xl px-3 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-100">Mes acquis & progression</a>
                                     <form method="POST" action="{{ route('etudiant.connexion.logout') }}">
                                         @csrf
                                         <button type="submit" role="menuitem" class="block w-full rounded-xl px-3 py-2.5 text-left text-sm font-semibold text-rose-600 hover:bg-rose-50">Déconnexion</button>

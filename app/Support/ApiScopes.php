@@ -12,6 +12,7 @@ final class ApiScopes
         'students:read' => 'Consulter les étudiants',
         'students:write' => 'Créer/modifier des étudiants via import',
         'archives:read' => 'Consulter les dossiers académiques',
+        'archives:write' => 'Créer ou modifier des dossiers académiques',
         'grades:read' => 'Consulter les notes',
         'grades:write' => 'Importer des notes',
         'documents:read' => 'Consulter les métadonnées de documents',

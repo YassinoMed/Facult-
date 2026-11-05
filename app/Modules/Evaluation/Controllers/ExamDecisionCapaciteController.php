@@ -4,6 +4,7 @@ namespace App\Modules\Evaluation\Controllers;
 
 use App\Modules\Evaluation\Models\Epreuve;
 use App\Modules\Evaluation\Services\ExamDecisionCapacitePermutationService;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
@@ -29,7 +30,7 @@ class ExamDecisionCapaciteController
      | Lectures
      * ------------------------------------------------------------------- */
 
-    public function analyser(Request $request): RedirectResponse|Response
+    public function analyser(Request $request): RedirectResponse|Response|JsonResponse
     {
         Gate::authorize('epreuves.view');
 
@@ -46,7 +47,47 @@ class ExamDecisionCapaciteController
         return $this->repondre($request, $diagnostic, 'analyse_terminee');
     }
 
-    public function generer(Request $request): RedirectResponse|Response
+    /**
+     * Diagnostic en lecture seule d'une salle à capacité non confirmée ou insuffisante.
+     * Propose des salles candidates compatibles sans modifier le planning.
+     */
+    public function diagnostiquerSalle(Request $request): JsonResponse
+    {
+        Gate::authorize('epreuves.view');
+
+        $donnees = Validator::make($request->all(), [
+            'epreuve_id' => 'required|integer|exists:evaluation_epreuves,id',
+            'empreinte' => 'nullable|string',
+        ])->validate();
+
+        $epreuve = Epreuve::where('id', $donnees['epreuve_id'])->where('statut', '!=', 'cancelled')->first();
+        if ($epreuve === null) {
+            return response()->json([
+                'succes' => false,
+                'message' => 'Épreuve introuvable ou annulée.',
+            ], 404);
+        }
+
+        try {
+            $diagnostic = $this->decision->diagnostiquerCapaciteSalle($epreuve, $request->user());
+        } catch (\DomainException $e) {
+            return response()->json([
+                'succes' => false,
+                'message' => $e->getMessage(),
+            ], 403);
+        }
+
+        if (! empty($donnees['empreinte'])) {
+            $diagnostic['est_obsolete'] = ($diagnostic['empreinte'] !== $donnees['empreinte']);
+        }
+
+        return response()->json([
+            'succes' => true,
+            'diagnostic' => $diagnostic,
+        ]);
+    }
+
+    public function generer(Request $request): RedirectResponse|Response|JsonResponse
     {
         Gate::authorize('epreuves.view');
 
@@ -88,7 +129,7 @@ class ExamDecisionCapaciteController
         return $this->repondre($request, $proposition, 'proposition_generee');
     }
 
-    public function previsualiser(Request $request): RedirectResponse|Response
+    public function previsualiser(Request $request): RedirectResponse|Response|JsonResponse
     {
         Gate::authorize('epreuves.view');
 
@@ -125,21 +166,53 @@ class ExamDecisionCapaciteController
         ], 'previsualisation_terminee');
     }
 
-    public function comparer(Request $request): RedirectResponse|Response
+    public function comparer(Request $request): RedirectResponse|Response|JsonResponse
     {
         Gate::authorize('epreuves.view');
 
         $donnees = Validator::make($request->all(), [
-            'a' => 'required|array',
-            'b' => 'required|array',
+            'a' => 'required_without:epreuve_id|array',
+            'b' => 'required_without:epreuve_id|array',
+            'epreuve_id' => 'required_without:a|integer',
+            'annee_id' => 'required_with:epreuve_id|integer',
+            'faculte_id' => 'nullable|integer',
+            'session_id' => 'nullable|integer',
+            'variante_cles' => 'nullable|array',
+            'variante_cles.*' => 'string',
         ])->validate();
+
+        if (! empty($donnees['epreuve_id'])) {
+            $diagnostic = $this->decision->diagnostic(
+                (int) $donnees['annee_id'],
+                isset($donnees['faculte_id']) ? (int) $donnees['faculte_id'] : null,
+                isset($donnees['session_id']) ? (int) $donnees['session_id'] : null,
+                null,
+                (int) $donnees['epreuve_id'],
+            );
+
+            $ligne = $diagnostic['lignes'][(int) $donnees['epreuve_id']] ?? null;
+            $variantes = is_array($ligne) ? ($ligne['variantes'] ?? []) : [];
+
+            if (! empty($donnees['variante_cles'])) {
+                $cles = array_map('strval', $donnees['variante_cles']);
+                $variantes = array_values(array_filter(
+                    $variantes,
+                    fn (array $variante) => in_array((string) ($variante['cle'] ?? ''), $cles, true)
+                ));
+            }
+
+            $comparaison = $this->decision->comparerVariantes($variantes);
+            $comparaison['epreuve_id'] = (int) $donnees['epreuve_id'];
+
+            return $this->repondre($request, $comparaison, 'comparaison_terminee');
+        }
 
         $comparaison = $this->comparerLocalement($donnees['a'], $donnees['b']);
 
         return $this->repondre($request, $comparaison, 'comparaison_terminee');
     }
 
-    public function conflits(Request $request): RedirectResponse|Response
+    public function conflits(Request $request): RedirectResponse|Response|JsonResponse
     {
         Gate::authorize('epreuves.view');
 
@@ -156,7 +229,7 @@ class ExamDecisionCapaciteController
         return $this->repondre($request, ['conflits' => $diagnostic['conflits'] ?? []], 'conflits_recuperez');
     }
 
-    public function historique(Request $request): RedirectResponse|Response
+    public function historique(Request $request): RedirectResponse|Response|JsonResponse
     {
         Gate::authorize('epreuves.view');
 
@@ -173,7 +246,7 @@ class ExamDecisionCapaciteController
         return $this->repondre($request, ['historique' => $liste], 'historique_recupere');
     }
 
-    public function propositionsRecentes(Request $request): RedirectResponse|Response
+    public function propositionsRecentes(Request $request): RedirectResponse|Response|JsonResponse
     {
         Gate::authorize('epreuves.view');
 
@@ -389,7 +462,7 @@ class ExamDecisionCapaciteController
         ];
     }
 
-    private function repondre(Request $request, array $donnees, string $evenement): RedirectResponse|Response
+    private function repondre(Request $request, array $donnees, string $evenement): RedirectResponse|Response|JsonResponse
     {
         if ($request->wantsJson() || $request->header('Accept') === 'application/json') {
             return response()->json(array_merge(['evenement' => $evenement], $donnees));
@@ -401,7 +474,7 @@ class ExamDecisionCapaciteController
             ->anchor('capacite');
     }
 
-    private function erreurJson(Request $request, string $message, int $status): RedirectResponse|Response
+    private function erreurJson(Request $request, string $message, int $status): RedirectResponse|Response|JsonResponse
     {
         if ($request->wantsJson() || $request->header('Accept') === 'application/json') {
             return response()->json(['erreur' => $message], $status);

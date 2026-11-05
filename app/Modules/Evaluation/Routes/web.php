@@ -121,6 +121,11 @@ Route::middleware(['auth', 'admin', 'secondaire.verrou', 'module:evaluation'])->
         ->middleware(['can:evaluations.update', 'throttle:20,1'])
         ->whereIn('cible', ['planned', 'scheduled', 'published', 'ongoing', 'completed', 'locked', 'cancelled', 'archived'])
         ->name('evaluations.examens.transiter');
+    // LOOP EX-LIFECYCLE : prévisualisation lecture seule des transitions
+    // (D7/G3) — informative, la décision reste recalculée à l'application.
+    Route::get('evaluations/examens/{examen}/transitions', [ExamenController::class, 'transitions'])
+        ->middleware('can:evaluations.view')
+        ->name('evaluations.examens.transitions');
     Route::post('evaluations/examens/{examen}/planifier/scenarios', [ExamenController::class, 'genererScenarios'])
         ->middleware(['can:evaluations.update', 'throttle:15,1'])
         ->name('evaluations.examens.planifier.scenarios');
@@ -538,6 +543,14 @@ Route::middleware(['auth', 'admin', 'secondaire.verrou', 'module:evaluation'])->
         Route::prefix('groupes-virtuels')->name('groupes-virtuels.')->group(function () {
             Route::get('/', [GroupeVirtuelExamenController::class, 'index'])
                 ->name('index');
+            Route::get('anomalies', [GroupeVirtuelExamenController::class, 'anomalies'])
+                ->name('anomalies');
+            Route::post('resynchroniser-selection', [GroupeVirtuelExamenController::class, 'resynchroniserSelection'])
+                ->middleware('throttle:10,1')
+                ->name('resynchroniser-selection');
+            Route::post('controler-selection', [GroupeVirtuelExamenController::class, 'controlerSelection'])
+                ->middleware('throttle:15,1')
+                ->name('controler-selection');
             Route::post('generer-automatique', [GroupeVirtuelExamenController::class, 'genererAutomatique'])
                 ->middleware('throttle:10,1')
                 ->name('generer-automatique');
@@ -573,6 +586,9 @@ Route::middleware(['auth', 'admin', 'secondaire.verrou', 'module:evaluation'])->
 
         // Décision D-04 V2 — capacité utile et permutations de salles.
         Route::prefix('groupes/capacite')->name('groupes.capacite.')->group(function () {
+            Route::get('diagnostic-salle', [ExamDecisionCapaciteController::class, 'diagnostiquerSalle'])
+                ->middleware(['can:epreuves.view', 'throttle:30,1'])
+                ->name('diagnostic-salle');
             Route::post('analyser', [ExamDecisionCapaciteController::class, 'analyser'])
                 ->middleware(['can:epreuves.view', 'throttle:30,1'])
                 ->name('analyser');

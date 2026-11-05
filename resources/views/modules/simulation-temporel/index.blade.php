@@ -21,6 +21,7 @@
     anneeLibelle: '{{ $anneeLibelle }}',
     faculteIdParDefaut: {{ $faculteIdParDefaut ? (int)$faculteIdParDefaut : 'null' }},
     variantesMax: {{ $limites['variantesMax'] }},
+    utilisateurId: {{ auth()->id() ? (int) auth()->id() : 'null' }}, {{-- ST-12 P6 : masquage des boutons de décision à l'auteur --}}
 })" x-init="initialiser()">
 
   <style>
@@ -883,6 +884,10 @@
             <h3 class="text-sm font-bold text-slate-900">Projection budgétaire prospective d'appui</h3>
             <span class="text-xs text-slate-500">Modélisation hypothétique sans écriture comptable</span>
           </div>
+          {{-- ST-12 P8 : mention obligatoire clairement visible — estimation indicative, sans valeur comptable --}}
+          <div class="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs font-bold text-amber-900">
+            ⚠️ Estimation indicative — <span class="underline decoration-amber-400 decoration-2">sans valeur comptable</span> : les montants ci-dessous sont des projections de scénario fondées sur des hypothèses, et non des dépenses ou recettes réelles.
+          </div>
           <div class="grid gap-3 sm:grid-cols-3">
             <div class="rounded-xl border border-slate-200 bg-white p-4">
               <p class="text-xs text-slate-500 font-semibold">Coût total projeté</p>
@@ -997,8 +1002,14 @@
             <p class="text-slate-600" x-text="'Proposé par : ' + resultat.gouvernance_proposition.propose_par_nom + ' le ' + resultat.gouvernance_proposition.date_soumission"></p>
             <p class="text-slate-700 font-medium" x-text="'Justification : ' + resultat.gouvernance_proposition.justification"></p>
 
-            {{-- Formulaire d'approbation si en attente --}}
-            <template x-if="resultat.gouvernance_proposition.statut === 'soumise'">
+            {{-- Formulaire d'approbation si en attente — masqué à l'auteur de la
+                 proposition (ST-12 P6) : la règle des 4 yeux est appliquée
+                 par le service (422), l'UI ne montre jamais l'action à
+                 l'auteur. La permission de DÉCIDER est vérifiée par la
+                 route/Gate (`simulation.gouvernance.decider`) ; l'affichage
+                 du bouton suppose cette permission acquise (contrôles
+                 serveur inchangés). --}}
+            <template x-if="resultat.gouvernance_proposition.statut === 'soumise' && resultat.gouvernance_proposition.propose_par_id !== utilisateurId">
               <div class="pt-2 border-t border-slate-200 space-y-2">
                 <input type="text" x-model="govMotif" placeholder="Motif de décision d'approbation ou de rejet..." class="w-full rounded-lg border border-slate-300 p-2 text-xs">
                 <div class="flex items-center justify-end gap-2">
@@ -1006,6 +1017,13 @@
                   <button type="button" @click="deciderGov('approuvee')" class="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-emerald-700">Approuver (4-yeux)</button>
                 </div>
               </div>
+            </template>
+
+            {{-- Auteur de la proposition : rappel explicite de l'attente d'un second acteur --}}
+            <template x-if="resultat.gouvernance_proposition.statut === 'soumise' && resultat.gouvernance_proposition.propose_par_id === utilisateurId">
+              <p class="pt-2 border-t border-slate-200 text-[11px] font-medium text-amber-700">
+                ⏳ Votre proposition attend l'examen d'un second acteur habilité (règle des 4 yeux : vous ne pouvez pas statuer votre propre proposition).
+              </p>
             </template>
           </div>
         </template>

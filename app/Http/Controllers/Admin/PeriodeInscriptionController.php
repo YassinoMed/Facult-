@@ -27,25 +27,44 @@ class PeriodeInscriptionController extends Controller
 
     public function index(Request $request): View
     {
-        $query = RegistrationPeriod::with(['anneeUniversitaire', 'faculte', 'etudiant'])
+        $query = RegistrationPeriod::with(['anneeUniversitaire', 'faculte', 'programme', 'etudiant', 'creatrice'])
             ->orderByDesc('id');
 
         $filtres = $request->validate([
             'annee_universitaire_id' => 'nullable|integer|exists:annees_universitaires,id',
             'type_periode' => 'nullable|in:normale,exception',
             'statut' => 'nullable|in:active,revoquee,utilisee',
+            'faculte_id' => 'nullable|integer|exists:facultes,id',
+            'search' => 'nullable|string|max:100',
         ]);
 
-        foreach (array_filter($filtres) as $colonne => $valeur) {
-            $query->where($colonne, $valeur);
+        if (! empty($filtres['annee_universitaire_id'])) {
+            $query->where('annee_universitaire_id', $filtres['annee_universitaire_id']);
+        }
+        if (! empty($filtres['type_periode'])) {
+            $query->where('type_periode', $filtres['type_periode']);
+        }
+        if (! empty($filtres['statut'])) {
+            $query->where('statut', $filtres['statut']);
+        }
+        if (! empty($filtres['faculte_id'])) {
+            $query->where('faculte_id', $filtres['faculte_id']);
+        }
+        if (! empty($filtres['search'])) {
+            $search = '%'.$filtres['search'].'%';
+            $query->where(function ($q) use ($search) {
+                $q->where('nom', 'like', $search)
+                    ->orWhere('motif', 'like', $search)
+                    ->orWhere('niveau', 'like', $search);
+            });
         }
 
-        $periodes = (clone $query)->paginate(25)->withQueryString();
+        $periodes = (clone $query)->paginate(15)->withQueryString();
 
         // Rappels (§22) : compteurs calculés, jamais de tâche planifiée.
-        $maintenant = now();
         $actives = (clone $query)->where('statut', 'active')->get();
         $resume = [
+            'total' => (clone $query)->count(),
             'ouvertes' => $actives->filter(fn (RegistrationPeriod $p) => $p->estOuverte())->count(),
             'bientot' => $actives->filter(fn (RegistrationPeriod $p) => $p->estBientotFermee())->count(),
             'planifiees' => $actives->filter(fn (RegistrationPeriod $p) => $p->statutCalcule() === 'SCHEDULED')->count(),
@@ -60,6 +79,63 @@ class PeriodeInscriptionController extends Controller
             'facultes' => Faculte::where('active', true)->orderBy('nom')->get(),
             'programmes' => Programme::orderBy('code')->get(['id', 'code', 'nom']),
         ]);
+    }
+
+    public function create(): View
+    {
+        return view('admin.periodes.create', [
+            'annees' => AnneeUniversitaire::orderByDesc('libelle')->get(),
+            'facultes' => Faculte::where('active', true)->orderBy('nom')->get(),
+            'programmes' => Programme::orderBy('code')->get(['id', 'code', 'nom']),
+        ]);
+    }
+
+    public function show(RegistrationPeriod $periode): View
+    {
+        $periode->load(['anneeUniversitaire', 'faculte', 'programme', 'etudiant', 'creatrice']);
+
+        return view('admin.periodes.show', [
+            'periode' => $periode,
+        ]);
+    }
+
+    public function edit(RegistrationPeriod $periode): View
+    {
+        $periode->load(['anneeUniversitaire', 'faculte', 'programme', 'etudiant']);
+
+        return view('admin.periodes.edit', [
+            'periode' => $periode,
+            'annees' => AnneeUniversitaire::orderByDesc('libelle')->get(),
+            'facultes' => Faculte::where('active', true)->orderBy('nom')->get(),
+            'programmes' => Programme::orderBy('code')->get(['id', 'code', 'nom']),
+        ]);
+    }
+
+    public function update(PeriodeInscriptionRequest $request, RegistrationPeriod $periode): RedirectResponse
+    {
+        $valide = $request->validated();
+
+        try {
+            $this->periodes->mettreAJour($periode, $valide, (int) $request->user()->id);
+        } catch (DomainException $e) {
+            return back()->withErrors(['periode' => $e->getMessage()])->withInput();
+        }
+
+        return redirect()->route('admin.periodes.show', $periode)
+            ->with('success', "Période #{$periode->id} mise à jour avec succès.");
+    }
+
+    public function destroy(Request $request, RegistrationPeriod $periode): RedirectResponse
+    {
+        try {
+            $id = $periode->id;
+            $this->periodes->supprimer($periode, (int) $request->user()->id);
+        } catch (DomainException $e) {
+            return back()->withErrors(['periode' => $e->getMessage()]);
+        }
+
+        return redirect()->route('admin.periodes.index')
+            ->with('success', "Période #{$id} supprimée.");
     }
 
     public function store(PeriodeInscriptionRequest $request): RedirectResponse

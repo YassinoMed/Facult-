@@ -37,6 +37,9 @@ class GroupeVirtuelExamenController
     public function genererAutomatique(Request $request): RedirectResponse
     {
         $this->service->verifierPermissionConsultation($request->user());
+        if (! $request->user()->can('epreuves.update')) {
+            abort(403, 'Permission requise pour générer automatiquement les groupes virtuels.');
+        }
 
         $sessionId = $request->query('session_id') ?: $request->input('session_id');
         $epreuves = Epreuve::query()
@@ -62,13 +65,182 @@ class GroupeVirtuelExamenController
     {
         $this->service->verifierPermissionConsultation($request->user());
 
-        $donnees = $this->service->listerGroupesVirtuels($request->query(), $request->user());
+        $sessionKey = 'examens.groupes_virtuels.filtres.'.$request->user()->id;
+        $params = $request->query();
+
+        if ($request->boolean('restaurer')) {
+            $memorises = session()->get($sessionKey, []);
+            $params = array_merge($memorises, $params);
+        }
+
+        if ($request->boolean('memoriser')) {
+            session()->put($sessionKey, array_filter([
+                'tri' => $params['tri'] ?? null,
+                'par_page' => $params['par_page'] ?? null,
+                'annee_id' => $params['annee_id'] ?? null,
+                'session_id' => $params['session_id'] ?? null,
+                'faculte_id' => $params['faculte_id'] ?? null,
+                'statut' => $params['statut'] ?? null,
+                'recherche' => $params['recherche'] ?? null,
+            ], fn ($v) => $v !== null));
+        }
+
+        $donnees = $this->service->listerGroupesVirtuels($params, $request->user());
         $commun = $this->variablesBandeau(
             $donnees['filtres_appliques']['annee_id'],
             $donnees['filtres_appliques']['faculte_id']
         );
 
         return view('modules.evaluation.groupes-virtuels.index', $donnees + $commun);
+    }
+
+    /**
+     * Phase B.4 — Centre des anomalies consolidées des groupes virtuels.
+     */
+    public function anomalies(Request $request): View
+    {
+        $this->service->verifierPermissionConsultation($request->user());
+
+        $donnees = $this->service->listerAnomaliesCentralisees($request->query(), $request->user());
+        $commun = $this->variablesBandeau(
+            $donnees['filtres_appliques']['annee_id'] ?? null,
+            $donnees['filtres_appliques']['faculte_id'] ?? null
+        );
+
+        return view('modules.evaluation.groupes-virtuels.anomalies', $donnees + $commun);
+    }
+
+    /**
+     * Contrôle groupé en lecture seule avec respect de l'isolation facultaire BOLA.
+     */
+    public function controlerSelection(Request $request): JsonResponse
+    {
+        $this->service->verifierPermissionConsultation($request->user());
+
+        $validated = $request->validate([
+            'ids' => 'required|array|min:1|max:50',
+            'ids.*' => 'integer',
+        ]);
+
+        $ids = $validated['ids'];
+        $resultats = [];
+        $compteurs = [
+            'total' => count($ids),
+            'conformes' => 0,
+            'en_derive' => 0,
+            'bloquants' => 0,
+            'inaccessibles' => 0,
+        ];
+
+        foreach ($ids as $id) {
+            $gv = GroupeVirtuelExamen::find($id);
+            if ($gv === null) {
+                $compteurs['inaccessibles']++;
+                $resultats[] = [
+                    'id' => $id,
+                    'libelle' => "Groupe #{$id}",
+                    'statut' => 'inaccessible',
+                    'accessible' => false,
+                    'motif' => 'Groupe virtuel introuvable',
+                ];
+
+                continue;
+            }
+
+            try {
+                $this->service->verifierAccesGroupeVirtuel($request->user(), $gv);
+            } catch (\Throwable) {
+                $compteurs['inaccessibles']++;
+                $resultats[] = [
+                    'id' => $id,
+                    'libelle' => $gv->libelle,
+                    'statut' => 'inaccessible',
+                    'accessible' => false,
+                    'motif' => 'Périmètre non autorisé (isolation faculté)',
+                ];
+
+                continue;
+            }
+
+            $resume = $this->service->resumerGroupeVirtuel($gv);
+            $statut = $resume['statut_derive'] ?? 'conforme';
+            if ($resume['en_derive'] ?? false) {
+                $compteurs['en_derive']++;
+            } elseif (($resume['nb_bloquants'] ?? 0) > 0) {
+                $compteurs['bloquants']++;
+            } else {
+                $compteurs['conformes']++;
+            }
+
+            $resultats[] = [
+                'id' => $gv->id,
+                'libelle' => $gv->libelle,
+                'statut' => $statut,
+                'accessible' => true,
+                'resume' => $resume,
+            ];
+        }
+
+        return response()->json([
+            'succes' => true,
+            'compteurs' => $compteurs,
+            'resultats' => $resultats,
+        ]);
+    }
+
+    /**
+     * Réactualisation groupée d'une sélection de groupes virtuels.
+     */
+    public function resynchroniserSelection(Request $request): RedirectResponse|JsonResponse
+    {
+        $this->service->verifierPermissionConsultation($request->user());
+        if (! $request->user()->can('epreuves.update')) {
+            abort(403, 'Permission requise pour resynchroniser des groupes virtuels.');
+        }
+
+        $validated = $request->validate([
+            'ids' => 'required|array|min:1|max:50',
+            'ids.*' => 'integer',
+        ]);
+
+        $ids = $validated['ids'];
+        $succes = 0;
+        $echecs = 0;
+
+        foreach ($ids as $id) {
+            $gv = GroupeVirtuelExamen::find($id);
+            if ($gv === null) {
+                $echecs++;
+
+                continue;
+            }
+
+            try {
+                $this->service->verifierAccesGroupeVirtuel($request->user(), $gv);
+                $this->service->resynchroniserGroupeVirtuel($gv, (int) $request->user()->id);
+                $succes++;
+            } catch (\Throwable) {
+                $echecs++;
+            }
+        }
+
+        $message = "Resynchronisation terminée : {$succes} groupe(s) réactualisé(s)";
+        if ($echecs > 0) {
+            $message .= ", {$echecs} échec(s) ou accès refusé(s).";
+        } else {
+            $message .= '.';
+        }
+
+        if ($request->wantsJson()) {
+            return response()->json([
+                'succes' => true,
+                'message' => $message,
+                'reactualises' => $succes,
+                'echecs' => $echecs,
+            ]);
+        }
+
+        return redirect()->back()->with('succes', $message);
     }
 
     /**
@@ -82,10 +254,21 @@ class GroupeVirtuelExamenController
             $fiche['resume']['faculte_id'] ?? null
         );
 
+        $diagnosticSalle = null;
+        if ($groupeVirtuel->epreuve !== null) {
+            try {
+                $decisionService = app(ExamDecisionCapacitePermutationService::class);
+                $diagnosticSalle = $decisionService->diagnostiquerCapaciteSalle($groupeVirtuel->epreuve, $request->user());
+            } catch (\Throwable) {
+                $diagnosticSalle = null;
+            }
+        }
+
         return view('modules.evaluation.groupes-virtuels.show', [
             'fiche' => $fiche,
             'groupe' => $groupeVirtuel,
             'resume' => $fiche['resume'],
+            'diagnosticSalle' => $diagnosticSalle,
         ] + $commun);
     }
 
@@ -95,6 +278,9 @@ class GroupeVirtuelExamenController
     public function resynchroniser(Request $request, GroupeVirtuelExamen $groupeVirtuel): RedirectResponse
     {
         $this->service->verifierPermissionConsultation($request->user());
+        if (! $request->user()->can('epreuves.update')) {
+            abort(403, 'Permission requise pour resynchroniser un groupe virtuel.');
+        }
 
         try {
             $nouveauGroupe = $this->service->resynchroniserGroupeVirtuel($groupeVirtuel, (int) $request->user()->id);
@@ -245,15 +431,18 @@ class GroupeVirtuelExamenController
             ], 422);
         }
 
-        return new Response(
-            '<!DOCTYPE html><html lang="fr"><head><meta charset="utf-8"><title>Opération bloquée</title></head><body>'
-            .'<div style="max-width:680px;margin:40px auto;padding:24px;border:2px solid #e11d48;border-radius:12px;background:#fff1f2;font-family:sans-serif;color:#881337;">'
-            .'<h1 style="margin-top:0;font-size:18px;">Opération officielle bloquée par les contrôles de cohérence</h1>'
-            .'<p style="font-size:14px;line-height:1.5;">'.e($message).'</p>'
-            .'</div></body></html>',
-            422,
-            ['Content-Type' => 'text/html; charset=UTF-8']
-        );
+        $raisons = array_filter(array_map('trim', explode('.', $message)));
+
+        $html = view('modules.evaluation.groupes-virtuels.blocage', [
+            'message' => $message,
+            'raisons' => $raisons,
+            'urlRetour' => url()->previous() ?: route('admin.evaluation.examens.groupes-virtuels.index'),
+            'urlAnomalies' => route('admin.evaluation.examens.groupes-virtuels.anomalies'),
+        ])->render();
+
+        return new Response($html, 422, [
+            'Content-Type' => 'text/html; charset=UTF-8',
+        ]);
     }
 
     /**
