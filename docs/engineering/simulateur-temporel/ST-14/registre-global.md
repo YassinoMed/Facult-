@@ -431,7 +431,7 @@
 |---|---|---|---|---|
 | 1 | Démographie et admissions | SIM-01 → SIM-06 | **Complète** (SIM-01 → SIM-06 clôturés) | `SIM-01/09-verdict.md`, `SIM-02/09-verdict.md`, `SIM-03/09-verdict.md`, `SIM-04/09-verdict.md`, `SIM-05/09-verdict.md`, `SIM-06/09-verdict.md` |
 | 2 | Réussite, redoublement, abandon | SIM-07 → SIM-13 | **Complète** (SIM-07 → SIM-13 clôturés) | `SIM-07/09-verdict.md` → `SIM-13/09-verdict.md` ; moteur à taux globaux |
-| 3 | Cohortes et progression LMD | SIM-14 → SIM-19 | **NOT_STARTED** | `L0-R8` (règles LMD non validées) |
+| 3 | Cohortes et progression LMD | SIM-14 → SIM-19 | **Complète** (SIM-14 → SIM-19 clôturés) | `L0-R8` levée (règles LMD en paramètres saisis, aucune règle inventée) |
 | 4 | Capacités et infrastructures | SIM-20 → SIM-25 | **NOT_STARTED** | `L0-R7` (capacité par défaut 35) |
 | 5 | Budgets et ressources | SIM-26 → SIM-30 | **NOT_STARTED** | `L0-R6` (aucun coût validé) |
 | 6 | Crise et résilience | CR-01 → CR-06 | **NOT_STARTED** | dépend de A + C |
@@ -481,14 +481,14 @@ Colonnes de suivi : **A** audit · **B** spécification · **C** conception ·
 
 ### LOT B — Cohortes et progression LMD (SIM-14 → SIM-19)
 
-| Code | Nom | Catégorie | Compatibilité préliminaire | Dépendances | A | B | C | D | E | F | G | H | I | J |
+| Code | Nom | Catégorie | Compatibilité confirmée | Dépendances | A | B | C | D | E | F | G | H | I | J |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| SIM-14 | Blocage en L1 | cohortes_lmd | extension_par_niveau | — | — | — | — | — | — | — | — | — | — | — |
-| SIM-15 | Blocage en L2 | cohortes_lmd | extension_par_niveau | SIM-14 | — | — | — | — | — | — | — | — | — | — |
-| SIM-16 | Flux déséquilibrés entre niveaux | cohortes_lmd | extension_par_niveau | SIM-14, SIM-15 | — | — | — | — | — | — | — | — | — | — |
-| SIM-17 | Cohorte exceptionnelle | cohortes_lmd | extension_cohorte | — | — | — | — | — | — | — | — | — | — | — |
-| SIM-18 | Double génération | cohortes_lmd | extension_cohorte | SIM-17 | — | — | — | — | — | — | — | — | — | — |
-| SIM-19 | Rééquilibrage des niveaux | cohortes_lmd | extension_par_niveau | SIM-14→16 | — | — | — | — | — | — | — | — | — | — |
+| SIM-14 | Blocage en L1 | cohortes_lmd | `extension_par_niveau` (confirmée) | SOCLE-EFFECTIFS | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ **PASS_WITH_RESERVATIONS** |
+| SIM-15 | Blocage en L2 | cohortes_lmd | `extension_par_niveau` (confirmée) | SIM-14 | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ **PASS_WITH_RESERVATIONS** |
+| SIM-16 | Flux déséquilibrés entre niveaux | cohortes_lmd | `extension_par_niveau` (confirmée) | SIM-14, SIM-15 | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ **PASS_WITH_RESERVATIONS** |
+| SIM-17 | Cohorte exceptionnelle | cohortes_lmd | `extension_cohorte` (confirmée) | SOCLE-EFFECTIFS | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ **PASS_WITH_RESERVATIONS** |
+| SIM-18 | Double génération | cohortes_lmd | `extension_cohorte` (confirmée) | SIM-17 | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ **PASS_WITH_RESERVATIONS** |
+| SIM-19 | Rééquilibrage des niveaux | cohortes_lmd | `extension_par_niveau` (confirmée) | SIM-14→16 | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ **PASS_WITH_RESERVATIONS** |
 
 ### LOT C — Capacités et infrastructures (SIM-20 → SIM-25)
 
@@ -617,8 +617,14 @@ SOCLE-EFFECTIFS (ST-14.00, disponible)
 | SIM-11 — hausse de l'abandon | 7 | 88 |
 | SIM-12 — réduction de l'abandon | 7 | 88 |
 | SIM-13 — crise académique combinée | 8 | 107 |
-| Catalogue courant (ST-14.00 + SIM-01→13) | 23 | 598 |
-| **Total module Simulation temporelle** | **168** | **1878** |
+| SIM-14 — blocage en L1 | 5 | 64 |
+| SIM-15 — blocage en L2 | 4 | 44 |
+| SIM-16 — flux déséquilibrés entre niveaux | 5 | 39 |
+| SIM-17 — cohorte exceptionnelle | 5 | 35 |
+| SIM-18 — double génération | 5 | 34 |
+| SIM-19 — rééquilibrage des niveaux | 5 | 39 |
+| Catalogue courant (ST-14.00 + SIM-01→19) | 23 | 648 |
+| **Total module Simulation temporelle** | **197** | **2183** |
 
 Référence non directement comparable : ST-10 (64 tests / 342 assertions,
 périmètre antérieur différent).

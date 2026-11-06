@@ -73,7 +73,7 @@ final class CatalogueScenarios
             return self::$cache;
         }
 
-        $definitions = ['SOCLE-EFFECTIFS' => self::socle(), 'SIM-01' => self::sim01(), 'SIM-02' => self::sim02(), 'SIM-03' => self::sim03(), 'SIM-04' => self::sim04(), 'SIM-05' => self::sim05(), 'SIM-06' => self::sim06(), 'SIM-07' => self::sim07(), 'SIM-08' => self::sim08(), 'SIM-09' => self::sim09(), 'SIM-10' => self::sim10(), 'SIM-11' => self::sim11(), 'SIM-12' => self::sim12(), 'SIM-13' => self::sim13()];
+        $definitions = ['SOCLE-EFFECTIFS' => self::socle(), 'SIM-01' => self::sim01(), 'SIM-02' => self::sim02(), 'SIM-03' => self::sim03(), 'SIM-04' => self::sim04(), 'SIM-05' => self::sim05(), 'SIM-06' => self::sim06(), 'SIM-07' => self::sim07(), 'SIM-08' => self::sim08(), 'SIM-09' => self::sim09(), 'SIM-10' => self::sim10(), 'SIM-11' => self::sim11(), 'SIM-12' => self::sim12(), 'SIM-13' => self::sim13(), 'SIM-14' => self::sim14(), 'SIM-15' => self::sim15(), 'SIM-16' => self::sim16(), 'SIM-17' => self::sim17(), 'SIM-18' => self::sim18(), 'SIM-19' => self::sim19()];
         foreach (self::planifies() as $code => $meta) {
             $definitions[$code] = self::normaliserPlanifie($code, $meta);
         }
@@ -200,6 +200,36 @@ final class CatalogueScenarios
         if ($code === 'SIM-13') {
             self::validerReglesCommunes($parametres);
             self::validerReglesSim13($parametres);
+        }
+
+        if ($code === 'SIM-14') {
+            self::validerReglesCommunes($parametres);
+            self::validerReglesSim14($parametres);
+        }
+
+        if ($code === 'SIM-15') {
+            self::validerReglesCommunes($parametres);
+            self::validerReglesSim15($parametres);
+        }
+
+        if ($code === 'SIM-16') {
+            self::validerReglesCommunes($parametres);
+            self::validerReglesSim16($parametres);
+        }
+
+        if ($code === 'SIM-19') {
+            self::validerReglesCommunes($parametres);
+            self::validerReglesSim19($parametres);
+        }
+
+        if ($code === 'SIM-17') {
+            self::validerReglesCommunes($parametres);
+            self::validerReglesSim17($parametres);
+        }
+
+        if ($code === 'SIM-18') {
+            self::validerReglesCommunes($parametres);
+            self::validerReglesSim18($parametres);
         }
 
         return $parametres;
@@ -761,6 +791,208 @@ final class CatalogueScenarios
             'valeurs' => ['hausse', 'baisse'],
             'description' => 'Sens focal déclaré, apparié à l\'axe : passage→baisse ; redoublement/abandon→hausse. Toute autre paire est refusée par les règles de domaine.',
         ];
+
+        return $schema;
+    }
+
+    /**
+     * ST-14 / LOT B — règle de schéma commune aux surcharges par niveau :
+     * objet dynamique code de niveau → triplet complet de taux. Les clés
+     * sont libres (le référentiel fait foi) ; chaque valeur est validée.
+     *
+     * @return array<string, mixed>
+     */
+    private static function regleTauxParNiveau(string $description): array
+    {
+        return [
+            'type' => 'array',
+            'requis' => true,
+            'min_elements' => 1,
+            'elements' => [
+                'type' => 'array',
+                'schema' => [
+                    'passage' => ['type' => 'number', 'requis' => true, 'min' => 0, 'max' => 1],
+                    'redoublement' => ['type' => 'number', 'requis' => true, 'min' => 0, 'max' => 1],
+                    'abandon' => ['type' => 'number', 'requis' => true, 'min' => 0, 'max' => 1],
+                ],
+            ],
+            'description' => $description,
+        ];
+    }
+
+    /**
+     * SIM-14 — blocage en L1 : surcharge strictement localisée au niveau
+     * L1. Le schéma épingle le niveau focal ; les règles de domaine
+     * exigent une hausse stricte du redoublement et aucune amélioration.
+     *
+     * @return array<string, mixed>
+     */
+    public static function schemaSim14(): array
+    {
+        $schema = self::schemaAvecTauxRequis('SIM-14');
+        $schema['taux_par_niveau'] = self::regleTauxParNiveau(
+            'Surcharge par niveau : objet code de niveau → {passage, redoublement, abandon}. SIM-14 ne surcharge que L1.'
+        );
+        $schema['niveau_focal'] = [
+            'type' => 'string',
+            'requis' => true,
+            'valeurs' => ['L1'],
+            'description' => 'Niveau focal du scénario : L1 (contrat SIM-14).',
+        ];
+
+        return $schema;
+    }
+
+    /**
+     * SIM-15 — blocage en L2 : même contrat que SIM-14, localisé au
+     * niveau L2.
+     *
+     * @return array<string, mixed>
+     */
+    public static function schemaSim15(): array
+    {
+        $schema = self::schemaAvecTauxRequis('SIM-15');
+        $schema['taux_par_niveau'] = self::regleTauxParNiveau(
+            'Surcharge par niveau : objet code de niveau → {passage, redoublement, abandon}. SIM-15 ne surcharge que L2.'
+        );
+        $schema['niveau_focal'] = [
+            'type' => 'string',
+            'requis' => true,
+            'valeurs' => ['L2'],
+            'description' => 'Niveau focal du scénario : L2 (contrat SIM-15).',
+        ];
+
+        return $schema;
+    }
+
+    /**
+     * SIM-16 — flux déséquilibrés : surcharges sur AU MOINS DEUX niveaux,
+     * avec au moins deux triplets distincts. Aucune direction imposée :
+     * le déséquilibre est la divergence elle-même.
+     *
+     * @return array<string, mixed>
+     */
+    public static function schemaSim16(): array
+    {
+        $schema = self::schemaAvecTauxRequis('SIM-16');
+        $schema['taux_par_niveau'] = self::regleTauxParNiveau(
+            'Surcharges par niveau : au moins deux niveaux, au moins deux triplets distincts. Aucune direction imposée.'
+        );
+        $schema['niveau_focal'] = [
+            'type' => 'string',
+            'requis' => false,
+            'description' => 'Niveau focal facultatif — sert uniquement à restituer un écart final ciblé.',
+        ];
+
+        return $schema;
+    }
+
+    /**
+     * SIM-19 — rééquilibrage des niveaux : surcharges sur AU MOINS DEUX
+     * niveaux, avec des directions de passage opposées (au moins un
+     * niveau accélère le passage, au moins un le ralentit) afin de
+     * redistribuer la population entre niveaux.
+     *
+     * @return array<string, mixed>
+     */
+    public static function schemaSim19(): array
+    {
+        $schema = self::schemaAvecTauxRequis('SIM-19');
+        $schema['taux_par_niveau'] = self::regleTauxParNiveau(
+            'Surcharges par niveau : au moins deux niveaux, directions de passage opposées (rééquilibrage).'
+        );
+        $schema['niveau_focal'] = [
+            'type' => 'string',
+            'requis' => false,
+            'description' => 'Niveau focal facultatif — sert uniquement à restituer un écart final ciblé.',
+        ];
+
+        return $schema;
+    }
+
+    /**
+     * SIM-17 / SIM-18 — règle de schéma commune à l'identité de cohorte :
+     * liste non vide d'entrées externes déclarées. Chaque entrée porte un
+     * code unique (contrôlé par les règles de domaine), un niveau d'entrée,
+     * un pas d'entrée et un effectif strictement positif. Aucune cohorte,
+     * aucun effectif et aucune taille de référence ne sont inventés.
+     *
+     * @return array<string, mixed>
+     */
+    private static function regleCohortesIdentifiees(int $minimum, string $description): array
+    {
+        return [
+            'type' => 'array',
+            'requis' => true,
+            'min_elements' => $minimum,
+            'elements' => [
+                'type' => 'array',
+                'schema' => [
+                    'code' => [
+                        'type' => 'string',
+                        'requis' => true,
+                        'description' => 'Identité unique de la cohorte (chaîne non vide).',
+                    ],
+                    'niveau_entree' => [
+                        'type' => 'string',
+                        'requis' => true,
+                        'description' => "Code du niveau d'entrée, existant dans le périmètre simulé.",
+                    ],
+                    'pas_entree' => [
+                        'type' => 'integer',
+                        'requis' => true,
+                        'min' => 1,
+                        'max' => ServiceSimulationTemporelle::PLAFOND_HORIZON,
+                        'unite' => 'années',
+                        'description' => "Pas de simulation (1 = première année projetée) où l'entrée externe est ajoutée.",
+                    ],
+                    'effectif' => [
+                        'type' => 'integer',
+                        'requis' => true,
+                        'min' => 1,
+                        'unite' => 'étudiants',
+                        'description' => 'Effectif ENTIER de la cohorte externe, ajouté aux admissions ordinaires du pas.',
+                    ],
+                ],
+            ],
+            'description' => $description,
+        ];
+    }
+
+    /**
+     * SIM-17 — cohorte exceptionnelle : UNE seule cohorte externe
+     * déclarée. Son effectif doit différer de la génération de référence
+     * du niveau d'entrée (contrôle à l'exécution, sur le périmètre réel),
+     * faute de quoi elle décrirait une génération complète (SIM-18).
+     *
+     * @return array<string, mixed>
+     */
+    public static function schemaSim17(): array
+    {
+        $schema = self::schemaAvecTauxRequis('SIM-17');
+        $schema['cohortes_identifiees'] = self::regleCohortesIdentifiees(
+            1,
+            'Cohortes identifiées : UNE seule entrée externe (cohorte exceptionnelle). Effectif saisi, jamais déduit.'
+        );
+
+        return $schema;
+    }
+
+    /**
+     * SIM-18 — double génération : AU MOINS DEUX cohortes externes du
+     * MÊME niveau d'entrée, à des pas DISTINCTS, chaque effectif au moins
+     * égal à la génération de référence du niveau (contrôle à l'exécution,
+     * sur le périmètre réel). La coexistence est mesurée, jamais supposée.
+     *
+     * @return array<string, mixed>
+     */
+    public static function schemaSim18(): array
+    {
+        $schema = self::schemaAvecTauxRequis('SIM-18');
+        $schema['cohortes_identifiees'] = self::regleCohortesIdentifiees(
+            2,
+            'Cohortes identifiées : AU MOINS DEUX entrées externes du même niveau, à des pas distincts. Effectifs saisis, jamais déduits.'
+        );
 
         return $schema;
     }
@@ -1470,7 +1702,305 @@ final class CatalogueScenarios
     }
 
     /**
-     * 31 scénarios planifiés — métadonnées minimales, sans schéma exécutable
+     * SIM-14 — blocage en L1 : accumulation d'étudiants en première année
+     * par hausse strictement locale du redoublement. Le moteur v1.9
+     * applique la surcharge du niveau L1 ; la trajectoire témoin suit le
+     * jeu global, à admissions identiques.
+     *
+     * @return array<string, mixed>
+     */
+    private static function sim14(): array
+    {
+        return [
+            'code' => 'SIM-14',
+            'nom' => 'Blocage en L1',
+            'categorie' => 'cohortes_lmd',
+            'lot' => 'B',
+            'objectif' => "Identifier l'accumulation d'étudiants en première année.",
+            'version' => 1,
+            'statut' => self::STATUT_DISPONIBLE,
+            'perimetre' => 'faculte_ou_global',
+            'compatibilite' => 'extension_par_niveau',
+            'dependances' => ['SOCLE-EFFECTIFS'],
+            'schema' => self::schemaSim14(),
+            'hypotheses' => [
+                'Jeu de taux global COMPLET et saisi (passage, redoublement, abandon) : trajectoire témoin.',
+                'Surcharge L1 COMPLÈTE et saisie : trajectoire principale. Aucune valeur par défaut.',
+                'Blocage = redoublement L1 STRICTEMENT supérieur au redoublement global ; aucune amélioration (passage non supérieur, abandon non inférieur).',
+                'Les autres niveaux conservent le jeu global : la surcharge est strictement locale.',
+                'Admissions identiques dans les deux trajectoires (même delta) : l\'écart isole l\'effet du blocage.',
+                'abandon n\'est pas réinjecté : aucune causalité isolée ne lui est attribuée.',
+                'Incompatible avec gel, choc, cible, creux et les descripteurs globaux de réussite.',
+            ],
+            'version_formules' => '1.0',
+            'resultats_attendus' => [
+                'Taux par niveau appliqués et niveaux surchargés rappelés.',
+                'Totaux simulés vs référence, écarts signés et écart final.',
+                'Écarts par niveau à chaque pas et au pas final ; écart focal L1.',
+                'Sortants par période et effet cumulé sur les sortants.',
+                'Effectifs projetés, total final, capacités et alertes (moteur inchangé).',
+            ],
+            'indicateurs' => self::indicateursParNiveau('variation_niveau'),
+        ];
+    }
+
+    /**
+     * SIM-15 — blocage en L2 : même contrat que SIM-14, localisé au
+     * niveau L2.
+     *
+     * @return array<string, mixed>
+     */
+    private static function sim15(): array
+    {
+        return [
+            'code' => 'SIM-15',
+            'nom' => 'Blocage en L2',
+            'categorie' => 'cohortes_lmd',
+            'lot' => 'B',
+            'objectif' => "Identifier l'accumulation d'étudiants en deuxième année.",
+            'version' => 1,
+            'statut' => self::STATUT_DISPONIBLE,
+            'perimetre' => 'faculte_ou_global',
+            'compatibilite' => 'extension_par_niveau',
+            'dependances' => ['SIM-14'],
+            'schema' => self::schemaSim15(),
+            'hypotheses' => [
+                'Jeu de taux global COMPLET et saisi : trajectoire témoin.',
+                'Surcharge L2 COMPLÈTE et saisie : trajectoire principale. Aucune valeur par défaut.',
+                'Blocage = redoublement L2 STRICTEMENT supérieur au redoublement global ; aucune amélioration.',
+                'Les autres niveaux conservent le jeu global : la surcharge est strictement locale.',
+                'Admissions identiques dans les deux trajectoires : l\'écart isole l\'effet du blocage.',
+                'abandon n\'est pas réinjecté : aucune causalité isolée ne lui est attribuée.',
+            ],
+            'version_formules' => '1.0',
+            'resultats_attendus' => [
+                'Taux par niveau appliqués et niveaux surchargés rappelés.',
+                'Totaux simulés vs référence, écarts signés et écart final.',
+                'Écarts par niveau à chaque pas et au pas final ; écart focal L2.',
+                'Sortants par période et effet cumulé sur les sortants.',
+                'Effectifs projetés, total final, capacités et alertes (moteur inchangé).',
+            ],
+            'indicateurs' => self::indicateursParNiveau('variation_niveau'),
+        ];
+    }
+
+    /**
+     * SIM-16 — flux déséquilibrés entre niveaux : surcharges distinctes
+     * sur au moins deux niveaux, sans direction imposée. L'écart par
+     * niveau mesure la divergence, pas une amélioration ou une crise.
+     *
+     * @return array<string, mixed>
+     */
+    private static function sim16(): array
+    {
+        return [
+            'code' => 'SIM-16',
+            'nom' => 'Flux déséquilibrés entre niveaux',
+            'categorie' => 'cohortes_lmd',
+            'lot' => 'B',
+            'objectif' => 'Permettre des taux différents par niveau et mesurer les déséquilibres.',
+            'version' => 1,
+            'statut' => self::STATUT_DISPONIBLE,
+            'perimetre' => 'faculte_ou_global',
+            'compatibilite' => 'extension_par_niveau',
+            'dependances' => ['SIM-14', 'SIM-15'],
+            'schema' => self::schemaSim16(),
+            'hypotheses' => [
+                'Jeu global COMPLET et saisi : trajectoire témoin.',
+                'Au moins DEUX niveaux surchargés, avec au moins DEUX triplets distincts.',
+                'Aucune direction imposée : le scénario décrit une divergence, pas une crise.',
+                'Les niveaux non surchargés conservent le jeu global.',
+                'Admissions identiques dans les deux trajectoires : l\'écart isole les surcharges.',
+                'abandon n\'est pas réinjecté : aucune causalité isolée ne lui est attribuée.',
+            ],
+            'version_formules' => '1.0',
+            'resultats_attendus' => [
+                'Taux par niveau appliqués et niveaux surchargés rappelés.',
+                'Totaux simulés vs référence et écarts signés par période.',
+                'Écarts par niveau à chaque pas et au pas final (divergence).',
+                'Sortants par période et effet cumulé sur les sortants.',
+                'Effectifs projetés, total final, capacités et alertes (moteur inchangé).',
+            ],
+            'indicateurs' => self::indicateursParNiveau('variation_niveau'),
+        ];
+    }
+
+    /**
+     * SIM-19 — rééquilibrage des niveaux : surcharges sur au moins deux
+     * niveaux avec directions de passage opposées, afin de redistribuer
+     * la population. La convergence n'est pas supposée : elle est lue
+     * dans les écarts par niveau.
+     *
+     * @return array<string, mixed>
+     */
+    private static function sim19(): array
+    {
+        return [
+            'code' => 'SIM-19',
+            'nom' => 'Rééquilibrage des niveaux',
+            'categorie' => 'cohortes_lmd',
+            'lot' => 'B',
+            'objectif' => 'Évaluer la convergence vers une distribution plus équilibrée.',
+            'version' => 1,
+            'statut' => self::STATUT_DISPONIBLE,
+            'perimetre' => 'faculte_ou_global',
+            'compatibilite' => 'extension_par_niveau',
+            'dependances' => ['SIM-14', 'SIM-15', 'SIM-16'],
+            'schema' => self::schemaSim19(),
+            'hypotheses' => [
+                'Jeu global COMPLET et saisi : trajectoire témoin.',
+                'Au moins DEUX niveaux surchargés.',
+                'Directions de passage OPPOSÉES : au moins un niveau accélère le passage (strictement), au moins un le ralentit (strictement).',
+                'Les niveaux non surchargés conservent le jeu global.',
+                'Admissions identiques dans les deux trajectoires : l\'écart isole le rééquilibrage.',
+                'La convergence vers une distribution cible n\'est pas supposée : elle se lit dans les écarts par niveau.',
+                'abandon n\'est pas réinjecté : aucune causalité isolée ne lui est attribuée.',
+            ],
+            'version_formules' => '1.0',
+            'resultats_attendus' => [
+                'Taux par niveau appliqués et niveaux surchargés rappelés.',
+                'Totaux simulés vs référence et écarts signés par période.',
+                'Écarts par niveau à chaque pas et au pas final (redistribution).',
+                'Sortants par période et effet cumulé sur les sortants.',
+                'Effectifs projetés, total final, capacités et alertes (moteur inchangé).',
+            ],
+            'indicateurs' => self::indicateursParNiveau('variation_niveau'),
+        ];
+    }
+
+    /**
+     * SIM-17 — cohorte exceptionnelle : une entrée externe déclarée est
+     * ajoutée aux admissions ordinaires et suivie comme une partition des
+     * agrégats. L'écart à la trajectoire témoin (sans cette entrée) isole
+     * strictement l'effet de la cohorte.
+     *
+     * @return array<string, mixed>
+     */
+    private static function sim17(): array
+    {
+        return [
+            'code' => 'SIM-17',
+            'nom' => 'Cohorte exceptionnelle',
+            'categorie' => 'cohortes_lmd',
+            'lot' => 'B',
+            'objectif' => "Mesurer l'impact d'une cohorte à effectif inhabituel.",
+            'version' => 1,
+            'statut' => self::STATUT_DISPONIBLE,
+            'perimetre' => 'faculte_ou_global',
+            'compatibilite' => 'extension_cohorte',
+            'dependances' => ['SOCLE-EFFECTIFS'],
+            'schema' => self::schemaSim17(),
+            'hypotheses' => [
+                'Jeu de taux global COMPLET et saisi : trajectoire témoin.',
+                'UNE cohorte externe déclarée : code, niveau d\'entrée, pas d\'entrée et effectif entiers, sans aucune valeur par défaut.',
+                'L\'entrée externe est ADDITIVE aux admissions ordinaires du pas : elle ne les remplace jamais.',
+                'L\'effectif déclaré doit DIFFÉRER de la génération de référence du niveau d\'entrée (contrôle à l\'exécution sur le périmètre réel) — une génération complète relève de SIM-18.',
+                'La cohorte est suivie à travers les niveaux comme une PARTITION des agrégats : aucune formule de flux n\'est dupliquée.',
+                'Admissions ordinaires identiques dans les deux trajectoires : l\'écart isole l\'effet de la cohorte.',
+                'Incompatible avec gel, choc, cible, creux, surcharges par niveau et descripteurs globaux de réussite.',
+            ],
+            'version_formules' => '1.0',
+            'resultats_attendus' => [
+                'Cohorte déclarée rappelée (code, niveau, pas, effectif).',
+                'Suivi par pas et par niveau : effectifs identifiés et non identifiés.',
+                'Bilan de conservation par cohorte (entrée = final + sortants + autres sorties).',
+                'Entrées, sortants et poids de la cohorte par période.',
+                'Écarts signés à la trajectoire témoin et écart final.',
+                'Effectifs projetés, total final, capacités et alertes (moteur inchangé).',
+            ],
+            'indicateurs' => self::indicateursCohortes(),
+        ];
+    }
+
+    /**
+     * SIM-18 — double génération : au moins deux cohortes externes du même
+     * niveau d'entrée, à des pas distincts. La coexistence est mesurée à
+     * chaque pas ; aucune simultanéité n'est supposée.
+     *
+     * @return array<string, mixed>
+     */
+    private static function sim18(): array
+    {
+        return [
+            'code' => 'SIM-18',
+            'nom' => 'Double génération',
+            'categorie' => 'cohortes_lmd',
+            'lot' => 'B',
+            'objectif' => 'Simuler la coexistence de deux cohortes importantes dans un niveau.',
+            'version' => 1,
+            'statut' => self::STATUT_DISPONIBLE,
+            'perimetre' => 'faculte_ou_global',
+            'compatibilite' => 'extension_cohorte',
+            'dependances' => ['SIM-17'],
+            'schema' => self::schemaSim18(),
+            'hypotheses' => [
+                'Jeu de taux global COMPLET et saisi : trajectoire témoin.',
+                'AU MOINS DEUX cohortes externes déclarées, toutes de MÊME niveau d\'entrée, à des pas DISTINCTS.',
+                'Chaque effectif doit être au moins égal à la génération de référence du niveau (contrôle à l\'exécution sur le périmètre réel).',
+                'Chaque entrée est ADDITIVE aux admissions ordinaires de son pas : les cohortes se cumulent, elles ne se remplacent pas.',
+                'Chaque cohorte est suivie comme une PARTITION des agrégats : aucune formule de flux n\'est dupliquée.',
+                'La coexistence est mesurée par pas et par niveau ; elle n\'est jamais supposée.',
+                'Admissions ordinaires identiques dans la trajectoire témoin : l\'écart isole l\'effet des générations.',
+                'Incompatible avec gel, choc, cible, creux, surcharges par niveau et descripteurs globaux de réussite.',
+            ],
+            'version_formules' => '1.0',
+            'resultats_attendus' => [
+                'Cohortes déclarées rappelées (codes, niveau, pas, effectifs).',
+                'Suivi par pas et par niveau : effectifs identifiés et non identifiés.',
+                'Bilan de conservation par cohorte (entrée = final + sortants + autres sorties).',
+                'Entrées, sortants et poids des cohortes par période.',
+                'Écarts signés à la trajectoire témoin et écart final.',
+                'Coexistence par période, durée cumulée et pic de simultanéité.',
+                'Effectifs projetés, total final, capacités et alertes (moteur inchangé).',
+            ],
+            'indicateurs' => self::indicateursCohortes(),
+        ];
+    }
+
+    /**
+     * Liste d'indicateurs commune aux scénarios d'identité de cohorte
+     * (SIM-17 / SIM-18).
+     *
+     * @return array<int, string>
+     */
+    private static function indicateursCohortes(): array
+    {
+        return [
+            'admissions_par_periode', 'variations_annuelles', 'total_final',
+            'cohortes_identifiees_appliquees', 'suivi_cohortes', 'bilan_cohortes',
+            'entrees_cohortes_par_periode', 'sortants_cohortes_par_periode',
+            'ecarts_cohortes_par_periode', 'ecart_cohortes_final',
+            'poids_cohortes_par_periode', 'coexistence_par_periode',
+            'duree_coexistence', 'pic_coexistence',
+            'groupes_theoriques_requis_total', 'deficit_groupes',
+            'taux_saturation_global_pct', 'places_manquantes',
+        ];
+    }
+
+    /**
+     * Liste d'indicateurs commune aux scénarios par niveau du LOT B.
+     *
+     * @return array<int, string>
+     */
+    private static function indicateursParNiveau(string $cleVariation): array
+    {
+        return [
+            'admissions_par_periode', $cleVariation,
+            'totaux', 'totaux_reference_reussite',
+            'ecarts_reussite_par_periode', 'ecart_reussite_final',
+            'sortants_par_periode', 'effet_sortants_cumules',
+            'taux_par_niveau_appliques', 'niveaux_surcharges',
+            'ecarts_par_niveau', 'cohortes_reference_finales', 'ecarts_niveaux_finaux',
+            'niveau_focal', 'ecart_niveau_focal_final',
+            'variations_annuelles', 'total_final',
+            'ecart_absolu', 'ecart_pourcentage', 'ecart_cible',
+            'groupes_theoriques_requis_total', 'deficit_groupes',
+            'taux_saturation_global_pct', 'places_manquantes',
+        ];
+    }
+
+    /**
+     * 25 scénarios planifiés — métadonnées minimales, sans schéma exécutable
      * tant que leur LOOP n'est pas clôturé. La classification de
      * compatibilité est préliminaire et doit être confirmée par l'audit du
      * scénario concerné.
@@ -1484,13 +2014,7 @@ final class CatalogueScenarios
 
             // LOT A — Réussite, redoublement et abandon.
 
-            // LOT B — Cohortes et progression LMD.
-            'SIM-14' => ['nom' => 'Blocage en L1', 'categorie' => 'cohortes_lmd', 'lot' => 'B', 'objectif' => "Identifier l'accumulation d'étudiants en première année.", 'compatibilite' => 'extension_par_niveau', 'dependances' => []],
-            'SIM-15' => ['nom' => 'Blocage en L2', 'categorie' => 'cohortes_lmd', 'lot' => 'B', 'objectif' => "Identifier l'accumulation d'étudiants en deuxième année.", 'compatibilite' => 'extension_par_niveau', 'dependances' => ['SIM-14']],
-            'SIM-16' => ['nom' => 'Flux déséquilibrés entre niveaux', 'categorie' => 'cohortes_lmd', 'lot' => 'B', 'objectif' => 'Permettre des taux différents par niveau et mesurer les déséquilibres.', 'compatibilite' => 'extension_par_niveau', 'dependances' => ['SIM-14', 'SIM-15']],
-            'SIM-17' => ['nom' => 'Cohorte exceptionnelle', 'categorie' => 'cohortes_lmd', 'lot' => 'B', 'objectif' => "Mesurer l'impact d'une cohorte à effectif inhabituel.", 'compatibilite' => 'extension_cohorte', 'dependances' => []],
-            'SIM-18' => ['nom' => 'Double génération', 'categorie' => 'cohortes_lmd', 'lot' => 'B', 'objectif' => 'Simuler la coexistence de deux cohortes importantes dans un niveau.', 'compatibilite' => 'extension_cohorte', 'dependances' => ['SIM-17']],
-            'SIM-19' => ['nom' => 'Rééquilibrage des niveaux', 'categorie' => 'cohortes_lmd', 'lot' => 'B', 'objectif' => 'Évaluer la convergence vers une distribution plus équilibrée.', 'compatibilite' => 'extension_par_niveau', 'dependances' => ['SIM-14', 'SIM-15', 'SIM-16']],
+            // LOT B — Cohortes et progression LMD (SIM-14 → SIM-19 closes).
 
             // LOT C — Capacités et infrastructures.
             'SIM-20' => ['nom' => 'Saturation des capacités', 'categorie' => 'capacites_infrastructures', 'lot' => 'C', 'objectif' => 'Identifier les périodes où la capacité disponible devient insuffisante.', 'compatibilite' => 'extension_capacite', 'dependances' => []],
@@ -2014,6 +2538,303 @@ final class CatalogueScenarios
 
         if ($strictes < 2) {
             throw new \DomainException('SIM-13 (crise combinée) : au moins deux axes doivent se dégrader strictement — une dégradation isolée relève de SIM-08, SIM-09 ou SIM-11.');
+        }
+    }
+
+    /**
+     * Contrôles communs aux surcharges par niveau du LOT B (SIM-14, SIM-15,
+     * SIM-16 et SIM-19) :
+     *   1. chaque code de niveau est non vide ;
+     *   2. chaque triplet est complet (garanti par le schéma) et satisfait
+     *      l'invariant passage + redoublement + abandon ≤ 1.0001, comme le
+     *      jeu global ;
+     *   3. le niveau focal, s'il est fourni, n'est pas vide.
+     * Aucune valeur par défaut n'est introduite et aucune compensation
+     * entre niveaux n'est supposée.
+     *
+     * @param  array<string, mixed>  $parametres
+     * @return array<string, array{passage: float, redoublement: float, abandon: float}>
+     */
+    private static function validerSurchargesParNiveau(array $parametres, string $code): array
+    {
+        $surcharges = [];
+
+        foreach ($parametres['taux_par_niveau'] as $niveau => $taux) {
+            $niveau = (string) $niveau;
+            if (trim($niveau) === '') {
+                throw new \DomainException("{$code} (par niveau) : le code de niveau est requis.");
+            }
+
+            $triplet = [
+                'passage' => (float) $taux['passage'],
+                'redoublement' => (float) $taux['redoublement'],
+                'abandon' => (float) $taux['abandon'],
+            ];
+
+            if (array_sum($triplet) > 1.0001) {
+                throw new \DomainException("{$code} (par niveau) : {$niveau} : passage + redoublement + abandon > 1 : incohérent.");
+            }
+
+            $surcharges[$niveau] = $triplet;
+        }
+
+        if (array_key_exists('niveau_focal', $parametres) && trim((string) $parametres['niveau_focal']) === '') {
+            throw new \DomainException("{$code} (par niveau) : le niveau focal, s'il est fourni, ne peut pas être vide.");
+        }
+
+        return $surcharges;
+    }
+
+    /**
+     * Empreinte canonique d'un triplet de taux : deux niveaux qui portent
+     * exactement les mêmes valeurs ne décrivent pas un déséquilibre.
+     *
+     * @param  array{passage: float, redoublement: float, abandon: float}  $triplet
+     */
+    private static function empreinteTriplet(array $triplet): string
+    {
+        return json_encode(
+            [$triplet['passage'], $triplet['redoublement'], $triplet['abandon']],
+            JSON_THROW_ON_ERROR
+        );
+    }
+
+    /**
+     * Blocage localisé d'un niveau : le redoublement du niveau doit être
+     * STRICTEMENT supérieur au redoublement global et aucune amélioration
+     * n'est admise sur les deux autres axes. Le contrat est strictement
+     * local : les autres niveaux conservent le jeu global.
+     *
+     * @param  array{passage: float, redoublement: float, abandon: float}  $surcharge
+     * @param  array{passage: float, redoublement: float, abandon: float}  $reference
+     */
+    private static function validerBlocageNiveau(
+        string $code,
+        string $niveau,
+        array $surcharge,
+        array $reference
+    ): void {
+        if ($surcharge['redoublement'] <= $reference['redoublement']) {
+            throw new \DomainException("{$code} (blocage {$niveau}) : le redoublement de {$niveau} doit être STRICTEMENT supérieur au redoublement global.");
+        }
+
+        if ($surcharge['passage'] > $reference['passage']) {
+            throw new \DomainException("{$code} (blocage {$niveau}) : le passage de {$niveau} ne peut pas être supérieur au passage global — aucune amélioration admise.");
+        }
+
+        if ($surcharge['abandon'] < $reference['abandon']) {
+            throw new \DomainException("{$code} (blocage {$niveau}) : l'abandon de {$niveau} ne peut pas être inférieur à l'abandon global — aucune amélioration admise.");
+        }
+    }
+
+    /**
+     * SIM-14 = blocage en L1. La surcharge porte EXACTEMENT sur L1 ; tout
+     * autre niveau relève de SIM-15 (L2), SIM-16 (déséquilibre multi-niveaux)
+     * ou SIM-19 (rééquilibrage). Le blocage est une hausse stricte du
+     * redoublement de L1, sans aucune amélioration des deux autres axes.
+     *
+     * @param  array<string, mixed>  $parametres
+     */
+    private static function validerReglesSim14(array $parametres): void
+    {
+        $surcharges = self::validerSurchargesParNiveau($parametres, 'SIM-14');
+
+        if (array_keys($surcharges) !== ['L1']) {
+            throw new \DomainException('SIM-14 (blocage L1) : taux_par_niveau doit surcharger EXACTEMENT le niveau L1 — un autre niveau relève de SIM-15, SIM-16 ou SIM-19.');
+        }
+
+        self::validerBlocageNiveau('SIM-14', 'L1', $surcharges['L1'], [
+            'passage' => (float) $parametres['taux']['passage'],
+            'redoublement' => (float) $parametres['taux']['redoublement'],
+            'abandon' => (float) $parametres['taux']['abandon'],
+        ]);
+    }
+
+    /**
+     * SIM-15 = blocage en L2. Même contrat que SIM-14, localisé au niveau
+     * L2. Un blocage en L1 relève de SIM-14.
+     *
+     * @param  array<string, mixed>  $parametres
+     */
+    private static function validerReglesSim15(array $parametres): void
+    {
+        $surcharges = self::validerSurchargesParNiveau($parametres, 'SIM-15');
+
+        if (array_keys($surcharges) !== ['L2']) {
+            throw new \DomainException('SIM-15 (blocage L2) : taux_par_niveau doit surcharger EXACTEMENT le niveau L2 — un autre niveau relève de SIM-14, SIM-16 ou SIM-19.');
+        }
+
+        self::validerBlocageNiveau('SIM-15', 'L2', $surcharges['L2'], [
+            'passage' => (float) $parametres['taux']['passage'],
+            'redoublement' => (float) $parametres['taux']['redoublement'],
+            'abandon' => (float) $parametres['taux']['abandon'],
+        ]);
+    }
+
+    /**
+     * SIM-16 = flux déséquilibrés entre niveaux : AU MOINS DEUX niveaux
+     * surchargés et AU MOINS DEUX triplets distincts. Aucune direction
+     * n'est imposée : le déséquilibre est la divergence elle-même. Un seul
+     * niveau relève de SIM-14 ou SIM-15.
+     *
+     * @param  array<string, mixed>  $parametres
+     */
+    private static function validerReglesSim16(array $parametres): void
+    {
+        $surcharges = self::validerSurchargesParNiveau($parametres, 'SIM-16');
+
+        if (count($surcharges) < 2) {
+            throw new \DomainException('SIM-16 (flux déséquilibrés) : au moins DEUX niveaux doivent être surchargés — un seul niveau relève de SIM-14 ou SIM-15.');
+        }
+
+        $empreintes = [];
+        foreach ($surcharges as $triplet) {
+            $empreintes[self::empreinteTriplet($triplet)] = true;
+        }
+
+        if (count($empreintes) < 2) {
+            throw new \DomainException('SIM-16 (flux déséquilibrés) : au moins DEUX triplets distincts sont requis — des taux identiques ne décrivent aucun déséquilibre.');
+        }
+    }
+
+    /**
+     * SIM-19 = rééquilibrage des niveaux : AU MOINS DEUX niveaux surchargés
+     * et des directions de passage OPPOSÉES — au moins un niveau accélère
+     * strictement le passage, au moins un le ralentit strictement. La
+     * convergence n'est pas supposée : elle est lue dans les écarts.
+     *
+     * @param  array<string, mixed>  $parametres
+     */
+    private static function validerReglesSim19(array $parametres): void
+    {
+        $surcharges = self::validerSurchargesParNiveau($parametres, 'SIM-19');
+
+        if (count($surcharges) < 2) {
+            throw new \DomainException('SIM-19 (rééquilibrage) : au moins DEUX niveaux doivent être surchargés.');
+        }
+
+        $reference = (float) $parametres['taux']['passage'];
+        $acceleres = 0;
+        $ralentis = 0;
+
+        foreach ($surcharges as $triplet) {
+            if ($triplet['passage'] > $reference) {
+                $acceleres++;
+            }
+            if ($triplet['passage'] < $reference) {
+                $ralentis++;
+            }
+        }
+
+        if ($acceleres === 0 || $ralentis === 0) {
+            throw new \DomainException('SIM-19 (rééquilibrage) : directions de passage opposées requises — au moins un niveau accélère et au moins un ralentit le passage (strictement).');
+        }
+    }
+
+    /**
+     * Contrôles communs à l'identité de cohorte (SIM-17 / SIM-18) : liste,
+     * codes uniques non vides, niveau non vide, pas d'entrée dans
+     * l'horizon, effectif entier strictement positif. Le contrôle de
+     * taille par rapport à la génération de référence appartient à
+     * l'exécution (le catalogue ne connaît pas le périmètre réel).
+     *
+     * @param  array<string, mixed>  $parametres
+     * @return array<int, array{code: string, niveau_entree: string, pas_entree: int, effectif: int}>
+     */
+    private static function validerCohortesIdentifiees(array $parametres, string $code): array
+    {
+        $cohortes = $parametres['cohortes_identifiees'] ?? null;
+        if (! is_array($cohortes) || $cohortes === [] || ! array_is_list($cohortes)) {
+            throw new \DomainException("{$code} (identité de cohorte) : cohortes_identifiees doit être une liste non vide.");
+        }
+
+        $horizon = (int) $parametres['horizon_annees'];
+        $codes = [];
+        $normalisees = [];
+
+        foreach ($cohortes as $index => $cohorte) {
+            if (! is_array($cohorte)) {
+                throw new \DomainException("{$code} (identité de cohorte) : cohortes_identifiees[{$index}] doit être un objet.");
+            }
+
+            $codeCohorte = (string) ($cohorte['code'] ?? '');
+            if (trim($codeCohorte) === '') {
+                throw new \DomainException("{$code} (identité de cohorte) : cohortes_identifiees[{$index}].code ne peut pas être vide.");
+            }
+            if (isset($codes[$codeCohorte])) {
+                throw new \DomainException("{$code} (identité de cohorte) : code de cohorte dupliqué {$codeCohorte} — l'identité doit être unique.");
+            }
+            $codes[$codeCohorte] = true;
+
+            $niveauEntree = (string) ($cohorte['niveau_entree'] ?? '');
+            if (trim($niveauEntree) === '') {
+                throw new \DomainException("{$code} (identité de cohorte) : cohortes_identifiees[{$index}].niveau_entree ne peut pas être vide.");
+            }
+
+            $pasEntree = (int) $cohorte['pas_entree'];
+            if ($pasEntree < 1 || $pasEntree > $horizon) {
+                throw new \DomainException("{$code} (identité de cohorte) : cohortes_identifiees[{$index}].pas_entree doit être compris dans [1, {$horizon}].");
+            }
+
+            $effectif = (int) $cohorte['effectif'];
+            if ($effectif < 1) {
+                throw new \DomainException("{$code} (identité de cohorte) : cohortes_identifiees[{$index}].effectif doit être au moins égal à 1.");
+            }
+
+            $normalisees[] = [
+                'code' => $codeCohorte,
+                'niveau_entree' => $niveauEntree,
+                'pas_entree' => $pasEntree,
+                'effectif' => $effectif,
+            ];
+        }
+
+        if (count($normalisees) > 1) {
+            $niveaux = array_unique(array_column($normalisees, 'niveau_entree'));
+            if (count($niveaux) > 1) {
+                throw new \DomainException("{$code} (identité de cohorte) : toutes les cohortes doivent entrer dans le MÊME niveau.");
+            }
+
+            $pas = array_column($normalisees, 'pas_entree');
+            if (count(array_unique($pas)) !== count($pas)) {
+                throw new \DomainException("{$code} (double génération) : deux cohortes du même niveau doivent entrer à des pas DISTINCTS — une entrée simultanée ne décrit aucune coexistence de générations.");
+            }
+        }
+
+        return $normalisees;
+    }
+
+    /**
+     * SIM-17 = cohorte exceptionnelle : UNE et une seule cohorte externe.
+     * L'effectif doit différer de la génération de référence du niveau
+     * d'entrée ; ce contrôle est exécuté sur le périmètre réel (le
+     * catalogue n'invente aucune taille de référence).
+     *
+     * @param  array<string, mixed>  $parametres
+     */
+    private static function validerReglesSim17(array $parametres): void
+    {
+        $cohortes = self::validerCohortesIdentifiees($parametres, 'SIM-17');
+
+        if (count($cohortes) !== 1) {
+            throw new \DomainException('SIM-17 (cohorte exceptionnelle) : EXACTEMENT UNE cohorte externe est requise — plusieurs générations relèvent de SIM-18.');
+        }
+    }
+
+    /**
+     * SIM-18 = double génération : AU MOINS DEUX cohortes externes du même
+     * niveau d'entrée, à des pas distincts. Chaque effectif doit être au
+     * moins égal à la génération de référence du niveau ; ce contrôle est
+     * exécuté sur le périmètre réel.
+     *
+     * @param  array<string, mixed>  $parametres
+     */
+    private static function validerReglesSim18(array $parametres): void
+    {
+        $cohortes = self::validerCohortesIdentifiees($parametres, 'SIM-18');
+
+        if (count($cohortes) < 2) {
+            throw new \DomainException('SIM-18 (double génération) : au moins DEUX cohortes externes sont requises — une cohorte isolée relève de SIM-17.');
         }
     }
 

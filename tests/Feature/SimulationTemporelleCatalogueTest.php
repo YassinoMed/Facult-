@@ -144,6 +144,20 @@ class SimulationTemporelleCatalogueTest extends TestCase
             ->assertJsonPath('scenarios.11.statut', CatalogueScenarios::STATUT_DISPONIBLE)
             ->assertJsonPath('scenarios.12.code', 'SIM-12')
             ->assertJsonPath('scenarios.12.statut', CatalogueScenarios::STATUT_DISPONIBLE)
+            ->assertJsonPath('scenarios.14.code', 'SIM-14')
+            ->assertJsonPath('scenarios.14.statut', CatalogueScenarios::STATUT_DISPONIBLE)
+            ->assertJsonPath('scenarios.15.code', 'SIM-15')
+            ->assertJsonPath('scenarios.15.statut', CatalogueScenarios::STATUT_DISPONIBLE)
+            ->assertJsonPath('scenarios.16.code', 'SIM-16')
+            ->assertJsonPath('scenarios.16.statut', CatalogueScenarios::STATUT_DISPONIBLE)
+            ->assertJsonPath('scenarios.17.code', 'SIM-17')
+            ->assertJsonPath('scenarios.17.statut', CatalogueScenarios::STATUT_DISPONIBLE)
+            ->assertJsonPath('scenarios.18.code', 'SIM-18')
+            ->assertJsonPath('scenarios.18.statut', CatalogueScenarios::STATUT_DISPONIBLE)
+            ->assertJsonPath('scenarios.19.code', 'SIM-19')
+            ->assertJsonPath('scenarios.19.statut', CatalogueScenarios::STATUT_DISPONIBLE)
+            ->assertJsonPath('scenarios.20.code', 'SIM-20')
+            ->assertJsonPath('scenarios.20.statut', CatalogueScenarios::STATUT_PLANIFIE)
             ->assertJsonCount(45, 'scenarios');
 
         $this->assertMatchesRegularExpression('/^[a-f0-9]{64}$/', $reponse->json('empreinte'));
@@ -179,8 +193,8 @@ class SimulationTemporelleCatalogueTest extends TestCase
         $bilan = CatalogueScenarios::verifierIntegrite();
 
         $this->assertSame(45, $bilan['scenarios']);
-        $this->assertSame(14, $bilan['disponibles']);
-        $this->assertSame(31, $bilan['planifies']);
+        $this->assertSame(20, $bilan['disponibles']);
+        $this->assertSame(25, $bilan['planifies']);
         $this->assertCount(45, array_unique($bilan['codes']));
 
         foreach (CatalogueScenarios::tout() as $code => $definition) {
@@ -327,13 +341,73 @@ class SimulationTemporelleCatalogueTest extends TestCase
         $this->assertSame(['passage', 'redoublement', 'abandon'], $sim13['schema']['axe_variation']['valeurs']);
         $this->assertSame(['hausse', 'baisse'], $sim13['schema']['sens_variation']['valeurs']);
         $this->assertStringContainsString('dégrad', $sim13['schema']['taux_modifie']['description']);
+
+        $sim14 = CatalogueScenarios::exiger('SIM-14');
+        $this->assertSame(CatalogueScenarios::STATUT_DISPONIBLE, $sim14['statut']);
+        $this->assertSame('extension_par_niveau', $sim14['compatibilite']);
+        $this->assertSame(1, $sim14['version']);
+        $this->assertSame('1.0', $sim14['version_formules']);
+        $this->assertSame(['SOCLE-EFFECTIFS'], $sim14['dependances']);
+        $this->assertTrue($sim14['schema']['taux']['requis']);
+        $this->assertTrue($sim14['schema']['taux_par_niveau']['requis']);
+        $this->assertSame(['L1'], $sim14['schema']['niveau_focal']['valeurs']);
+
+        $sim15 = CatalogueScenarios::exiger('SIM-15');
+        $this->assertSame(CatalogueScenarios::STATUT_DISPONIBLE, $sim15['statut']);
+        $this->assertSame('extension_par_niveau', $sim15['compatibilite']);
+        $this->assertSame(1, $sim15['version']);
+        $this->assertSame('1.0', $sim15['version_formules']);
+        $this->assertSame(['SIM-14'], $sim15['dependances']);
+        $this->assertTrue($sim15['schema']['taux']['requis']);
+        $this->assertTrue($sim15['schema']['taux_par_niveau']['requis']);
+        $this->assertSame(['L2'], $sim15['schema']['niveau_focal']['valeurs']);
+
+        $sim16 = CatalogueScenarios::exiger('SIM-16');
+        $this->assertSame(CatalogueScenarios::STATUT_DISPONIBLE, $sim16['statut']);
+        $this->assertSame('extension_par_niveau', $sim16['compatibilite']);
+        $this->assertSame(1, $sim16['version']);
+        $this->assertSame('1.0', $sim16['version_formules']);
+        $this->assertSame(['SIM-14', 'SIM-15'], $sim16['dependances']);
+        $this->assertTrue($sim16['schema']['taux']['requis']);
+        $this->assertTrue($sim16['schema']['taux_par_niveau']['requis']);
+        $this->assertFalse($sim16['schema']['niveau_focal']['requis']);
+
+        $sim17 = CatalogueScenarios::exiger('SIM-17');
+        $this->assertSame(CatalogueScenarios::STATUT_DISPONIBLE, $sim17['statut']);
+        $this->assertSame('extension_cohorte', $sim17['compatibilite']);
+        $this->assertSame(1, $sim17['version']);
+        $this->assertSame('1.0', $sim17['version_formules']);
+        $this->assertSame(['SOCLE-EFFECTIFS'], $sim17['dependances']);
+        $this->assertTrue($sim17['schema']['taux']['requis']);
+        $this->assertTrue($sim17['schema']['cohortes_identifiees']['requis']);
+        $this->assertSame(1, $sim17['schema']['cohortes_identifiees']['min_elements']);
+
+        $sim18 = CatalogueScenarios::exiger('SIM-18');
+        $this->assertSame(CatalogueScenarios::STATUT_DISPONIBLE, $sim18['statut']);
+        $this->assertSame('extension_cohorte', $sim18['compatibilite']);
+        $this->assertSame(1, $sim18['version']);
+        $this->assertSame('1.0', $sim18['version_formules']);
+        $this->assertSame(['SIM-17'], $sim18['dependances']);
+        $this->assertTrue($sim18['schema']['taux']['requis']);
+        $this->assertTrue($sim18['schema']['cohortes_identifiees']['requis']);
+        $this->assertSame(2, $sim18['schema']['cohortes_identifiees']['min_elements']);
+
+        $sim19 = CatalogueScenarios::exiger('SIM-19');
+        $this->assertSame(CatalogueScenarios::STATUT_DISPONIBLE, $sim19['statut']);
+        $this->assertSame('extension_par_niveau', $sim19['compatibilite']);
+        $this->assertSame(1, $sim19['version']);
+        $this->assertSame('1.0', $sim19['version_formules']);
+        $this->assertSame(['SIM-14', 'SIM-15', 'SIM-16'], $sim19['dependances']);
+        $this->assertTrue($sim19['schema']['taux']['requis']);
+        $this->assertTrue($sim19['schema']['taux_par_niveau']['requis']);
+        $this->assertFalse($sim19['schema']['niveau_focal']['requis']);
     }
 
     public function test_code_inconnu_et_scenario_planifie_refuses(): void
     {
         $this->assertRefuse(fn () => CatalogueScenarios::exiger('SIM-99'), 'inconnu');
-        $this->assertRefuse(fn () => CatalogueScenarios::validerParametres('SIM-14', $this->parametresValides()), 'non disponible');
-        $this->assertFalse(CatalogueScenarios::estDisponible('SIM-14'));
+        $this->assertRefuse(fn () => CatalogueScenarios::validerParametres('SIM-20', $this->parametresValides()), 'non disponible');
+        $this->assertFalse(CatalogueScenarios::estDisponible('SIM-20'));
         $this->assertTrue(CatalogueScenarios::estDisponible('SOCLE-EFFECTIFS'));
         $this->assertTrue(CatalogueScenarios::estDisponible('SIM-01'));
         $this->assertTrue(CatalogueScenarios::estDisponible('SIM-02'));
@@ -348,6 +422,12 @@ class SimulationTemporelleCatalogueTest extends TestCase
         $this->assertTrue(CatalogueScenarios::estDisponible('SIM-11'));
         $this->assertTrue(CatalogueScenarios::estDisponible('SIM-12'));
         $this->assertTrue(CatalogueScenarios::estDisponible('SIM-13'));
+        $this->assertTrue(CatalogueScenarios::estDisponible('SIM-14'));
+        $this->assertTrue(CatalogueScenarios::estDisponible('SIM-15'));
+        $this->assertTrue(CatalogueScenarios::estDisponible('SIM-16'));
+        $this->assertTrue(CatalogueScenarios::estDisponible('SIM-17'));
+        $this->assertTrue(CatalogueScenarios::estDisponible('SIM-18'));
+        $this->assertTrue(CatalogueScenarios::estDisponible('SIM-19'));
     }
 
     public function test_parametres_invalides_ou_hors_bornes_refuses(): void
