@@ -78,7 +78,8 @@ tests/Feature/SimulationTemporelleCatalogueTest.php  →  13 tests / 307 asserti
 - `test_sim02_est_un_scenario_de_baisse_stricte` :
   `schemaSim02()['taux']['requis'] == true` (vs `schemaSocle()` faux)
   ; `validerParametres('SIM-02')` accepte le jeu valide, rejette
-  `passage + redoublement > 1` (`'> 1'`) et les clés inconnues (`'inconnu'`).
+  la somme des taux `0.9 + 0.2 + 0.0 = 1.1 > 1.0001` (`'> 1'`) et les clés
+  inconnues (`'inconnu'`).
 - **3 scénarios disponibles** (SOCLE-EFFECTIFS, SIM-01, SIM-02)
 - **42 planifiés**
 

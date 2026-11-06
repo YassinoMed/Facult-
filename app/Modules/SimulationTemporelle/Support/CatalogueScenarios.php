@@ -73,7 +73,7 @@ final class CatalogueScenarios
             return self::$cache;
         }
 
-        $definitions = ['SOCLE-EFFECTIFS' => self::socle(), 'SIM-01' => self::sim01(), 'SIM-02' => self::sim02(), 'SIM-03' => self::sim03(), 'SIM-04' => self::sim04(), 'SIM-05' => self::sim05(), 'SIM-06' => self::sim06(), 'SIM-07' => self::sim07(), 'SIM-08' => self::sim08(), 'SIM-09' => self::sim09(), 'SIM-10' => self::sim10(), 'SIM-11' => self::sim11(), 'SIM-12' => self::sim12()];
+        $definitions = ['SOCLE-EFFECTIFS' => self::socle(), 'SIM-01' => self::sim01(), 'SIM-02' => self::sim02(), 'SIM-03' => self::sim03(), 'SIM-04' => self::sim04(), 'SIM-05' => self::sim05(), 'SIM-06' => self::sim06(), 'SIM-07' => self::sim07(), 'SIM-08' => self::sim08(), 'SIM-09' => self::sim09(), 'SIM-10' => self::sim10(), 'SIM-11' => self::sim11(), 'SIM-12' => self::sim12(), 'SIM-13' => self::sim13()];
         foreach (self::planifies() as $code => $meta) {
             $definitions[$code] = self::normaliserPlanifie($code, $meta);
         }
@@ -195,6 +195,11 @@ final class CatalogueScenarios
         if ($code === 'SIM-12') {
             self::validerReglesCommunes($parametres);
             self::validerReglesSim12($parametres);
+        }
+
+        if ($code === 'SIM-13') {
+            self::validerReglesCommunes($parametres);
+            self::validerReglesSim13($parametres);
         }
 
         return $parametres;
@@ -716,6 +721,45 @@ final class CatalogueScenarios
             'requis' => true,
             'valeurs' => ['baisse'],
             'description' => 'Sens focal du scénario : baisse (contrat SIM-12).',
+        ];
+
+        return $schema;
+    }
+
+    /**
+     * SIM-13 — crise académique combinée : variation complète multi-dégra-
+     * dations sur le descripteur générique (`taux_modifie` + `axe_variation`
+     * + `sens_variation`). Le schéma n'épingle PAS d'axe : toute paire
+     * focale DÉGRADANTE est admise (passage/baisse, redoublement/hausse,
+     * abandon/hausse) ; les règles de domaine ajoutent « aucune
+     * amélioration » et « au moins deux dégradations strictes ».
+     *
+     * @return array<string, mixed>
+     */
+    public static function schemaSim13(): array
+    {
+        $schema = self::schemaAvecTauxRequis('SIM-13');
+        $schema['taux_modifie'] = [
+            'type' => 'array',
+            'requis' => true,
+            'schema' => [
+                'passage' => ['type' => 'number', 'requis' => true, 'min' => 0, 'max' => 1],
+                'redoublement' => ['type' => 'number', 'requis' => true, 'min' => 0, 'max' => 1],
+                'abandon' => ['type' => 'number', 'requis' => true, 'min' => 0, 'max' => 1],
+            ],
+            'description' => 'Taux SIMULÉS complets (passage, redoublement, abandon), saisis — aucune valeur par défaut. Au moins deux axes strictement dégradés, aucune amélioration ; l\'axe focal déclaré porte l\'une des dégradations.',
+        ];
+        $schema['axe_variation'] = [
+            'type' => 'string',
+            'requis' => true,
+            'valeurs' => ['passage', 'redoublement', 'abandon'],
+            'description' => 'Axe focal déclaré — la paire (axe, sens) doit être une dégradation : passage/baisse, redoublement/hausse ou abandon/hausse.',
+        ];
+        $schema['sens_variation'] = [
+            'type' => 'string',
+            'requis' => true,
+            'valeurs' => ['hausse', 'baisse'],
+            'description' => 'Sens focal déclaré, apparié à l\'axe : passage→baisse ; redoublement/abandon→hausse. Toute autre paire est refusée par les règles de domaine.',
         ];
 
         return $schema;
@@ -1371,7 +1415,62 @@ final class CatalogueScenarios
     }
 
     /**
-     * 32 scénarios planifiés — métadonnées minimales, sans schéma exécutable
+     * SIM-13 — crise académique combinée : plusieurs dégradations simul-
+     * tanées (passage↓, redoublement↑, abandon↑) déclarées sur le des-
+     * cripteur générique. Aucune amélioration n'est admise ; au moins deux
+     * axes doivent se dégrader STRICTEMENT (l'axe focal en fait partie).
+     * La trajectoire témoin suit les taux de référence à admissions
+     * identiques ; l'écart isole strictement l'effet combiné des taux.
+     *
+     * @return array<string, mixed>
+     */
+    private static function sim13(): array
+    {
+        return [
+            'code' => 'SIM-13',
+            'nom' => 'Crise académique combinée',
+            'categorie' => 'reussite_flux',
+            'lot' => 'A',
+            'objectif' => 'Combiner plusieurs dégradations dans les limites du modèle et mesurer leur effet joint sur la progression des cohortes et les sortants.',
+            'version' => 1,
+            'statut' => self::STATUT_DISPONIBLE,
+            'perimetre' => 'faculte_ou_global',
+            'compatibilite' => 'configuration',
+            'dependances' => ['SOCLE-EFFECTIFS'],
+            'schema' => self::schemaSim13(),
+            'hypotheses' => [
+                'Deux jeux de taux COMPLETS et saisis : taux (référence, trajectoire témoin) et taux_modifie (simulé, trajectoire principale).',
+                'Dégradations combinées : passage↓, redoublement↑, abandon↑ ; au moins DEUX axes strictement dégradés, aucune amélioration.',
+                'Paire focale déclarante : passage/baisse, redoublement/hausse ou abandon/hausse — toute autre paire est refusée.',
+                'Aucune compensation implicite : chaque mouvement du jeu modifié est déclaré par le scénario.',
+                'Admissions identiques dans les deux trajectoires (même delta) : l\'écart isole strictement l\'effet combiné des taux.',
+                'abandon n\'est PAS réinjecté dans la progression : une variation d\'abandon absorbée par le slack est exactement neutre ; aucun effet n\'est inventé.',
+                'Aucun signe favorable supposé : l\'effet joint sur les effectifs et les sortants dépend des mouvements déclarés.',
+                'Incompatible avec le gel (SIM-03), le choc (SIM-04), la cible (SIM-05), le creux (SIM-06) et les alias passage (SIM-07/08).',
+                'Aucune valeur par défaut : sans taux_modifie, aucune comparaison n\'est produite.',
+            ],
+            'version_formules' => '1.0',
+            'resultats_attendus' => [
+                'Dégradation focale déclarée rappelée (4 décimales, magnitude positive).',
+                'Totaux simulés et de référence période par période, écarts signés et écart final.',
+                'Sortants par période (simulés vs référence) et effet cumulé sur les sortants (négatif, nul ou positif possible).',
+                'Effectifs projetés, total final, capacités et alertes (moteur inchangé).',
+                'Analyses de sensibilité et Monte-Carlo calculées autour des taux MODIFIÉS (trajectoire principale) ; aucune sensibilité à l\'abandon n\'est inventée.',
+            ],
+            'indicateurs' => [
+                'admissions_par_periode', 'baisse_passage', 'hausse_redoublement', 'hausse_abandon',
+                'totaux', 'totaux_reference_reussite',
+                'ecarts_reussite_par_periode', 'ecart_reussite_final', 'sortants_par_periode',
+                'effet_sortants_cumules', 'variations_annuelles', 'total_final',
+                'ecart_absolu', 'ecart_pourcentage', 'ecart_cible',
+                'groupes_theoriques_requis_total', 'deficit_groupes',
+                'taux_saturation_global_pct', 'places_manquantes',
+            ],
+        ];
+    }
+
+    /**
+     * 31 scénarios planifiés — métadonnées minimales, sans schéma exécutable
      * tant que leur LOOP n'est pas clôturé. La classification de
      * compatibilité est préliminaire et doit être confirmée par l'audit du
      * scénario concerné.
@@ -1384,7 +1483,6 @@ final class CatalogueScenarios
             // LOT A — Admissions et démographie.
 
             // LOT A — Réussite, redoublement et abandon.
-            'SIM-13' => ['nom' => 'Crise académique combinée', 'categorie' => 'reussite_flux', 'lot' => 'A', 'objectif' => 'Combiner plusieurs dégradations dans les limites du modèle.', 'compatibilite' => 'configuration', 'dependances' => ['SIM-07', 'SIM-08', 'SIM-09', 'SIM-10', 'SIM-11', 'SIM-12']],
 
             // LOT B — Cohortes et progression LMD.
             'SIM-14' => ['nom' => 'Blocage en L1', 'categorie' => 'cohortes_lmd', 'lot' => 'B', 'objectif' => "Identifier l'accumulation d'étudiants en première année.", 'compatibilite' => 'extension_par_niveau', 'dependances' => []],
@@ -1849,6 +1947,73 @@ final class CatalogueScenarios
 
         if ((float) $modifie['abandon'] >= (float) $parametres['taux']['abandon']) {
             throw new \DomainException('SIM-12 (réussite) : taux_modifie.abandon doit être strictement inférieur à l\'abandon de référence.');
+        }
+    }
+
+    /**
+     * SIM-13 = crise académique combinée. Règles de domaine (catalogue) :
+     *   1. la paire focale (axe, sens) doit être une DÉGRADATION :
+     *      passage/baisse, redoublement/hausse ou abandon/hausse ;
+     *   2. AUCUNE amélioration : passage_modifie ≤ passage_ref,
+     *      redoublement_modifie ≥ redoublement_ref, abandon_modifie ≥
+     *      abandon_ref ;
+     *   3. au moins DEUX axes strictement dégradés — l'axe focal strict
+     *      (contrat du descripteur) plus au moins un autre ;
+     *   4. somme du jeu modifié ≤ 1.0001 (comme SIM-10/11/12).
+     * Une dégradation isolée relève de SIM-08 (passage), SIM-09
+     * (redoublement) ou SIM-11 (abandon).
+     *
+     * @param  array<string, mixed>  $parametres
+     */
+    private static function validerReglesSim13(array $parametres): void
+    {
+        $modifie = $parametres['taux_modifie'];
+        $reference = $parametres['taux'];
+
+        $somme = (float) $modifie['passage']
+            + (float) $modifie['redoublement']
+            + (float) $modifie['abandon'];
+
+        if ($somme > 1.0001) {
+            throw new \DomainException('SIM-13 (crise combinée) : passage + redoublement + abandon (modifié) > 1 : incohérent.');
+        }
+
+        $axe = (string) $parametres['axe_variation'];
+        $sens = (string) $parametres['sens_variation'];
+        $pairesDegradantes = ['passage' => 'baisse', 'redoublement' => 'hausse', 'abandon' => 'hausse'];
+
+        if (($pairesDegradantes[$axe] ?? null) !== $sens) {
+            throw new \DomainException("SIM-13 (crise combinée) : la paire focale {$axe}/{$sens} n'est pas une dégradation — attendu passage-baisse, redoublement-hausse ou abandon-hausse.");
+        }
+
+        $passageStrictementBas = (float) $modifie['passage'] < (float) $reference['passage'];
+        $redoublementStrictementHaut = (float) $modifie['redoublement'] > (float) $reference['redoublement'];
+        $abandonStrictementHaut = (float) $modifie['abandon'] > (float) $reference['abandon'];
+
+        if ((float) $modifie['passage'] > (float) $reference['passage']) {
+            throw new \DomainException('SIM-13 (crise combinée) : passage_modifie supérieur au passage de référence — aucune amélioration admise.');
+        }
+        if ((float) $modifie['redoublement'] < (float) $reference['redoublement']) {
+            throw new \DomainException('SIM-13 (crise combinée) : redoublement_modifie inférieur au redoublement de référence — aucune amélioration admise.');
+        }
+        if ((float) $modifie['abandon'] < (float) $reference['abandon']) {
+            throw new \DomainException('SIM-13 (crise combinée) : abandon_modifie inférieur à l\'abandon de référence — aucune amélioration admise.');
+        }
+
+        $focalStrict = match ($axe) {
+            'passage' => $passageStrictementBas,
+            'redoublement' => $redoublementStrictementHaut,
+            'abandon' => $abandonStrictementHaut,
+        };
+
+        if (! $focalStrict) {
+            throw new \DomainException("SIM-13 (crise combinée) : l'axe focal {$axe} doit se dégrader STRICTEMENT (contrat du descripteur).");
+        }
+
+        $strictes = (int) $passageStrictementBas + (int) $redoublementStrictementHaut + (int) $abandonStrictementHaut;
+
+        if ($strictes < 2) {
+            throw new \DomainException('SIM-13 (crise combinée) : au moins deux axes doivent se dégrader strictement — une dégradation isolée relève de SIM-08, SIM-09 ou SIM-11.');
         }
     }
 

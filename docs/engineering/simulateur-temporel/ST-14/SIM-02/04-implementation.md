@@ -45,7 +45,7 @@ est donc :
 ```
 delta_admissions ∈ [-0.5, 0[     (bornes min = -0.5, max = 0)
 bornes => [min: -0.5, max: 0]
-horizon_annees ∈ [1, 20]
+horizon_annees ∈ [1, 6] (PLAFOND_HORIZON)
 taux => {passage, redoublement, abandon}  (tous REQUIS, pas de valeur par défaut)
 ```
 

@@ -29,24 +29,26 @@ autoritaire.
 
 ```
 {
-  code:        "SIM-02",
-  nom:         "Baisse des admissions",
-  famille:     "configuration",
-  delta:       [-0.5, 0[  (strictement négatif),
-  horizon:     1..20,
-  taux:        {
-    passage:    0..1,
-    redoublement: 0..1,
-    abandon:    0..1,
-    passage + redoublement <= 1
+  code:             "SIM-02",
+  nom:              "Baisse des admissions",
+  famille:          "configuration",
+  delta_admissions: [-0.5, 0[  (strictement négatif),
+  bornes:           { min: -0.5..delta, max: delta..0 },
+  horizon_annees:   1..6 (PLAFOND_HORIZON),
+  taux:             {
+    passage:        0..1,
+    redoublement:   0..1,
+    abandon:        0..1,
+    passage + redoublement + abandon <= 1 (tolérance 1.0001)
   },
-  graine?:     int (facultatif, idempotence),
-  baseL1?:     int (optionnel — default: reset($cohortes))
+  niveau_id?:       int (périmètre restreint),
+  groupes?:         int[] (exige niveau_id),
+  graine?:          string (facultatif, idempotence)
 }
 ```
 
-Aucun nouveau champ n'est ajouté au payload du moteur : `delta`, `horizon`,
-`taux`, `baseL1` existaient déjà.
+Aucun nouveau champ n'est ajouté au payload du moteur : `delta_admissions`,
+`bornes`, `horizon_annees`, `taux` existaient déjà (schéma SIM-01).
 
 ### 2. Sortie (lecture seule)
 
@@ -130,8 +132,9 @@ permanent, pas de fichier de registre.
   dans le catalogue (réserve SIM02-R1).
 - **R3 — taux REQUIS pour SIM-02** : sans `passage/redoublement/abandon` le moteur
   remet les cohortes à zéro (anomalie héritée de SIM-01, réserves SIM01-R4/SIM02-R3).
-- **R4 — baseL1 = reset($cohortes)** : le premier niveau est le premier niveau
-  observé, par défaut. `baseL1` explicite reste possible.
+- **R4 — baseL1 = reset($cohortes)** : la base d'admissions est l'effectif du
+  premier niveau observé. Ce n'est pas un paramètre : la base suit le
+  périmètre simulé (`niveau_id` / `groupes`).
 - **R5 — capacité par défaut 35** : héritée de SIM-01, pas de règle institutionnelle.
 
 ---

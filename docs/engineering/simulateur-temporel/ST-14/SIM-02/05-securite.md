@@ -46,7 +46,7 @@ tableaux.
 
 ```
 passage, redoublement, abandon ∈ [0, 1]
-passage + redoublement <= 1
+passage + redoublement + abandon <= 1 (tolérance d'arrondi 1.0001)
 ```
 
 - `schemaAvecTauxRequis('SIM-02')` impose leur présence (SIM02-R3) — sans taux
@@ -63,7 +63,7 @@ générique du catalogue le bloque avant d'atteindre SIM-02.
 
 ### B.3. Le reste du payload
 
-`horizon ∈ [1, 20]` est déjà garanti par le formulaire existant.
+`horizon_annees ∈ [1, 6]` (`PLAFOND_HORIZON`) est déjà garanti par le formulaire existant.
 `baseL1` est optionnel et borné par `reset($cohortes)` en défaut.
 
 ---
@@ -136,7 +136,7 @@ combien de fois on a exécuté SIM-01 auparavant.
 - [x] Aucune donnée métier n'est écrite (`inscriptions`/`groupes`/`notes`/`affectations` inchangés).
 - [x] `delta_admissions >= 0` rejeté par SIM-02, `bornes.max > 0` rejeté.
 - [x] `delta` borné `[-0.5, +2.0]` côté formulaire web et côté moteur.
-- [x] `taux` REQUIS (`schemaAvecTauxRequis`) et bornés `[0, 1]` avec `passage + redoublement <= 1`.
+- [x] `taux` REQUIS (`schemaAvecTauxRequis`) et bornés `[0, 1]` avec `passage + redoublement + abandon <= 1` (tolérance 1.0001).
 - [x] Aucun appel réseau, aucune requête SQL brute, aucun affichage non filtré.
 - [x] Aucune PII lue (seuls les effectifs par niveau sont accédés).
 - [x] Aucune donnée d'étudiant dans les logs.

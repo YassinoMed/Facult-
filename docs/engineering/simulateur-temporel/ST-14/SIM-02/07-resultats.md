@@ -146,7 +146,7 @@ lève une `DomainException`) :
 |-----------------|-------|------|
 | `delta_admissions = 0` (ou > 0) | baisse non stricte (SIM-01) | `validerReglesSim02` |
 | `bornes.max > 0` | variante de croissance interdite | `validerReglesSim02` |
-| `passage + redoublement = 1.1` | > 1 | `validerParametres('SIM-02')` → `'> 1'` |
+| `passage 0.9 + redoublement 0.2 + abandon 0 = 1.1` | > 1.0001 | `validerParametres('SIM-02')` → `'> 1'` |
 | champ inconnu `delta_admission` | clé inconnue | `validerParametres('SIM-02')` → `'inconnu'` |
 
 **Sécurité** : utilisateur sans `simulation.executer` → **403** ; admin

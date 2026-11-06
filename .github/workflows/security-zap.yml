@@ -1,0 +1,248 @@
+name: ZAP Security Baseline Scan
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+  workflow_dispatch:
+
+jobs:
+  zap-scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    # Secrets requis (à définir dans Settings > Secrets > Actions de votre repo)
+    #   - SLACK_WEBHOOK_URL (optionnel)
+    #   - DISCORD_WEBHOOK_URL (optionnel)
+    #   - ZAP_CI_FAIL_ON_CRITICAL (optionnel, par défaut: true)
+
+    defaults:
+      run:
+        shell: bash
+
+    services:
+      # Lancer l'application Laravel (utilise les configs DB existantes)
+      app:
+        image: php:8.2-fpm
+        env:
+          APP_URL: http://localhost:9000
+          APP_ENV: local
+          DB_CONNECTION: mysql
+          DB_HOST: 127.0.0.1
+          DB_PORT: 3306
+          DB_DATABASE: inscription_etudiants
+          DB_USERNAME: root
+          DB_PASSWORD: root
+          SESSION_DRIVER: database
+          CACHE_DRIVER: database
+        ports:
+          - "9000:9000"
+        volumes:
+          - .:/var/www/html:ro
+          - ./php.ini:/usr/local/etc/php/conf.d/php.ini
+
+      # ZAP Daemon
+      zap:
+        image: owasp/zap2docker-stable
+        ports:
+          - "8080:8080"
+        options: >
+          -p 8080:8080
+          -e ZAP_AUTH_COOKIE_NAME=laravel_session
+          -e ZAP_AUTH_CSRF_TOKEN_NAME=csrf_token
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Install PHP dependencies
+        run: composer install --no-interaction --optimize-autoloader --no-dev
+
+      - name: Generate application key
+        run: php artisan key:generate --force
+
+      - name: Run ZAP Baseline Scan
+        run: |
+          # Attendre que l'app soit prête
+          echo "⏳ Attente du démarrage de l'application..."
+          for i in $(seq 1 30); do
+            if curl -s http://localhost:9000 > /dev/null 2>&1; then
+              echo "✅ Application prête !"
+              break
+            fi
+            echo "   En attente... ($i/30)"
+            sleep 2
+          done
+
+          # Lancer le scan baseline ZAP
+          echo "🔍 Démarrage du scan ZAP Baseline..."
+          zap-baseline.py \
+            -t http://localhost:9000 \
+            -r zap-report.html \
+            -J zap-report.json \
+            -d \
+            -g "insecure=true" \
+            -w zap-session \
+            -x "URL*includes=/admin/*" \
+            -x "URL*includes=/php/*" \
+            -x "URL*includes=/api/*" \
+            -x "URL*includes=*.css*" \
+            -x "URL*includes=*.js*" \
+            -x "URL*includes=/health*" \
+            -x "URL*includes=/status*" \
+            -x "URL*includes=/debug*" \
+            -x "URL*includes=/api/documentation*" \
+            -x "URL*includes=/api/*"
+
+          echo "✅ Scan ZAP terminé"
+
+      - name: Check for critical findings & CI gate
+        run: |
+          echo "🔍 Vérification des findings critiques..."
+          
+          # Extraire le nombre de findings critiques depuis le rapport JSON
+          CRITICAL_COUNT=$(python3 -c "
+import json
+try:
+    with open('zap-report.json') as f:
+        data = json.load(f)
+    summary = data.get('summary', {})
+    critical = summary.get('critical', 0)
+    print(critical)
+except Exception as e:
+    print(0)
+" )
+          
+          echo "📊 Findings critiques détectés : $CRITICAL_COUNT"
+          
+          # Vérifier la configuration CI gate
+          FAIL_ON_CRITICAL="${{ secrets.ZAP_CI_FAIL_ON_CRITICAL || 'true' }}"
+          
+          if [ "$FAIL_ON_CRITICAL" = "true" ] && [ "$CRITICAL_COUNT" -gt 0 ]; then
+            echo "❌ ÉCHEC CI : $CRITICAL_COUNT finding(s) critique(s) détecté(s)"
+            echo "📋 Voir le rapport complet : zap-report.json"
+            exit 1
+          elif [ "$CRITICAL_COUNT" -gt 0 ]; then
+            echo "⚠️ Findings critiques détectés mais CI autorisé (ZAP_CI_FAIL_ON_CRITICAL non défini ou false)"
+          else
+            echo "✅ Aucune finding critique détectée"
+          fi
+
+      - name: Upload ZAP Reports
+        uses: actions/upload-artifact@v3
+        with:
+          name: zap-security-reports
+          path: |
+            zap-report.html
+            zap-report.json
+            zap-session*
+          retention-days: 30
+
+      - name: Commenter le PR avec les résultats
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            let jsonReport = ''
+            try {
+              const fs = require('fs')
+              jsonReport = JSON.parse(fs.readFileSync('zap-report.json', 'utf8'))
+            } catch(e) {
+              jsonReport = {}
+            }
+            const summary = `
+              ## 🔐 ZAP Security Scan Results
+              - **Critical**: ${jsonReport.summary?.critical || 0}
+              - **High**: ${jsonReport.summary?.high || 0}
+              - **Medium**: ${jsonReport.summary?.medium || 0}
+              - **Low**: ${jsonReport.summary?.low || 0}
+              - **Info**: ${jsonReport.summary?.informational || 0}
+            `
+            await github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: summary
+            })
+
+      - name: Envoyer notification Slack
+        if: ${{ secrets.SLACK_WEBHOOK_URL != '' && github.event_name == 'pull_request' }}
+        run: |
+          SLACK_MESSAGE="🔐 *ZAP Security Scan* - PR #${context pull request number}
+          *Critical*: ${jsonReport.summary?.critical || 0}
+          *High*: ${jsonReport.summary?.high || 0}
+          *Medium*: ${jsonReport.summary?.medium || 0}
+          *Low*: ${jsonReport.summary?.low || 0}
+          
+          ${[ "$CRITICAL_COUNT" -gt 0 ] && echo ":*warning:* Des findings critiques ont été détectés *" || echo ":*white_check_mark:* Aucun finding critique*"}
+          
+          curl -X POST -H 'Content-type: application/json' --data "$(printf '{"text":%s}' "$(printf '%s' "$SLACK_MESSAGE" | python3 -c 'import sys,json; print(json.dumps(json.loads(sys.stdin.read()) if False else __import__("os").environ.get("SLACK_MESSAGE", ""))) )" )" "$SLACK_WEBHOOK_URL"
+          
+          # Méthode plus simple avec python
+          python3 -c "
+import os, json, sys
+webhook = os.environ.get('SLACK_WEBHOOK_URL', '')
+if not webhook:
+    print('⚠️ SLACK_WEBHOOK_URL non configuré')
+    sys.exit(0)
+    
+critical = ${CRITICAL_COUNT or 0}
+message = f':Security: ZAP Scan PR #{context pull request number}\\nCritical: {critical}\\nHigh: {jsonReport.summary.get(\"high\", 0)}\\nMedium: {jsonReport.summary.get(\"medium\", 0)}\\nLow: {jsonReport.summary.get(\"low\", 0)}\\nInfo: {jsonReport.summary.get(\"informational\", 0)}'
+if critical > 0:
+    message += '\\n:*warning:* Des findings critiques ont été détectés*'
+    
+import urllib.request, urllib.error, urllib.parse
+req = urllib.request.Request(webhook, data=json.dumps({'text': message}).encode('utf8'), headers={'Content-Type': 'application/json'})
+try:
+    urllib.request.urlopen(req)
+    print('✅ Slack notification sent')
+except Exception as e:
+    print(f'⚠️ Erreur Slack: {e}')
+"
+
+      - name: Envoyer notification Discord
+        if: ${{ secrets.DISCORD_WEBHOOK_URL != '' && github.event_name == 'pull_request' }}
+        run: |
+          python3 -c "
+import os, json, sys
+webhook = os.environ.get('DISCORD_WEBHOOK_URL', '')
+if not webhook:
+    print('⚠️ DISCORD_WEBHOOK_URL non configuré')
+    sys.exit(0)
+    
+critical = ${CRITICAL_COUNT or 0}
+high = ${jsonReport.summary?.high || 0}
+medium = ${jsonReport.summary?.medium || 0}
+low = ${jsonReport.summary?.low || 0}
+info = ${jsonReport.summary?.informational || 0}
+
+embed = {
+    'title': '🔐 ZAP Security Scan',
+    'description': f'PR #${context pull request number}',
+    'color': 16711680 if critical > 0 else 3066345,
+    'fields': [
+        {'name': 'Critical', 'value': str(critical), 'inline': True},
+        {'name': 'High', 'value': str(high), 'inline': True},
+        {'name': 'Medium', 'value': str(medium), 'inline': True},
+        {'name': 'Low', 'value': str(low), 'inline': True},
+        {'name': 'Info', 'value': str(info), 'inline': True}
+    ],
+    'footer': {'text': f'Run: {github.run_time}'}
+}
+
+import urllib.request, urllib.error, urllib.parse
+req = urllib.request.Request(webhook, data=json.dumps({'embeds': [embed]).encode('utf8'), headers={'Content-Type': 'application/json'})
+try:
+    urllib.request.urlopen(req)
+    print('✅ Discord notification sent')
+except Exception as e:
+    print(f'⚠️ Erreur Discord: {e}')
+"
+
+      - name: Telecharger le rapport complet
+        uses: actions/download-artifact@v3
+        with:
+          name: zap-security-reports
+          path: ./workflow-reports

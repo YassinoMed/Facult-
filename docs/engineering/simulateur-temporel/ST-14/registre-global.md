@@ -3,7 +3,7 @@
 **Campagne :** ST-14 — scénarios avancés du simulateur temporel
 **Contrat commun :** `CatalogueScenarios::VERSION_CONTRAT = 1.0`
 **Version moteur :** `ServiceSimulationTemporelle::VERSION_MOTEUR` (référence unique)
-**Dernière mise à jour :** 2026-11-05
+**Dernière mise à jour :** 2026-11-06
 **Mode :** AUDIT_ONLY / SIMULATION / TESTING — données métier en lecture seule
 
 > Une phase n'est marquée terminée qu'après production de sa preuve.
@@ -390,12 +390,47 @@
 
 ---
 
+## 2 quindecies. SIM-13 — Crise académique combinée
+
+- **Version :** 1 (formules 1.0)
+- **Statut :** `disponible`
+- **Compatibilité confirmée :** `configuration` (audit du 2026-11-06 — le
+  descripteur générique v1.8 accepte déjà un jeu modifié multi-dégra-
+  dations ; l'apport SIM-13 est un contrat de domaine catalogue)
+- **Fichiers modifiés :**
+  - `Support/CatalogueScenarios.php` (`sim13()`, `schemaSim13()`, règles
+    `validerReglesSim13()`, branche `validerParametres`, ajout à la liste
+    des définitions, retrait de `planifies()` — 32 → 31)
+  - `tests/Feature/SimulationTemporelleSim13Test.php` (créé, 8 tests)
+  - `tests/Feature/SimulationTemporelleCatalogueTest.php` (14 disponibles /
+    31 planifiés, bloc métadonnées SIM-13, SIM-14 témoin des refus)
+- **Règles de domaine :** paire focale dégradante (passage/baisse,
+  redoublement/hausse, abandon/hausse) ; aucune amélioration ; au moins
+  deux dégradations STRICTES ; somme modifiée ≤ 1.0001
+- **Moteur :** **aucun changement** — `ServiceSimulationTemporelle` reste en
+  version `1.8` ; descripteur générique SIM-09 et double trajectoire SIM-07
+  réutilisés tels quels
+- **Point structurel :** effets combinés NON additifs — démontré par test
+  (3 dégradations strictes, écarts de totaux `[0,0]` mais effet sortants
+  `−10`) ; aucun effet causal isolé attribué à l'abandon (non réinjecté)
+- **Tests :** **8 tests / 107 assertions** (SIM-13) + **23 tests / 598 assertions** (catalogue)
+- **Non-régression :** 160 tests / 1763 assertions inchangés (SIM-01 → SIM-12 inclus)
+- **Suite module :** **168 tests / 1878 assertions**, 0 échec
+- **Pint :** OK (1 correction automatique, puis `--test --dirty` vert)
+- **Écriture métier :** Non
+- **Incident :** aucun — 8/8 dès le premier passage (références manuelles exactes)
+- **Réserves :** SIM13-R1 → SIM13-R5 (voir `09-verdict.md`)
+- **Preuves :** `ST-14/SIM-13/00-audit.md` → `09-verdict.md`
+- **Verdict :** ✅ **PASS_WITH_RESERVATIONS** (2026-11-06)
+
+---
+
 ## 3. Les sept familles — état de couverture
 
 | # | Famille | Scénarios | État | Preuves / réserves |
 |---|---|---|---|---|
 | 1 | Démographie et admissions | SIM-01 → SIM-06 | **Complète** (SIM-01 → SIM-06 clôturés) | `SIM-01/09-verdict.md`, `SIM-02/09-verdict.md`, `SIM-03/09-verdict.md`, `SIM-04/09-verdict.md`, `SIM-05/09-verdict.md`, `SIM-06/09-verdict.md` |
-| 2 | Réussite, redoublement, abandon | SIM-07 → SIM-13 | **Partielle** (SIM-07 → SIM-12 clôturés ; SIM-13 reste) | `SIM-07/09-verdict.md`, `SIM-08/09-verdict.md`, `SIM-09/09-verdict.md`, `SIM-10/09-verdict.md`, `SIM-11/09-verdict.md`, `SIM-12/09-verdict.md` ; moteur à taux globaux |
+| 2 | Réussite, redoublement, abandon | SIM-07 → SIM-13 | **Complète** (SIM-07 → SIM-13 clôturés) | `SIM-07/09-verdict.md` → `SIM-13/09-verdict.md` ; moteur à taux globaux |
 | 3 | Cohortes et progression LMD | SIM-14 → SIM-19 | **NOT_STARTED** | `L0-R8` (règles LMD non validées) |
 | 4 | Capacités et infrastructures | SIM-20 → SIM-25 | **NOT_STARTED** | `L0-R7` (capacité par défaut 35) |
 | 5 | Budgets et ressources | SIM-26 → SIM-30 | **NOT_STARTED** | `L0-R6` (aucun coût validé) |
@@ -442,7 +477,7 @@ Colonnes de suivi : **A** audit · **B** spécification · **C** conception ·
 | SIM-10 | Réduction du redoublement | reussite_flux | analyse_nouvelle (confirmée) | SOCLE-EFFECTIFS | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ **PASS_WITH_RESERVATIONS** |
 | SIM-11 | Hausse de l'abandon | reussite_flux | analyse_nouvelle (confirmée) | SOCLE-EFFECTIFS | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ **PASS_WITH_RESERVATIONS** |
 | SIM-12 | Réduction de l'abandon | reussite_flux | analyse_nouvelle (confirmée) | SOCLE-EFFECTIFS | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ **PASS_WITH_RESERVATIONS** |
-| SIM-13 | Crise académique combinée | reussite_flux | configuration | SIM-07→12 | — | — | — | — | — | — | — | — | — | — |
+| SIM-13 | Crise académique combinée | reussite_flux | configuration (confirmée) | SOCLE-EFFECTIFS | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ **PASS_WITH_RESERVATIONS** |
 
 ### LOT B — Cohortes et progression LMD (SIM-14 → SIM-19)
 
@@ -581,8 +616,9 @@ SOCLE-EFFECTIFS (ST-14.00, disponible)
 | SIM-10 — réduction du redoublement | 7 | 85 |
 | SIM-11 — hausse de l'abandon | 7 | 88 |
 | SIM-12 — réduction de l'abandon | 7 | 88 |
-| Catalogue courant (ST-14.00 + SIM-01→12) | 23 | 590 |
-| **Total module Simulation temporelle** | **160** | **1763** |
+| SIM-13 — crise académique combinée | 8 | 107 |
+| Catalogue courant (ST-14.00 + SIM-01→13) | 23 | 598 |
+| **Total module Simulation temporelle** | **168** | **1878** |
 
 Référence non directement comparable : ST-10 (64 tests / 342 assertions,
 périmètre antérieur différent).

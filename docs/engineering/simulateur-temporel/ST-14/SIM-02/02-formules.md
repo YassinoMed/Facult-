@@ -98,7 +98,8 @@ Toutes ces valeurs sont assertées dans les tests SIM-02.
 
 ## E. Contrôles d'arrondi
 
-- `passage + redoublement > 1` est exclu par le schéma.
+- `passage + redoublement + abandon > 1.0001` est exclu par la validation
+  commune du catalogue (tolérance d'arrondi `1.0001`).
 - `partent + redoublants > effectif` est plafonné côté moteur (pas de
   création de population).
 - Arrondis vers le plus proche ; les pertes dues à l'arrondi sont

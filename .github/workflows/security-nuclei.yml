@@ -1,0 +1,210 @@
+name: Nuclei CVE Scan
+
+on:
+  schedule:
+    - cron: '0 3 * * 1'  # Lundi 3h00 du matin (heur calme)
+  pull_request:
+    branches: [main, develop]
+  workflow_dispatch:
+
+jobs:
+  nuclei-scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    # Secrets requis (à définir dans Settings > Secrets > Actions de votre repo)
+    #   - SLACK_WEBHOOK_URL (optionnel)
+    #   - DISCORD_WEBHOOK_URL (optionnel)
+    #   - NUCLEI_CI_FAIL_ON_CRITICAL (optionnel, par défaut: true)
+
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Install Go and Nuclei
+        uses: rimu/set-up-nuclei@v1
+        with:
+          nuclei-version: latest
+
+      - name: Update Nuclei templates
+        run: nuclei -update-templates
+
+      - name: Install PHP dependencies (Laravel)
+        run: composer install --no-interaction --prefer-dist
+
+      - name: Run Nuclei CVE Scan
+        run: |
+          echo "🔍 Démarrage du scan CVE Nuclei..."
+
+          # Scanner les vulnérabilités connues
+          nuclei \
+            -h http://localhost:9000 \
+            -t cves/ \
+            -json \
+            -o nuclei-cve-report.json \
+            -silent \
+            -exclude "http://localhost:9000/health*" \
+            -exclude "http://localhost:9000/status*" \
+            -exclude "http://localhost:9000/debug*" \
+            -exclude "http://localhost:9000/api/*" \
+            -exclude "http://localhost:9000/admin/*" \
+            -exclude "URL*includes=/app/*"
+
+          echo "✅ Scan Nuclei CVE terminé"
+
+          # Analyser les résultats et vérifier les findings critiques
+          CRITICAL_COUNT=$(python3 -c "
+import json
+try:
+    with open('nuclei-cve-report.json') as f:
+        data = json.load(f)
+    # Nuclei report est une liste d'éléments
+    critical = 0
+    for item in data:
+        info = item.get('info', {})
+        severity = info.get('severity', '').lower()
+        if severity in ['critical', 'high']:
+            critical += 1
+    print(critical)
+except Exception as e:
+    print(0)
+" )
+          
+          echo "📊 Findings critiques détectés : $CRITICAL_COUNT"
+          
+          # Vérifier la configuration CI gate
+          FAIL_ON_CRITICAL="${{ secrets.NUCLEI_CI_FAIL_ON_CRITICAL || 'true' }}"
+          
+          if [ "$FAIL_ON_CRITICAL" = "true" ] && [ "$CRITICAL_COUNT" -gt 0 ]; then
+            echo "❌ ÉCHEC CI : $CRITICAL_COUNT finding(s) critique(s) détecté(s) dans les CVE"
+            echo "📋 Voir le rapport complet : nuclei-cve-report.json"
+            exit 1
+          elif [ "$CRITICAL_COUNT" -gt 0 ]; then
+            echo "⚠️ Findings critiques détectés mais CI autorisé (NUCLEI_CI_FAIL_ON_CRITICAL non défini ou false)"
+          else
+            echo "✅ Aucune vulnérabilité CVE critique détectée"
+          fi
+
+      - name: Upload Nuclei Report
+        uses: actions/upload-artifact@v3
+        with:
+          name: nuclei-cve-reports
+          path: |
+            nuclei-cve-report.json
+          retention-days: 30
+
+      - name: Commenter le PR avec les résultats CVE
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            let nucleReport = ''
+            try {
+              const fs = require('fs')
+              nucleReport = JSON.parse(fs.readFileSync('nuclei-cve-report.json', 'utf8'))
+            } catch(e) {
+              nucleReport = []
+            }
+            const total = nucleReport.length
+            const message = `
+              ## 🛡️ Nuclei CVE Scan Results
+              - **Total findings**: ${total}
+              - **Last run**: ${{ github.run_date }}
+              - **Status**: ${total > 0 ? '⚠️ Voir rapport' : '✅ Aucune CVE critique'}
+            `
+            await github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: message
+            })
+
+      - name: Envoyer notification Slack
+        if: ${{ secrets.SLACK_WEBHOOK_URL != '' && github.event_name == 'pull_request' }}
+        run: |
+          python3 << 'PYEOF'
+import os, json, sys, urllib.request, urllib.parse
+
+webhook = os.environ.get('SLACK_WEBHOOK_URL', '')
+if not webhook:
+    print('⚠️ SLACK_WEBHOOK_URL non configuré')
+    sys.exit(0)
+
+try:
+    with open('nuclei-cve-report.json') as f:
+        nucleReport = json.load(f)
+except:
+    nucleReport = []
+
+critical = sum(1 for item in nucleReport 
+               if item.get('info', {}).get('severity', '').lower() in ['critical', 'high'])
+
+message = f':bow: *Nuclei CVE Scan* - PR #${context pull request number}\\n'
+message += f':warning: *Critical*: {critical}\\n'
+message += f':white_check_mark: *Total findings*: {len(nucleReport)}\\n'
+
+import urllib.request
+req = urllib.request.Request(webhook, data=json.dumps({'text': message}).encode('utf8'), headers={'Content-Type': 'application/json'})
+try:
+    urllib.request.urlopen(req)
+    print('✅ Slack notification sent')
+except Exception as e:
+    print(f'⚠️ Erreur Slack: {e}')
+PYEOF
+
+      - name: Envoyer notification Discord
+        if: ${{ secrets.DISCORD_WEBHOOK_URL != '' && github.event_name == 'pull_request' }}
+        run: |
+          python3 << 'PYEOF'
+import os, json, sys, urllib.request, urllib.parse
+
+webhook = os.environ.get('DISCORD_WEBHOOK_URL', '')
+if not webhook:
+    print('⚠️ DISCORD_WEBHOOK_URL non configuré')
+    sys.exit(0)
+
+try:
+    with open('nuclei-cve-report.json') as f:
+        nucleReport = json.load(f)
+except:
+    nucleReport = []
+
+critical = sum(1 for item in nucleReport 
+               if item.get('info', {}).get('severity', '').lower() in ['critical', 'high'])
+high = sum(1 for item in nucleReport if item.get('info', {}).get('severity', '').lower() == 'high')
+medium = sum(1 for item in nucleReport if item.get('info', {}).get('severity', '').lower() == 'medium')
+low = sum(1 for item in nucleReport if item.get('info', {}).get('severity', '').lower() == 'low')
+info = sum(1 for item in nucleReport if item.get('info', {}).get('severity', '').lower() == 'info')
+
+embed = {
+    'title': ':bow: Nuclei CVE Scan',
+    'description': f'PR #${context pull request number}',
+    'color': 16711680 if critical > 0 else 3066345,
+    'fields': [
+        {'name': ':warning: Critical', 'value': str(critical), 'inline': True},
+        {'name': ':white_big_square: High', 'value': str(high), 'inline': True},
+        {'name': ':white_medium_square: Medium', 'value': str(medium), 'inline': True},
+        {'name': ':small_blue_diamond: Low', 'value': str(low), 'inline': True},
+        {'name': ':information_source: Info', 'value': str(info), 'inline': True}
+    ],
+    'footer': {'text': f'Run: {github.run_time}'}
+}
+
+req = urllib.request.Request(webhook, data=json.dumps({'embeds': [embed]).encode('utf8'), headers={'Content-Type': 'application/json'})
+try:
+    urllib.request.urlopen(req)
+    print('✅ Discord notification sent')
+except Exception as e:
+    print(f'⚠️ Erreur Discord: {e}')
+PYEOF
+
+      - name: Telecharger le rapport complet
+        uses: actions/download-artifact@v3
+        with:
+          name: nuclei-cve-reports
+          path: ./workflow-reports

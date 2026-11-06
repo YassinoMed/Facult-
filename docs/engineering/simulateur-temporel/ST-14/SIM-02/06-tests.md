@@ -184,7 +184,7 @@ comparaison après.
 | `test_sim02_est_un_scenario_de_baisse_stricte` | `schemaSim02()['taux']['requis'] == true` |
 | `test_sim02_est_un_scenario_de_baisse_stricte` | `schemaSocle()['taux']['requis'] == false` (différence SOCLE vs SIM-01/SIM-02) |
 | `test_sim02_est_un_scenario_de_baisse_stricte` | `validerParametres('SIM-02', ...) === $valides` sur le jeu valide |
-| `test_sim02_est_un_scenario_de_baisse_stricte` | `assertRefuse` → `passage + redoublement > 1` rejette (`'> 1'`) |
+| `test_sim02_est_un_scenario_de_baisse_stricte` | `assertRefuse` → `passage 0.9 + redoublement 0.2 + abandon 0.0 = 1.1 > 1.0001` rejette (`'> 1'`) |
 | `test_sim02_est_un_scenario_de_baisse_stricte` | `assertRefuse` → champ inconnu `delta_admission` rejette (`'inconnu'`) |
 
 **But** : le schéma SIM-02 publie bien `taux.requis = true` et rejette les

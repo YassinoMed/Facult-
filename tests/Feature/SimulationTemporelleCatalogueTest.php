@@ -179,8 +179,8 @@ class SimulationTemporelleCatalogueTest extends TestCase
         $bilan = CatalogueScenarios::verifierIntegrite();
 
         $this->assertSame(45, $bilan['scenarios']);
-        $this->assertSame(13, $bilan['disponibles']);
-        $this->assertSame(32, $bilan['planifies']);
+        $this->assertSame(14, $bilan['disponibles']);
+        $this->assertSame(31, $bilan['planifies']);
         $this->assertCount(45, array_unique($bilan['codes']));
 
         foreach (CatalogueScenarios::tout() as $code => $definition) {
@@ -315,13 +315,25 @@ class SimulationTemporelleCatalogueTest extends TestCase
         $this->assertTrue($sim12['schema']['taux_modifie']['requis']);
         $this->assertSame(['abandon'], $sim12['schema']['axe_variation']['valeurs']);
         $this->assertSame(['baisse'], $sim12['schema']['sens_variation']['valeurs']);
+
+        $sim13 = CatalogueScenarios::exiger('SIM-13');
+        $this->assertSame(CatalogueScenarios::STATUT_DISPONIBLE, $sim13['statut']);
+        $this->assertSame('configuration', $sim13['compatibilite']);
+        $this->assertSame(1, $sim13['version']);
+        $this->assertSame('1.0', $sim13['version_formules']);
+        $this->assertSame(['SOCLE-EFFECTIFS'], $sim13['dependances']);
+        $this->assertTrue($sim13['schema']['taux']['requis']);
+        $this->assertTrue($sim13['schema']['taux_modifie']['requis']);
+        $this->assertSame(['passage', 'redoublement', 'abandon'], $sim13['schema']['axe_variation']['valeurs']);
+        $this->assertSame(['hausse', 'baisse'], $sim13['schema']['sens_variation']['valeurs']);
+        $this->assertStringContainsString('dégrad', $sim13['schema']['taux_modifie']['description']);
     }
 
     public function test_code_inconnu_et_scenario_planifie_refuses(): void
     {
         $this->assertRefuse(fn () => CatalogueScenarios::exiger('SIM-99'), 'inconnu');
-        $this->assertRefuse(fn () => CatalogueScenarios::validerParametres('SIM-13', $this->parametresValides()), 'non disponible');
-        $this->assertFalse(CatalogueScenarios::estDisponible('SIM-13'));
+        $this->assertRefuse(fn () => CatalogueScenarios::validerParametres('SIM-14', $this->parametresValides()), 'non disponible');
+        $this->assertFalse(CatalogueScenarios::estDisponible('SIM-14'));
         $this->assertTrue(CatalogueScenarios::estDisponible('SOCLE-EFFECTIFS'));
         $this->assertTrue(CatalogueScenarios::estDisponible('SIM-01'));
         $this->assertTrue(CatalogueScenarios::estDisponible('SIM-02'));
@@ -335,6 +347,7 @@ class SimulationTemporelleCatalogueTest extends TestCase
         $this->assertTrue(CatalogueScenarios::estDisponible('SIM-10'));
         $this->assertTrue(CatalogueScenarios::estDisponible('SIM-11'));
         $this->assertTrue(CatalogueScenarios::estDisponible('SIM-12'));
+        $this->assertTrue(CatalogueScenarios::estDisponible('SIM-13'));
     }
 
     public function test_parametres_invalides_ou_hors_bornes_refuses(): void
